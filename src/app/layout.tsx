@@ -40,6 +40,11 @@ export default function RootLayout({
               </Link>
             </li>
             <li>
+              <Link href="/blog" className="block p-2 bg-zinc-800 rounded hover:bg-gray-400 hover:text-zinc-900">
+                Blog
+              </Link>
+            </li>
+            <li>
               <Link href="/processing" className="block p-2 bg-zinc-800 rounded hover:bg-gray-400 hover:text-zinc-900">
                 Processing
               </Link>
