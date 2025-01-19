@@ -10,6 +10,7 @@ specifiers:
   '@types/react': ^19
   '@types/react-dom': ^19
   class-variance-authority: 0.7.1
+  clsx: 2.1.1
   eslint: ^9
   eslint-config-next: 15.1.5
   husky: 8.0.3
@@ -30,6 +31,7 @@ dependencies:
   '@tailwindcss/forms': 0.5.10_tailwindcss@3.4.17
   '@tailwindcss/typography': 0.5.16_tailwindcss@3.4.17
   class-variance-authority: 0.7.1
+  clsx: 2.1.1
   next: 15.1.5_upmzqgzhjrquwzo2dphtigtdgi
   react: 19.0.0
   react-dom: 19.0.0_react@19.0.0
