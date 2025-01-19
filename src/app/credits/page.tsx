@@ -1,3 +1,10 @@
+import type { Metadata } from "next";
+
+export const metadata: Metadata = {
+  title: "Landesko's Playground - Credits",
+  description: "Credits for Landesko's Playground",
+};
+
 export default function Credits() {
   return (
     <>
