@@ -1,5 +1,5 @@
 "use client";
-import { useState, ChangeEvent } from "react";
+import { useState, ChangeEvent, FormEventHandler } from "react";
 import { Textarea, Input, Button } from "@rewind-ui/core";
 import emailjs from "@emailjs/browser";
 
@@ -16,7 +16,9 @@ export default function Contact() {
     message: "",
   });
 
-  const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
+  const handleChange = (
+    e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+  ) => {
     const { name, value } = e.target;
     setUserInput({
       ...userInput,
@@ -24,7 +26,7 @@ export default function Contact() {
     });
   };
 
-  const handleSubmit = async (e: Event) => {
+  const handleSubmit: FormEventHandler<HTMLFormElement> = async (e) => {
     e.preventDefault();
 
     const serviceID = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID
