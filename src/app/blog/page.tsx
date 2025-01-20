@@ -5,14 +5,22 @@ export const metadata: Metadata = {
   description: "Blog Posts",
 };
 
-export default function Blog() {
+import { fetchRecentBlogs } from "../lib/data";
+
+export default async function Blog() {
+  const blogs = await fetchRecentBlogs();
   return (
     <>
-      <h2 className="text-4xl font-bold">Blog Posts Will Go Here</h2>
-      <p className="text-lg mt-2">
-        Going to need to set this up with a database to store posts / hide post
-        creation behind auth.
-      </p>
+      <h2 className="text-4xl font-bold">Blog Posts</h2>
+      {blogs.map((blog) => (
+        <div
+          key={blog.title}
+          className="mt-4 p-4 shadow-md rounded-lg w-1/2 h-1/6 border border-white"
+        >
+          <h3 className="text-lg font-bold">{blog.title}</h3>
+          <p className="">{blog.content}</p>
+        </div>
+      ))}
     </>
   );
 }
