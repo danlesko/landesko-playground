@@ -42,7 +42,6 @@ const MyContactForm = () => {
       return;
     } else {
       // make form submission
-      console.log("what the fuck?");
       const res = await fetch("http://localhost:3000/api/recaptcha", {
         method: "POST",
         body: JSON.stringify({ captchaValue }),
@@ -51,7 +50,6 @@ const MyContactForm = () => {
         },
       });
       const data = await res.json();
-      console.log(data);
       if (data.message === "Success") {
         // make form submission
         toast.add({
@@ -93,7 +91,6 @@ const MyContactForm = () => {
       );
 
       if (res.status === 200) {
-        console.log("Message sent successfully!");
         setUserInput({
           name: "",
           email: "",
