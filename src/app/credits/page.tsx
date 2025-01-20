@@ -19,7 +19,7 @@ export default function Credits() {
             href="https://www.flaticon.com/free-icon/slider_3264933?term=playground+slide&page=1&position=7&origin=tag&related_id=3264933"
             title="kid and baby icons"
           >
-            Kid and baby icons created by flatart_icons - Flaticon
+            Site Icon - Flaticon
           </a>
         </li>
       </ul>
