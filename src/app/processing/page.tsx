@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import MyProcessingDrawing from "@/components/MyProcessingDrawing";
 
 export const metadata: Metadata = {
   title: "Landesko's Playground - Processing",
@@ -14,8 +15,9 @@ export default function Processing() {
       <p className="text-lg mt-2">
         The very first class I ever took in computer science at UNC Asheville
         introduced me to processing.js where I first learned to code some very
-        basic stuff
+        basic stuff.
       </p>
+      <MyProcessingDrawing />
     </>
   );
 }
