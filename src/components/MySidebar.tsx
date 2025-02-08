@@ -11,7 +11,7 @@ const MySidebar = () => {
         {[
           { href: "/", label: "Home" },
           { href: "/blog", label: "Blog" },
-          { href: "/processing", label: "Processing" },
+          { href: "/processing", label: "Processing.js" },
           { href: "/contact", label: "Contact" },
           { href: "/credits", label: "Credits" },
         ].map((item) => (
