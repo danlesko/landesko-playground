@@ -33,8 +33,8 @@ export default function RootLayout({
             </span>
           </nav>
 
-          <div className="flex flex-1">
-            {/* Sidebar */}
+          <div className="flex flex-col md:flex-row flex-1">
+            {/* Sidebar/Navbar */}
             <MySidebar />
 
             {/* Main Content */}

@@ -10,12 +10,12 @@ import { fetchRecentBlogs } from "../lib/data";
 export default async function Blog() {
   const blogs = await fetchRecentBlogs();
   return (
-    <>
+    <div className="inline-block" style={{ width: "100%" }}>
       <h2 className="text-4xl font-bold">Blog Posts</h2>
       {blogs.map((blog) => (
         <div
           key={blog.title}
-          className="mt-4 p-4 shadow-md rounded-lg w-1/2 h-32 border border-white overflow-auto"
+          className="mt-4 p-4 shadow-md rounded-lg min-w-[600px] w-1/2 min-h-32 border border-white overflow-auto"
         >
           <div className="flow-root">
             <h3 className="text-lg font-bold float-left">{blog.title}</h3>
@@ -31,6 +31,6 @@ export default async function Blog() {
           <p className="clear-both">{blog.content}</p>
         </div>
       ))}
-    </>
+    </div>
   );
 }

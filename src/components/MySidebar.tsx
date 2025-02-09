@@ -6,7 +6,7 @@ import clsx from "clsx";
 const MySidebar = () => {
   const pathname = usePathname();
   return (
-    <aside className="bg-zinc-800 p-4 w-64 text-zinc-300">
+    <aside className="bg-zinc-800 p-4 min-w-[250px] lg:max-w-[250px] text-zinc-300">
       <ul className="space-y-2">
         {[
           { href: "/", label: "Home" },
