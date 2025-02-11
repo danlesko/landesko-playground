@@ -15,10 +15,17 @@ export default async function Blog() {
       {blogs.map((blog) => (
         <div
           key={blog.title}
-          className="mt-4 p-4 shadow-md rounded-lg md:w-full lg:min-w-[600px] lg:w-1/2 min-h-32 border border-white overflow-auto"
+          className="mt-4 p-4 shadow-md rounded-lg md:w-full lg:min-w-[600px] lg:max-w-[50%] min-h-32 max-h-32 border border-white overflow-auto"
         >
           <div className="flow-root">
-            <h3 className="text-lg font-bold">{blog.title}</h3>
+            <h3 className="text-lg font-bold">
+              <a
+                className="text-blue-600 hover:text-blue-800 visited:text-purple-600"
+                href={`/blog/${blog.id}`}
+              >
+                {blog.title}
+              </a>
+            </h3>
             <h4 className="text-md font-bold">
               {new Date(blog.date).toLocaleDateString("en-US", {
                 weekday: "long",
@@ -28,7 +35,7 @@ export default async function Blog() {
               })}
             </h4>
           </div>
-          <p className="clear-both">{blog.content}</p>
+          <p className="line-clamp-1">{blog.content}</p>
         </div>
       ))}
     </div>
