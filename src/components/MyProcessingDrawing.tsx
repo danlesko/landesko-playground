@@ -6,10 +6,7 @@ import { P5CanvasInstance, P5WrapperProps } from "react-p5-wrapper";
 
 // Importing this way removes window is not defined error
 const ReactP5Wrapper = dynamic(
-  () =>
-    import("react-p5-wrapper")
-       
-      .then((mod) => mod.ReactP5Wrapper as any),
+  () => import("react-p5-wrapper").then((mod) => mod.ReactP5Wrapper as any),
   {
     ssr: false,
   },
@@ -17,8 +14,40 @@ const ReactP5Wrapper = dynamic(
 
 const MyProcessingDrawing = () => {
   function sketch(p5: P5CanvasInstance) {
+    const baseWidth = 1180;
+    const baseHeight = 735;
+    const aspectRatio = baseWidth / baseHeight;
+    let scaleFactor = 1;
+
+    p5.windowResized = () => {
+      p5.setup();
+    };
+
     p5.setup = () => {
-      p5.createCanvas(800, 600);
+      const { canvasWidth, canvasHeight } = updateCanvasDimensions();
+      p5.createCanvas(canvasWidth, canvasHeight);
+      scaleFactor = baseWidth / canvasWidth;
+
+      //const x = (p5.windowWidth - canvasWidth) / 2;
+      //const y = (p5.windowHeight - canvasHeight) / 2;
+      //myCanvas.position(x, y);
+
+      p5.pixelDensity(window.devicePixelRatio);
+      p5.strokeWeight(1);
+    };
+
+    const updateCanvasDimensions = () => {
+      if (p5.windowWidth / p5.windowHeight > aspectRatio) {
+        return {
+          canvasWidth: p5.windowHeight * aspectRatio - 300,
+          canvasHeight: p5.windowHeight - 300,
+        };
+      }
+
+      return {
+        canvasWidth: p5.windowWidth - 50,
+        canvasHeight: p5.windowWidth / aspectRatio,
+      };
     };
 
     const bubbles: Bubble[] = [];
@@ -46,11 +75,15 @@ const MyProcessingDrawing = () => {
 
       ellipse() {
         p5.fill(this.r, this.g, this.b, this.lifespan / 2);
-        p5.ellipse(this.x - 50, (this.y -= 2), this.size, this.size);
+        p5.ellipse(
+          this.x - 50,
+          (this.y -= 2),
+          this.size / scaleFactor,
+          this.size / scaleFactor,
+        );
       }
     }
 
-     
     function drawGoldfishColorsScale(
       x: number,
       y: number,
@@ -64,7 +97,7 @@ const MyProcessingDrawing = () => {
 
       p5.push(); // Save the current transformation state
       p5.translate(x, y); // Move origin to the goldfish's position
-      p5.scale(scale); // Apply the scaling
+      p5.scale(scale / scaleFactor); // Apply the scaling
 
       p5.stroke("black");
 
@@ -97,7 +130,6 @@ const MyProcessingDrawing = () => {
       p5.pop(); // Restore the transformation state
     }
 
-     
     function drawGoldfishFlippedColorsScale(
       x: number,
       y: number,
@@ -111,7 +143,7 @@ const MyProcessingDrawing = () => {
 
       p5.push(); // Save the current transformation state
       p5.translate(x, y); // Move origin to the goldfish's position
-      p5.scale(scale); // Apply the scaling
+      p5.scale(scale / scaleFactor); // Apply the scaling
 
       p5.stroke("black");
 
@@ -167,14 +199,14 @@ const MyProcessingDrawing = () => {
       // Random goldfish animations
       drawGoldfishFlippedColorsScale(
         xPosLeftRight1,
-        yPos + 100,
+        (yPos + 100) / scaleFactor,
         0.4,
         p5.color(128, 0, 128),
         p5.color(186, 85, 211),
       );
       drawGoldfishFlippedColorsScale(
         xPosLeftRight2,
-        yPos,
+        yPos / scaleFactor,
         1,
         p5.color(34, 139, 34),
         p5.color(50, 205, 50),
@@ -200,7 +232,7 @@ const MyProcessingDrawing = () => {
       p5.fill(194, 178, 128); // Sand color fill
       p5.beginShape();
       p5.vertex(0, p5.height); // Bottom-left corner
-      for (let x = 0; x <= p5.width; x += 10) {
+      for (let x = 0; x <= p5.width + 100; x += 10) {
         const y = p5.height - 50 + 10 * p5.sin((p5.TWO_PI * x) / 100); // Create a sine wave for the top
         p5.vertex(x, y);
       }
