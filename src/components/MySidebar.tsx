@@ -1,13 +1,29 @@
 "use client";
-import Link from "next/link";
+import { useState } from "react";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
+import Link from "next/link";
+import Image from "next/image";
 
 const MySidebar = () => {
   const pathname = usePathname();
+  const [isOpen, setIsOpen] = useState(false);
+
+  const toggleMenu = () => {
+    setIsOpen(!isOpen);
+  };
+
   return (
     <aside className="bg-zinc-800 p-4 min-w-[250px] lg:max-w-[250px] text-zinc-300">
-      <ul className="space-y-2">
+      <button
+        className={clsx("lg:hidden p-2 text-white bg-purple-600 rounded", {
+          "mb-2": isOpen,
+        })}
+        onClick={toggleMenu}
+      >
+        <Image src="/menu.png" alt="Menu" width="24" height="24" />
+      </button>
+      <ul className={`space-y-2 ${isOpen ? "block" : "hidden"} lg:block`}>
         {[
           { href: "/", label: "Home" },
           { href: "/blog", label: "Blog" },
@@ -25,6 +41,7 @@ const MySidebar = () => {
                   "bg-zinc-800": pathname !== item.href,
                 },
               )}
+              onClick={() => setIsOpen(false)}
             >
               {item.label}
             </Link>

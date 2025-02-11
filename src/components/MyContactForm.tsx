@@ -106,7 +106,10 @@ const MyContactForm = () => {
 
   return (
     <>
-      <form className="text-lg mt-2 w-1/2 h-1/2" onSubmit={handleSubmit}>
+      <form
+        className="text-lg mt-2 md:w-full lg:min-w-[600px] lg:w-1/2 h-1/2"
+        onSubmit={handleSubmit}
+      >
         <Input
           required
           disabled={isSendingEmail}
