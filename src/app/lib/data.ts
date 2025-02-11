@@ -24,3 +24,14 @@ export async function fetchRecentBlogs() {
     throw new Error("Failed to fetch blogs.");
   }
 }
+
+export async function getBlog(id: string) {
+  noStore();
+  try {
+    const blog = await sql`SELECT * FROM blogs WHERE id=${id}`;
+    return blog.rows[0] as Blog;
+  } catch (error) {
+    console.error("Failed to fetch blog:", error);
+    throw new Error("Failed to fetch blog.");
+  }
+}

@@ -16,10 +16,37 @@ export default function Credits() {
         <li>
           <a
             className="text-blue-600 hover:text-blue-800 visited:text-purple-600"
-            href="https://www.flaticon.com/free-icon/slider_3264933?term=playground+slide&page=1&position=7&origin=tag&related_id=3264933"
-            title="kid and baby icons"
+            href="https://www.flaticon.com"
+            title="Flaticon"
           >
-            Site Icon - Flaticon
+            Site Icons - Flaticon
+          </a>
+        </li>
+        <li>
+          <a
+            className="text-blue-600 hover:text-blue-800 visited:text-purple-600"
+            href="https://nextjs.org/"
+            title="NextJS"
+          >
+            Framework - NextJS 15
+          </a>
+        </li>
+        <li>
+          <a
+            className="text-blue-600 hover:text-blue-800 visited:text-purple-600"
+            href="https://tailwindcss.com/"
+            title="TailwindCSS"
+          >
+            Styling - Tailwind CSS
+          </a>
+        </li>
+        <li>
+          <a
+            className="text-blue-600 hover:text-blue-800 visited:text-purple-600"
+            href="https://rewind-ui.dev/"
+            title="RewindUI"
+          >
+            Component Library (Used Minimally) - Rewind UI
           </a>
         </li>
       </ul>

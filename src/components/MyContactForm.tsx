@@ -42,7 +42,7 @@ const MyContactForm = () => {
       return;
     } else {
       // make form submission
-      const res = await fetch("http://localhost:3000/api/recaptcha", {
+      const res = await fetch("/api/recaptcha", {
         method: "POST",
         body: JSON.stringify({ captchaValue }),
         headers: {

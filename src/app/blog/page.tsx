@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   description: "Blog Posts",
 };
 
-import { fetchRecentBlogs } from "../lib/data";
+import { fetchRecentBlogs } from "@/app/lib/data";
 
 export default async function Blog() {
   const blogs = await fetchRecentBlogs();
