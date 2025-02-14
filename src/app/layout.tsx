@@ -33,7 +33,7 @@ export default function RootLayout({
             </span>
           </nav>
 
-          <div className="flex flex-col md:flex-row flex-1">
+          <div className="flex flex-col lg:flex-row flex-1">
             {/* Sidebar/Navbar */}
             <MySidebar />
 
@@ -42,6 +42,28 @@ export default function RootLayout({
               {children}
             </main>
           </div>
+
+          {/* <nav className="fixed top-0 left-0 right-0 row-span-1 col-span-full bg-gradient-to-r from-purple-700 to-cyan-500 p-4 text-zinc-200 font-bold shadow-zinc-900 shadow-lg z-10">
+            <span className="flex items-center space-x-4">
+              <Image
+                src="/slide.png"
+                alt="Landesko's Playground"
+                width="40"
+                height="40"
+              />
+              <span className="pl-1">Landesko's Playground</span>
+            </span>
+          </nav>
+
+          <div className="flex flex-col lg:flex-row flex-1 mt-[72]">
+            
+            <MySidebar />
+
+            
+            <main className="flex-1 bg-zinc-900 p-4 text-zinc-300">
+              {children}
+            </main>
+          </div> */}
         </div>
       </body>
     </html>
