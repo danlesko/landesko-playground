@@ -8,7 +8,7 @@ import {
   useToast,
 } from "@rewind-ui/core";
 import emailjs from "@emailjs/browser";
-import { Email } from "../app/lib/definitions";
+import { Email } from "@/src/app/lib/definitions";
 import ReCAPTCHA from "react-google-recaptcha";
 
 const MyContactForm = () => {

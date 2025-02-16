@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Montserrat } from "next/font/google";
 import "./globals.css";
 import Image from "next/image";
-import MySidebar from "@/components/MySidebar";
+import MySidebar from "@/src/components/MySidebar";
 
 const mont = Montserrat({ weight: ["400", "700"], subsets: ["latin"] });
 

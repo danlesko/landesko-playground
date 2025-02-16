@@ -24,15 +24,19 @@
     "class-variance-authority": "0.7.1",
     "clsx": "2.1.1",
     "cors": "2.8.5",
+    "date-fns": "4.1.0",
     "dotenv": "16.4.7",
     "framer-motion": "11.18.1",
     "next": "15.1.5",
+    "next-auth": "5.0.0-beta.25",
+    "postgres": "3.4.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-google-recaptcha": "3.1.0",
     "react-p5-wrapper": "4.1.2",
     "tailwind-merge": "2.6.0",
-    "tailwind-scrollbar": "3.1.0"
+    "tailwind-scrollbar": "3.1.0",
+    "zod": "3.24.2"
   },
   "devDependencies": {
     "@eslint/eslintrc": "^3",
