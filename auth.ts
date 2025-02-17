@@ -5,9 +5,8 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   providers: [GitHub],
   callbacks: {
     signIn({ profile }) {
-      return ["lesko.dan.m@gmail.com", "dalesko@cisco.com"].includes(
-        profile?.email ?? "",
-      );
+      const email = profile?.email ?? "";
+      return ["lesko.dan.m@gmail.com", "dalesko@cisco.com"].includes(email);
     },
   },
 });
