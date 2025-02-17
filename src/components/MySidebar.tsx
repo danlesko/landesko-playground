@@ -35,7 +35,7 @@ const MySidebar = () => {
             <Link
               href={item.href}
               className={clsx(
-                "block p-2 rounded hover:bg-gray-400 hover:text-zinc-900 focus:bg-purple-600",
+                "block p-2 rounded hover:bg-gray-400 hover:text-zinc-900 focus:bg-purple-600 font-bold",
                 {
                   "bg-purple-600": pathname === item.href,
                   "bg-zinc-800": pathname !== item.href,

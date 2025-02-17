@@ -1,4 +1,4 @@
-import { getBlog } from "@/app/lib/data";
+import { getBlog } from "@/src/app/lib/data";
 
 export async function generateMetadata(props: {
   params: Promise<{ id: string }>;
