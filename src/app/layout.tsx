@@ -42,7 +42,12 @@ export default async function RootLayout({
                     await signIn("github");
                   }}
                 >
-                  <Button type="submit" variant="primary" className="mt-1">
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    className="mt-1"
+                    size="sm"
+                  >
                     Login
                   </Button>
                 </form>
@@ -53,7 +58,12 @@ export default async function RootLayout({
                     await signOut();
                   }}
                 >
-                  <Button type="submit" variant="primary" className="mt-1">
+                  <Button
+                    type="submit"
+                    variant="primary"
+                    className="mt-1"
+                    size="sm"
+                  >
                     Logout
                   </Button>
                 </form>

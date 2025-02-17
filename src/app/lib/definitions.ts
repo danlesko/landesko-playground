@@ -16,6 +16,11 @@ export type Blog = {
   date: string;
 };
 
+export type NewBlog = {
+  title: string;
+  content: string;
+};
+
 export type Email = {
   name: string;
   email: string;

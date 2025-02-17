@@ -1,4 +1,5 @@
 import { getBlog } from "@/src/app/lib/data";
+import Link from "next/link";
 
 export async function generateMetadata(props: {
   params: Promise<{ id: string }>;
@@ -22,12 +23,12 @@ export default async function Blog(props: { params: Promise<{ id: string }> }) {
   return (
     <div className="inline-block" style={{ width: "100%" }}>
       <h2 className="text-4xl font-bold">{blog.title}</h2>
-      <a
+      <Link
         className="text-xl text-blue-600 hover:text-blue-800 visited:text-purple-600"
         href={`/blog`}
       >
         &larr; All Blog Posts
-      </a>
+      </Link>
       <div
         key={blog.title}
         className="mt-4 p-4 shadow-md rounded-lg md:w-full lg:min-w-[600px] lg:w-1/2 min-h-32 border border-white overflow-auto"
