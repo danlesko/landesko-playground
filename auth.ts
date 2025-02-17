@@ -7,7 +7,7 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
     signIn({ profile }) {
       return ["lesko.dan.m@gmail.com", "dalesko@cisco.com"].includes(
         profile?.email ?? "",
-      ); // hopefully this restricts to only my emails
+      );
     },
   },
 });
