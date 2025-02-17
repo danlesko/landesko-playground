@@ -2,6 +2,7 @@
 
 src/app/lib/seed/seed-data.ts
 
+
 # dependencies
 /node_modules
 /.pnp
