@@ -27,7 +27,7 @@ const CreateBlogPage = () => {
 
         <Textarea
           required
-          className="h-[500] bg-zinc-800 text-zinc-300 focus:bg-zinc-800 focus:text-zinc-300 focus:ring-zinc-800 focus:ring-0 focus:ring-offset-0 mt-1"
+          className="h-[500px] bg-zinc-800 text-zinc-300 focus:bg-zinc-800 focus:text-zinc-300 focus:ring-zinc-800 focus:ring-0 focus:ring-offset-0 mt-1"
           tone="solid"
           color="purple"
           placeholder="What's On Your Mind?"
