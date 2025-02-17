@@ -1,5 +1,5 @@
-// This file contains placeholder data that you'll be replacing with real data in the Data Fetching chapter:
-// https://nextjs.org/learn/dashboard-app/fetching-data
+// Users table is not being used in this project, but it is here for reference. I used Github OAuth for authentication instead.
+// Keeping this file for reference. I don't use this password for anything. 
 const users = [
   {
     id: "91aa7bb2-0c9a-4513-868d-c241bad5e150",
