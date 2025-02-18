@@ -19,6 +19,10 @@ const MyProcessingDrawing = () => {
     const aspectRatio = baseWidth / baseHeight;
     let scaleFactor = 1;
 
+    const grassColors = ["#228B22", "#32CD32", "#7CFC00", "#ADFF2F"];
+    const bladeColors: string[] = [];
+    const bladeHeights: number[] = [];
+
     p5.windowResized = () => {
       p5.setup();
     };
@@ -34,6 +38,17 @@ const MyProcessingDrawing = () => {
 
       p5.pixelDensity(window.devicePixelRatio);
       p5.strokeWeight(1);
+
+      const bladeWidth = 5;
+      const spacing = 3;
+      for (let x = 0; x < p5.width; x += bladeWidth + spacing) {
+        // Randomly pick one of the colors for the grass and store it
+        bladeColors.push(p5.random(grassColors));
+
+        const randomHeight =
+          scaleFactor < 2.5 ? p5.random(200, 400) : p5.random(120, 200); // Example range: 30 to 70 pixels
+        bladeHeights.push(randomHeight);
+      }
     };
 
     const updateCanvasDimensions = () => {
@@ -177,7 +192,12 @@ const MyProcessingDrawing = () => {
     }
 
     p5.mouseClicked = () => {
-      bubbles.push(new Bubble(p5.mouseX, p5.mouseY));
+      bubbles.push(
+        new Bubble(
+          scaleFactor < 2.5 ? p5.mouseX - 10 : p5.mouseX + 30,
+          p5.mouseY,
+        ),
+      );
     };
 
     let xPosLeftRight1 = -200;
@@ -194,6 +214,8 @@ const MyProcessingDrawing = () => {
     p5.draw = () => {
       //p5.background(29, 155, 240);
 
+      console.log(scaleFactor);
+
       const startColor = p5.color(173, 216, 230); // Light blue
       const endColor = p5.color(0, 180, 180); // Teal
 
@@ -206,6 +228,33 @@ const MyProcessingDrawing = () => {
       }
 
       p5.stroke(1);
+
+      const bladeWidth = 8;
+      const spacing = 20; // Space between blades
+
+      // Loop to draw each blade of grass using the pre-calculated colors
+      for (
+        let i = 0, x = 21;
+        x < p5.width;
+        x += bladeWidth + spacing * 2, i++
+      ) {
+        p5.fill(bladeColors[i + 3]);
+
+        // Calculate the y position for the bottom of the canvas
+        const y = p5.height;
+
+        // Draw the quad for the blade of grass
+        p5.quad(
+          x,
+          y, // Bottom left
+          x + bladeWidth,
+          y, // Bottom right
+          x + bladeWidth,
+          y - bladeHeights[i] - 4, // Top right
+          x + 2,
+          y - bladeHeights[i], // Top left
+        );
+      }
 
       // Goldfish animations
 
@@ -337,6 +386,27 @@ const MyProcessingDrawing = () => {
       }
 
       // Draw strands of seaweed across the bottom of the canvas
+      // Define the width and height of each blade of grass
+
+      // Loop to draw each blade of grass using the pre-calculated colors
+      for (let i = 0, x = 0; x < p5.width; x += bladeWidth + spacing * 2, i++) {
+        p5.fill(bladeColors[i]);
+
+        // Calculate the y position for the bottom of the canvas
+        const y = p5.height;
+
+        // Draw the quad for the blade of grass
+        p5.quad(
+          x,
+          y, // Bottom left
+          x + bladeWidth,
+          y, // Bottom right
+          x + bladeWidth,
+          y - bladeHeights[i + 4] - 4, // Top right
+          x + 2,
+          y - bladeHeights[i + 4], // Top left
+        );
+      }
 
       p5.fill(194, 178, 128); // Sand color fill
       p5.beginShape();

@@ -1,6 +1,6 @@
 import Image from "next/image";
 
-export default function Home() {
+export default async function Home() {
   return (
     <>
       <h2 className="text-4xl font-bold">Welcome to Landesko's Playground</h2>
