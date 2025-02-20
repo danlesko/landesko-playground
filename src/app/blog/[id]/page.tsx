@@ -1,5 +1,6 @@
 import { getBlog } from "@/src/app/lib/data";
 import Link from "next/link";
+import { ArrowLeft } from "@phosphor-icons/react/dist/ssr";
 
 export async function generateMetadata(props: {
   params: Promise<{ id: string }>;
@@ -24,10 +25,11 @@ export default async function Blog(props: { params: Promise<{ id: string }> }) {
     <div className="inline-block" style={{ width: "100%" }}>
       <h2 className="text-4xl font-bold">{blog.title}</h2>
       <Link
-        className="text-xl text-blue-600 hover:text-blue-800 visited:text-purple-600"
+        className="text-xl text-blue-600 hover:text-blue-800 visited:text-purple-600 font-bold"
         href={`/blog`}
       >
-        &larr; All Blog Posts
+        <ArrowLeft size={24} className="inline-block -translate-y-1" /> All Blog
+        Posts
       </Link>
       <div
         key={blog.title}
@@ -43,7 +45,8 @@ export default async function Blog(props: { params: Promise<{ id: string }> }) {
             })}
           </h4>
         </div>
-        <p className="clear-both">{blog.content}</p>
+        <div className="clear-both" />
+        <p className="whitespace-pre-line">{blog.content}</p>
       </div>
     </div>
   );

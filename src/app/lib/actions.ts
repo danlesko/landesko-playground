@@ -20,9 +20,9 @@ export async function createBlog(formData: FormData) {
   });
 
   // Developer lives in Denver, CO
-  const date = new Date().toLocaleString("en-CA", {
+  const date = new Date().toLocaleString("en-US", {
     timeZone: "America/Denver",
-    hour12: false,
+    hourCycle: "h23",
   });
   await sql`
     INSERT INTO blogs (title, content, date)

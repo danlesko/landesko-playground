@@ -151,7 +151,7 @@ const MyContactForm = () => {
         <Button
           variant="primary"
           type="submit"
-          className="mt-1"
+          className="mt-1 font-bold"
           disabled={isSendingEmail}
           loading={isSendingEmail}
         >

@@ -35,3 +35,13 @@ export async function getBlog(id: string) {
     throw new Error("Failed to fetch blog.");
   }
 }
+
+export async function deleteBlog(id: string) {
+  noStore();
+  try {
+    await sql`DELETE FROM blogs WHERE id=${id}`;
+  } catch (error) {
+    console.error("Failed to delete blog:", error);
+    throw new Error("Failed to delete blog.");
+  }
+}
