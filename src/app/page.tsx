@@ -12,7 +12,7 @@ export default async function Home() {
       </div>
       <div className="lg:w-1/2">
         <Image
-          src="/danPool.png"
+          src="/danPool.jpeg"
           alt="Lan Playing Pool"
           width="802"
           height="1020"
