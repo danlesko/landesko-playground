@@ -15,6 +15,7 @@ specifiers:
   '@types/react-google-recaptcha': 2.1.9
   '@vercel/analytics': 1.5.0
   '@vercel/postgres': 0.10.0
+  '@vercel/speed-insights': 1.2.0
   axios: 1.7.9
   bcrypt: 5.1.1
   class-variance-authority: 0.7.1
@@ -48,6 +49,7 @@ dependencies:
   '@tailwindcss/typography': 0.5.16_tailwindcss@3.4.17
   '@vercel/analytics': 1.5.0_next@15.1.5+react@19.0.0
   '@vercel/postgres': 0.10.0
+  '@vercel/speed-insights': 1.2.0_next@15.1.5+react@19.0.0
   axios: 1.7.9
   bcrypt: 5.1.1
   class-variance-authority: 0.7.1
@@ -925,6 +927,34 @@ packages:
       ws: 8.18.0_bufferutil@4.0.9
     transitivePeerDependencies:
       - utf-8-validate
+    dev: false
+
+  /@vercel/speed-insights/1.2.0_next@15.1.5+react@19.0.0:
+    resolution: {integrity: sha512-y9GVzrUJ2xmgtQlzFP2KhVRoCglwfRQgjyfY607aU0hh0Un6d0OUyrJkjuAlsV18qR4zfoFPs/BiIj9YDS6Wzw==}
+    requiresBuild: true
+    peerDependencies:
+      '@sveltejs/kit': ^1 || ^2
+      next: '>= 13'
+      react: ^18 || ^19 || ^19.0.0-rc
+      svelte: '>= 4'
+      vue: ^3
+      vue-router: ^4
+    peerDependenciesMeta:
+      '@sveltejs/kit':
+        optional: true
+      next:
+        optional: true
+      react:
+        optional: true
+      svelte:
+        optional: true
+      vue:
+        optional: true
+      vue-router:
+        optional: true
+    dependencies:
+      next: 15.1.5_upmzqgzhjrquwzo2dphtigtdgi
+      react: 19.0.0
     dev: false
 
   /abbrev/1.1.1:
