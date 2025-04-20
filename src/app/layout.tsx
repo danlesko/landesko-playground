@@ -5,6 +5,7 @@ import Image from "next/image";
 import MySidebar from "@/src/components/MySidebar";
 import { Button } from "@rewind-ui/core";
 import { signIn, signOut, auth } from "@/auth";
+import { Analytics } from "@vercel/analytics/next";
 
 const mont = Montserrat({ weight: ["400", "700"], subsets: ["latin"] });
 
@@ -81,6 +82,7 @@ export default async function RootLayout({
             </main>
           </div>
         </div>
+        <Analytics />
       </body>
     </html>
   );
