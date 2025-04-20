@@ -1,4 +1,4 @@
-import { Input, Textarea, Button } from "@rewind-ui/core";
+import { Input, Textarea, Button, Checkbox } from "@rewind-ui/core";
 import Link from "next/link";
 import { createBlog } from "@/src/app/lib/actions";
 import { ArrowLeft } from "@phosphor-icons/react/dist/ssr";
@@ -36,7 +36,14 @@ const CreateBlogPage = () => {
           name="content"
         />
 
-        <Button variant="primary" type="submit" className="mt-1 font-bold">
+        <Checkbox
+          name="private"
+          color="purple"
+          defaultChecked
+          label="Make this post private"
+        />
+
+        <Button variant="primary" type="submit" className="mt-2 font-bold">
           Create Post
         </Button>
       </form>

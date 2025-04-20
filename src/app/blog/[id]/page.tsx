@@ -1,14 +1,16 @@
 import { getBlog } from "@/src/app/lib/data";
 import Link from "next/link";
 import { ArrowLeft } from "@phosphor-icons/react/dist/ssr";
+import { auth } from "@/auth";
 
 export async function generateMetadata(props: {
   params: Promise<{ id: string }>;
 }) {
   const params = await props.params;
   const { id } = params;
-  const blog = await getBlog(id);
-  const title = `${blog.title}`;
+  const session = await auth();
+  const blog = await getBlog(session, id);
+  const title = `${blog?.title}`;
   const description = "One of many blog posts.";
 
   return {
@@ -18,9 +20,10 @@ export async function generateMetadata(props: {
 }
 
 export default async function Blog(props: { params: Promise<{ id: string }> }) {
+  const session = await auth();
   const params = await props.params;
   const { id } = params;
-  const blog = await getBlog(id);
+  const blog = await getBlog(session, id);
   return (
     <div className="inline-block" style={{ width: "100%" }}>
       <h2 className="text-4xl font-bold">{blog.title}</h2>

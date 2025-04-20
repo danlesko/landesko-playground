@@ -15,8 +15,8 @@ export const metadata: Metadata = {
 import { fetchRecentBlogs } from "@/src/app/lib/data";
 
 export default async function Blog() {
-  const blogs = await fetchRecentBlogs();
   const session = await auth();
+  const blogs = await fetchRecentBlogs(session);
 
   const deleteBlogPost = async (blog: Blog) => {
     "use server";
