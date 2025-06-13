@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import MyProcessingDrawing from "@/src/components/MyProcessingDrawing";
 
 export const metadata: Metadata = {
-  title: "Landesko's Playground - Processing",
+  title: "Landesko's Playground - Animation",
   description: "Processing.JS Project",
 };
 
-export default function Processing() {
+export default function Animation() {
   return (
     <>
       <h2 className="text-4xl font-bold">Animation</h2>
