@@ -2,10 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { auth } from "@/auth";
 import MyBlogBodyAbbr from "@/src/components/MyBlogBodyAbbr";
-import { deleteBlog } from "@/src/app/lib/data";
-import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
-import type { Blog } from "@/src/app/lib/definitions";
+import { deleteBlogPost } from "@/src/app/lib/actions";
 
 export const metadata: Metadata = {
   title: "Landesko's Playground - Blog",
@@ -17,13 +14,6 @@ import { fetchRecentBlogs } from "@/src/app/lib/data";
 export default async function Blog() {
   const session = await auth();
   const blogs = await fetchRecentBlogs(session);
-
-  const deleteBlogPost = async (blog: Blog) => {
-    "use server";
-    await deleteBlog(blog.id);
-    revalidatePath("/blog");
-    redirect("/blog");
-  };
 
   return (
     <div className="inline-block" style={{ width: "100%" }}>
