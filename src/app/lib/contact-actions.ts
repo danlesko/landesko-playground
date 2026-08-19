@@ -45,7 +45,21 @@ export async function sendContactEmail(
   const privateKey = process.env.EMAILJS_PRIVATE_KEY;
 
   if (!serviceId || !templateId || !publicKey || !privateKey) {
-    console.error("EmailJS is not fully configured.");
+    // Log the names of the absent variables, never their values.
+    const missing = (
+      [
+        ["NEXT_PUBLIC_EMAILJS_SERVICE_ID", serviceId],
+        ["NEXT_PUBLIC_EMAILJS_TEMPLATE_ID", templateId],
+        ["NEXT_PUBLIC_EMAILJS_PUBLIC_KEY", publicKey],
+        ["EMAILJS_PRIVATE_KEY", privateKey],
+      ] as const
+    )
+      .filter(([, value]) => !value)
+      .map(([name]) => name);
+
+    console.error(
+      `EmailJS is not fully configured; missing: ${missing.join(", ")}`,
+    );
     return { ok: false, error: "Failed to send message. Please try again." };
   }
 
