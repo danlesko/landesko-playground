@@ -80,10 +80,12 @@ export async function sendContactEmail(
     });
 
     if (!response.ok) {
+      // Bound the body: it is upstream-controlled and goes straight to our logs.
+      const detail = (await response.text().catch(() => "")).slice(0, 200);
       console.error(
         "EmailJS send failed with status:",
         response.status,
-        await response.text().catch(() => ""),
+        detail,
       );
       return { ok: false, error: "Failed to send message. Please try again." };
     }
