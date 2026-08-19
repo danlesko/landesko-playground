@@ -407,17 +407,22 @@ const MyProcessingDrawing = () => {
         p5.color(255, 102, 0),
       );
 
-      // Draw the bubbles. Iterate backwards: splicing inside a forward loop moves
-      // the next bubble into the index just visited, so it would be skipped.
+      // Advance and reap the bubbles. Iterate backwards: splicing inside a forward
+      // loop moves the next bubble into the index just visited, so it would be
+      // skipped. An expired bubble has an alpha of <= 0, so nothing visible is
+      // lost by removing it before it is drawn.
       for (let i = bubbles.length - 1; i >= 0; i--) {
         const bubble = bubbles[i];
         bubble.update();
 
         if (bubble.lifespan <= 0) {
           bubbles.splice(i, 1);
-          continue;
         }
+      }
 
+      // Draw them in a separate forward pass so overlapping translucent bubbles
+      // still composite oldest-first, the way they did before.
+      for (const bubble of bubbles) {
         bubble.ellipse();
       }
 
