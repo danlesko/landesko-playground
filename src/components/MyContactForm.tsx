@@ -7,9 +7,9 @@ import {
   ToastContainer,
   useToast,
 } from "@rewind-ui/core";
-import emailjs from "@emailjs/browser";
 import { Email } from "@/src/app/lib/definitions";
 import ReCAPTCHA from "react-google-recaptcha";
+import { sendContactEmail } from "@/src/app/lib/contact-actions";
 
 const MyContactForm = () => {
   const toast = useToast();
@@ -34,24 +34,31 @@ const MyContactForm = () => {
 
   const handleSubmit: FormEventHandler<HTMLFormElement> = async (e) => {
     e.preventDefault();
-    setIsSendingEmail(true);
+
     const captchaValue = recaptcha.current?.getValue();
     if (!captchaValue) {
       alert("Please verify the reCAPTCHA!");
-      setIsSendingEmail(false);
       return;
-    } else {
-      // make form submission
-      const res = await fetch("/api/recaptcha", {
-        method: "POST",
-        body: JSON.stringify({ captchaValue }),
-        headers: {
-          "content-type": "application/json",
-        },
+    }
+
+    setIsSendingEmail(true);
+
+    try {
+      // The reCAPTCHA check and the send both happen inside this one server
+      // action, so the token is actually bound to the send.
+      const result = await sendContactEmail({
+        name: userInput.name,
+        email: userInput.email,
+        message: userInput.message,
+        captchaToken: captchaValue,
       });
-      const data = await res.json();
-      if (data.message === "Success") {
-        // make form submission
+
+      if (result.ok) {
+        setUserInput({
+          name: "",
+          email: "",
+          message: "",
+        });
         toast.add({
           color: "green",
           tone: "solid",
@@ -59,48 +66,25 @@ const MyContactForm = () => {
           description: "Successfully emailed Dan!",
         });
       } else {
-        alert("reCAPTCHA validation failed!");
-        recaptcha.current?.reset();
-        setIsSendingEmail(false);
-        return;
-      }
-    }
-
-    const serviceID = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID
-      ? process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID
-      : "";
-    const templateID = process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID
-      ? process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID
-      : "";
-    const userID = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY
-      ? process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY
-      : "";
-
-    try {
-      const emailParams = {
-        name: userInput.name,
-        email: userInput.email,
-        message: userInput.message,
-      };
-
-      const res = await emailjs.send(
-        serviceID,
-        templateID,
-        emailParams,
-        userID,
-      );
-
-      if (res.status === 200) {
-        setUserInput({
-          name: "",
-          email: "",
-          message: "",
+        toast.add({
+          color: "red",
+          tone: "solid",
+          iconType: "error",
+          description: result.error,
         });
       }
-      recaptcha.current?.reset();
-      setIsSendingEmail(false);
     } catch (error) {
       console.error("Failed to send message. Please try again later.", error);
+      toast.add({
+        color: "red",
+        tone: "solid",
+        iconType: "error",
+        description: "Failed to send message. Please try again.",
+      });
+    } finally {
+      // Always reset, so a failure cannot leave the button disabled forever.
+      recaptcha.current?.reset();
+      setIsSendingEmail(false);
     }
   };
 

@@ -1,28 +1,10 @@
 import type { NextConfig } from "next";
 
-const nextConfig: NextConfig = {
-  /* config options here */
-  async headers() {
-    return [
-      {
-        // matching all API routes
-        source: "/api/:path*",
-        headers: [
-          { key: "Access-Control-Allow-Credentials", value: "true" },
-          { key: "Access-Control-Allow-Origin", value: "*" }, // replace this your actual origin
-          {
-            key: "Access-Control-Allow-Methods",
-            value: "GET,DELETE,PATCH,POST,PUT",
-          },
-          {
-            key: "Access-Control-Allow-Headers",
-            value:
-              "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version",
-          },
-        ],
-      },
-    ];
-  },
-};
+// No CORS headers: every API route is called same-origin from this app, so
+// nothing needs cross-origin access. The previous block applied
+// `Access-Control-Allow-Origin: *` together with
+// `Access-Control-Allow-Credentials: true` to all of /api/*, including the
+// next-auth handler.
+const nextConfig: NextConfig = {};
 
 export default nextConfig;

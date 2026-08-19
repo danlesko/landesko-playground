@@ -1,43 +1,26 @@
-import axios from "axios";
+import { verifyRecaptchaToken } from "@/src/app/lib/recaptcha";
 
 export async function POST(req: Request) {
-  if (req.method !== "POST") {
-    return new Response(
-      JSON.stringify({ message: "Only POST requests allowed" }),
-      { status: 405 },
-    );
-  }
-
-  const data = await req.json();
-  const token = data.captchaValue;
-  const secretKey: string | undefined = process.env.SITE_SECRET_RECAPTCHA;
-
-  if (!token) {
-    return new Response(JSON.stringify({ message: "Token not found" }), {
-      status: 405,
-    });
-  }
+  let token: unknown;
 
   try {
-    const response = await axios.post(
-      `https://www.google.com/recaptcha/api/siteverify?secret=${secretKey}&response=${token}`,
-    );
-
-    if (response.data.success) {
-      return new Response(JSON.stringify({ message: "Success" }), {
-        status: 200,
-      });
-    } else {
-      return new Response(JSON.stringify({ message: "Failed to verify" }), {
-        status: 405,
-      });
-    }
-  } catch (error) {
-    return new Response(
-      JSON.stringify({ message: `Internal Server Error: ${error}` }),
-      {
-        status: 500,
-      },
-    );
+    const data = await req.json();
+    token = data?.captchaValue;
+  } catch {
+    return Response.json({ message: "Invalid request body" }, { status: 400 });
   }
+
+  if (typeof token !== "string" || token.length === 0) {
+    return Response.json({ message: "Token not found" }, { status: 400 });
+  }
+
+  const verified = await verifyRecaptchaToken(token);
+
+  if (!verified) {
+    // Static message: never echo the upstream error, which can contain the
+    // request details and therefore the secret.
+    return Response.json({ message: "Failed to verify" }, { status: 400 });
+  }
+
+  return Response.json({ message: "Success" }, { status: 200 });
 }

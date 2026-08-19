@@ -9,7 +9,7 @@ import { Modal, Button } from "@rewind-ui/core";
 interface MyBlogBodyAbbrProps {
   session: Session | null; // Replace 'any' with the appropriate type if available
   blog: Blog;
-  deleteBlogPost: (blog: Blog) => void;
+  deleteBlogPost: (id: string) => void;
 }
 
 const MyBlogBodyAbbr = ({
@@ -74,7 +74,7 @@ const MyBlogBodyAbbr = ({
             <Button
               color="red"
               onClick={() => {
-                deleteBlogPost(blog);
+                deleteBlogPost(blog.id);
                 setOpenModel(false);
               }}
             >
