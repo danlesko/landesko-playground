@@ -32,9 +32,11 @@ const MyProcessingDrawing = () => {
       p5.createCanvas(canvasWidth, canvasHeight);
       scaleFactor = baseWidth / canvasWidth;
 
-      //const x = (p5.windowWidth - canvasWidth) / 2;
-      //const y = (p5.windowHeight - canvasHeight) / 2;
-      //myCanvas.position(x, y);
+      // windowResized re-runs setup, so the blade arrays have to be reset here.
+      // Without this they gain a whole canvas worth of entries on every resize
+      // and are never released for as long as the page is open.
+      bladeColors.length = 0;
+      bladeHeights.length = 0;
 
       p5.pixelDensity(window.devicePixelRatio);
       p5.strokeWeight(1);
@@ -65,7 +67,27 @@ const MyProcessingDrawing = () => {
       };
     };
 
+    // The two seaweed passes in draw() walk the canvas with a much wider stride
+    // (48px) than setup() used when filling these arrays (8px), and they read at
+    // a +3 / +4 offset. The offsets are deliberate: they de-correlate the front
+    // and back rows so the two passes look like two layers of seaweed instead of
+    // one doubled row. They are also unchecked, so on a narrow canvas the offset
+    // walks off the end of the array and p5 gets `undefined`. Wrapping the index
+    // keeps the "sample a neighbouring blade" intent while making every read
+    // in-bounds for any array length.
+    const bladeColorAt = (i: number) =>
+      bladeColors.length > 0
+        ? bladeColors[i % bladeColors.length]
+        : grassColors[0];
+    const bladeHeightAt = (i: number) =>
+      bladeHeights.length > 0 ? bladeHeights[i % bladeHeights.length] : 0;
+
     const bubbles: Bubble[] = [];
+
+    // Bubble motion/fade rates, per second rather than per frame.
+    const BUBBLE_FADE_PER_SECOND = 255;
+    const BUBBLE_RISE_PER_SECOND = 120; // matches the previous 2px per frame at 60fps
+    const MAX_FRAME_MS = 100;
 
     class Bubble {
       x: number;
@@ -88,11 +110,24 @@ const MyProcessingDrawing = () => {
         this.lifespan = p5.width;
       }
 
+      // Advance the bubble one frame. lifespan doubles as the fill alpha and as
+      // the reap counter, and it used to never change - so bubbles never died and
+      // the array grew for as long as the page stayed open. Both the fade and the
+      // rise are expressed per second and scaled by deltaTime so a bubble lives
+      // the same wall-clock time and covers the same distance at 30, 60 or 144Hz.
+      // deltaTime is clamped so a long background-tab stall cannot wipe out every
+      // bubble in a single frame.
+      update() {
+        const elapsedSeconds = Math.min(p5.deltaTime, MAX_FRAME_MS) / 1000;
+        this.lifespan -= BUBBLE_FADE_PER_SECOND * elapsedSeconds;
+        this.y -= BUBBLE_RISE_PER_SECOND * elapsedSeconds;
+      }
+
       ellipse() {
         p5.fill(this.r, this.g, this.b, this.lifespan / 2);
         p5.ellipse(
           this.x - 50,
-          (this.y -= 2),
+          this.y,
           this.size / scaleFactor,
           this.size / scaleFactor,
         );
@@ -212,10 +247,6 @@ const MyProcessingDrawing = () => {
     const yPos = 200;
 
     p5.draw = () => {
-      //p5.background(29, 155, 240);
-
-      console.log(scaleFactor);
-
       const startColor = p5.color(173, 216, 230); // Light blue
       const endColor = p5.color(0, 180, 180); // Teal
 
@@ -238,7 +269,7 @@ const MyProcessingDrawing = () => {
         x < p5.width;
         x += bladeWidth + spacing * 2, i++
       ) {
-        p5.fill(bladeColors[i + 3]);
+        p5.fill(bladeColorAt(i + 3));
 
         // Calculate the y position for the bottom of the canvas
         const y = p5.height;
@@ -250,9 +281,9 @@ const MyProcessingDrawing = () => {
           x + bladeWidth,
           y, // Bottom right
           x + bladeWidth,
-          y - bladeHeights[i] - 4, // Top right
+          y - bladeHeightAt(i) - 4, // Top right
           x + 2,
-          y - bladeHeights[i], // Top left
+          y - bladeHeightAt(i), // Top left
         );
       }
 
@@ -376,13 +407,18 @@ const MyProcessingDrawing = () => {
         p5.color(255, 102, 0),
       );
 
-      // Draw the bubbles
-      for (let i = 0; i < bubbles.length; i++) {
-        bubbles[i].ellipse();
+      // Draw the bubbles. Iterate backwards: splicing inside a forward loop moves
+      // the next bubble into the index just visited, so it would be skipped.
+      for (let i = bubbles.length - 1; i >= 0; i--) {
+        const bubble = bubbles[i];
+        bubble.update();
 
-        if (bubbles[i].lifespan <= 0) {
+        if (bubble.lifespan <= 0) {
           bubbles.splice(i, 1);
+          continue;
         }
+
+        bubble.ellipse();
       }
 
       // Draw strands of seaweed across the bottom of the canvas
@@ -390,7 +426,7 @@ const MyProcessingDrawing = () => {
 
       // Loop to draw each blade of grass using the pre-calculated colors
       for (let i = 0, x = 0; x < p5.width; x += bladeWidth + spacing * 2, i++) {
-        p5.fill(bladeColors[i]);
+        p5.fill(bladeColorAt(i));
 
         // Calculate the y position for the bottom of the canvas
         const y = p5.height;
@@ -402,9 +438,9 @@ const MyProcessingDrawing = () => {
           x + bladeWidth,
           y, // Bottom right
           x + bladeWidth,
-          y - bladeHeights[i + 4] - 4, // Top right
+          y - bladeHeightAt(i + 4) - 4, // Top right
           x + 2,
-          y - bladeHeights[i + 4], // Top left
+          y - bladeHeightAt(i + 4), // Top left
         );
       }
 
