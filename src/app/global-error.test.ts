@@ -27,6 +27,9 @@ describe("global-error", () => {
     expect(markup.startsWith('<html lang="en">')).toBe(true);
     expect(markup).toContain("<body");
     expect(markup).toContain("Something Went Wrong");
+    // The layout's `metadata` export does not reach this document, so without a
+    // <title> of its own the tab shows the bare URL.
+    expect(markup).toMatch(/<title>[^<]+<\/title>/);
   });
 
   it("offers a retry and a way home", () => {

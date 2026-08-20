@@ -36,6 +36,10 @@ export default function GlobalError({
   return (
     <html lang="en">
       <body className="antialiased bg-background text-foreground p-4">
+        {/* The layout's `metadata` export goes with the layout: without this the
+            document really has no <title> at all, and the tab falls back to the
+            raw URL. React hoists it into <head>. */}
+        <title>Something Went Wrong - Landesko&apos;s Playground</title>
         {/* h1, not the PageHeading primitive: that renders an h2, and with the
             layout gone this is the only heading in the document. */}
         <h1 className="text-4xl font-bold text-danger">Something Went Wrong</h1>
