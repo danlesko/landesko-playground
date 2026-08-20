@@ -34,8 +34,9 @@ const MySidebar = () => {
         // the large breakpoint. At and above it the list is always laid out and
         // this toggle is dropped from the layout -- and an element dropped that
         // way is absent from the accessibility tree, so this attribute is never
-        // conveyed while it disagrees with what is on screen. Proven with an
-        // accessibility snapshot in e2e/smoke.spec.ts rather than assumed.
+        // conveyed while it disagrees with what is on screen. Measured in
+        // e2e/smoke.spec.ts rather than assumed, with role counts that separate
+        // "in the DOM" from "in the tree", plus a visibility check.
         aria-expanded={isOpen}
         aria-controls={MENU_ID}
         // The name was coming from the icon's `alt`. Stating it here keeps the
