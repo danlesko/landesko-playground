@@ -52,6 +52,11 @@ jobs:
       - name: Typecheck
         run: pnpm typecheck
 
+      # The suite mocks the database and auth and never opens a socket, so it
+      # needs no secrets. Runs before the build because it is far faster.
+      - name: Test
+        run: pnpm test
+
       # `next build` needs no environment variables.
       - name: Build
         run: pnpm build

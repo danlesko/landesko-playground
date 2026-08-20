@@ -19,6 +19,11 @@ const eslintConfig = [
       "src/**/_lib/**",
       ".vercel/**",
       "coverage/**",
+      // Coding-agent scratch checkouts. Flat config lints dot-directories, and
+      // each of these is a full worktree, so the run covers 167 files instead of
+      // 39 and reports a copy nobody edits. A worktree without its own
+      // node_modules turns that into hundreds of unresolved-import errors.
+      ".claude/**",
     ],
   },
   ...compat.extends("next/core-web-vitals", "next/typescript"),

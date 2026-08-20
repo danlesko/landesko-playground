@@ -18,7 +18,10 @@ export async function getUser(email: string) {
 
 export async function fetchRecentBlogs(session: Session | null) {
   noStore();
-  if (session) {
+  // `session?.user`, not `session`: `Session.user` is optional in @auth/core's
+  // types, so a session object carrying no user would otherwise be read as
+  // signed in here while actions.ts and the UI treat it as anonymous.
+  if (session?.user) {
     try {
       const blogs =
         await sql`SELECT * FROM blogs ORDER BY blogs.date DESC LIMIT 10`;
@@ -41,7 +44,8 @@ export async function fetchRecentBlogs(session: Session | null) {
 
 export async function getBlog(session: Session | null, id: string) {
   noStore();
-  if (session) {
+  // Same predicate as fetchRecentBlogs; see the note there.
+  if (session?.user) {
     try {
       const blog = await sql`SELECT * FROM blogs WHERE id=${id}`;
       return blog.rows[0] as Blog | undefined;
