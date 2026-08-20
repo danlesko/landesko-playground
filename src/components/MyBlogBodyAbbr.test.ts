@@ -26,6 +26,14 @@ function render(session: ReturnType<typeof signedInSession> | null, b: Blog) {
   );
 }
 
+/** The delete button's inner HTML, so "the icon is inside *this* button" is
+ * checkable rather than "an svg exists somewhere in the document". Matches on
+ * the element, not on `aria-label`, so the icon assertions stay independent of
+ * the name ones — otherwise a dropped label fails both and hides which broke. */
+function deleteButtonInnerHtml(html: string): string | undefined {
+  return /<button[^>]*>([\s\S]*?)<\/button>/.exec(html)?.[1];
+}
+
 describe("MyBlogBodyAbbr delete control", () => {
   it("renders the delete control as a native button", () => {
     const html = render(signedInSession(), blog());
@@ -42,10 +50,19 @@ describe("MyBlogBodyAbbr delete control", () => {
     expect(html).toContain('aria-label="Delete post: Second post"');
   });
 
-  it("hides the icon from assistive tech so the button name stands alone", () => {
-    const html = render(signedInSession(), blog());
+  // Second, independent axis. The name above comes from `aria-label`, which
+  // resolves whether or not the icon renders, so a name-only suite would stay
+  // green over a named but invisible control. This fails if the icon vanishes.
+  it("still renders the icon inside the delete button", () => {
+    const inner = deleteButtonInnerHtml(render(signedInSession(), blog()));
 
-    expect(html).toMatch(/<svg[^>]*aria-hidden="true"/);
+    expect(inner).toMatch(/<svg/);
+  });
+
+  it("hides the icon from assistive tech so the button name stands alone", () => {
+    const inner = deleteButtonInnerHtml(render(signedInSession(), blog()));
+
+    expect(inner).toMatch(/<svg[^>]*aria-hidden="true"/);
   });
 
   it("omits the delete control entirely when nobody is signed in", () => {
