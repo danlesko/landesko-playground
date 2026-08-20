@@ -60,14 +60,19 @@ test("the home page LCP image loads eagerly at a declared size", async ({
     page.locator('head link[rel="preload"][as="image"]'),
   ).toHaveAttribute("imagesizes", /min-width/);
 
-  // The rendered box must keep the file's 1286x1714 ratio, which is what stops
-  // this image from contributing layout shift.
-  //
-  // Note what this does *not* catch: mutating height="1714" to height="900"
-  // leaves the test green. Tailwind preflight sets `img { height: auto }`, so
-  // with `w-full` the browser recomputes height from the decoded file and the
-  // declared attributes stop mattering once the bytes land. What it does catch
-  // is a class that pins the box -- swapping `h-auto` for `h-64` fails here.
+  // The declared intrinsic size, which is what reserves the box before the
+  // bytes arrive. This is a separate guarantee from the rendered ratio below:
+  // mutating height="1714" to height="900" leaves every other assertion in this
+  // test green, because Tailwind preflight sets `img { height: auto }` and with
+  // `w-full` the browser recomputes height from the decoded file once it lands.
+  // Wrong declared numbers therefore only hurt during the pre-load window --
+  // exactly the window that produces layout shift.
+  await expect(image).toHaveAttribute("width", "1286");
+  await expect(image).toHaveAttribute("height", "1714");
+
+  // And the rendered box, which catches the other half: a class that pins the
+  // height, such as swapping `h-auto` for `h-64`, squashes the image without
+  // touching a single attribute above.
   const box = await image.boundingBox();
   expect(box).not.toBeNull();
   expect(box!.width / box!.height).toBeCloseTo(1286 / 1714, 2);
@@ -83,50 +88,93 @@ test("the p5 sketch mounts a canvas", async ({ page }) => {
 });
 
 /**
- * `/contact` is covered with JavaScript disabled, on purpose.
+ * `/contact` needs special handling, and the reason is worth writing down.
  *
  * MyContactForm renders `react-google-recaptcha` with
  * `sitekey={process.env.NEXT_PUBLIC_REACT_APP_SITE_KEY_RECAPTCHA || ""}`. With
  * no key set, Google's api.js throws `Missing required parameters: sitekey`
- * during hydration and React unmounts the whole tree: the body collapses to
+ * during hydration and React unmounts the whole route: the body collapses to
  * "Application error: a client-side exception has occurred" and the input count
- * goes from 3 to 0. Production sets the key, so this only bites environments
- * that do not -- but CI is one of those and must stay one, because no real key
- * belongs in this repo.
+ * drops from 3 to 0. Production sets the key, so only environments without one
+ * are affected -- but CI is such an environment and has to stay one, because no
+ * real key belongs in this repo.
  *
- * The three rejected alternatives:
- *  - A fake key still reaches out to google.com, so the suite would depend on a
- *    third party being up. Worse, the throw only happens *because* api.js
- *    loaded: blocking google.com makes the page hydrate cleanly with all three
- *    inputs intact. An online runner and an offline runner would disagree.
- *  - Asserting with JS enabled and no key is a race, not a test. The heading is
- *    briefly present before the crash, which is why an earlier version of this
- *    file appeared to pass while navigating through a page that was dying.
- *  - Skipping `/contact` entirely loses the coverage the server response can
- *    genuinely provide.
+ * Rejected: passing a fake key. The throw happens *because* api.js loaded, so a
+ * fake key makes the suite depend on google.com being reachable, and an online
+ * runner and an offline runner would then disagree about whether this page
+ * works. Also rejected: asserting with JS enabled and no interception, which is
+ * a race rather than a test -- the heading is briefly present before the crash,
+ * which is why an earlier draft of this file appeared to pass while clicking
+ * through a page that was in the middle of dying.
  *
- * So: assert what the server sends, which is the contract #6 and #7 could
- * regress, and keep the hydration gap visible as the skip below.
+ * Taken instead: block the third party explicitly, which is deterministic in
+ * both directions, and cover the route twice -- once for what the server sends
+ * and once for whether it actually comes alive in the browser.
  */
-test.describe("/contact (server-rendered only)", () => {
-  test.use({ javaScriptEnabled: false });
+test.describe("/contact", () => {
+  // `javaScriptEnabled` is a browser-context option, so it needs its own block
+  // rather than a line inside the test.
+  test.describe("server-rendered, JavaScript disabled", () => {
+    test.use({ javaScriptEnabled: false });
 
-  test("renders its own heading", async ({ page }) => {
-    await page.goto("/contact");
-    await expect(
-      page.getByRole("heading", { name: "Contact", level: 2 }),
-    ).toBeVisible();
+    test("sends the heading and the three fields the server action reads", async ({
+      page,
+    }) => {
+      // Purely about the server's output, so it stays meaningful even when the
+      // client bundle is broken -- which, without a site key, it is.
+      await page.goto("/contact");
+
+      await expect(
+        page.getByRole("heading", { name: "Contact", level: 2 }),
+      ).toBeVisible();
+      // By `name`, the property `sendContactEmail` reads off the submitted
+      // object, rather than by placeholder copy an a11y pass may rewrite.
+      await expect(page.locator('input[name="name"]')).toBeVisible();
+      await expect(page.locator('input[name="email"]')).toBeVisible();
+      await expect(page.locator('textarea[name="message"]')).toBeVisible();
+    });
   });
 
-  test("exposes the three form fields the server action reads", async ({
+  test("hydrates: the form's own reCAPTCHA guard runs on submit", async ({
     page,
   }) => {
+    // Blocking Google is what makes this deterministic. api.js never loads, so
+    // it never throws on the empty sitekey, the route hydrates intact, and
+    // `recaptcha.current?.getValue()` returns undefined -- which is the branch
+    // MyContactForm handles with an alert.
+    await page.route("**://*.google.com/**", (route) => route.abort());
+    await page.route("**://*.gstatic.com/**", (route) => route.abort());
+
     await page.goto("/contact");
-    // By `name`, the attribute `sendEmail` reads off FormData, rather than by
-    // placeholder copy that an accessibility pass is free to rewrite.
-    await expect(page.locator('input[name="name"]')).toBeVisible();
-    await expect(page.locator('input[name="email"]')).toBeVisible();
-    await expect(page.locator('textarea[name="message"]')).toBeVisible();
+
+    // Filling these proves the controlled inputs are wired: `value` is bound to
+    // React state, so without a working `onChange` the fields stay empty and
+    // the browser's own `required` validation blocks submit before the handler
+    // is ever reached.
+    await page.locator('input[name="name"]').fill("Smoke Test");
+    await page.locator('input[name="email"]').fill("smoke@example.com");
+    await page
+      .locator('textarea[name="message"]')
+      .fill("Hello from Playwright");
+    await expect(page.locator('input[name="name"]')).toHaveValue("Smoke Test");
+
+    // Dismissed from inside the listener rather than after an awaited click.
+    // Registering any dialog listener disables Playwright's auto-dismiss, and a
+    // native alert blocks the page, so `await click()` would never resolve and
+    // the test would fail on a 30s timeout instead of on its assertion.
+    let alerted = "";
+    page.once("dialog", async (dialog) => {
+      alerted = dialog.message();
+      await dialog.dismiss();
+    });
+
+    await page.getByRole("button", { name: "Send Message" }).click();
+
+    // Reaching this alert is the assertion. It can only fire from inside
+    // `handleSubmit`, so it proves the route hydrated, React bound onSubmit, and
+    // the client-side captcha guard still refuses to submit unverified -- none
+    // of which the server-rendered HTML above can tell us.
+    await expect.poll(() => alerted).toBe("Please verify the reCAPTCHA!");
   });
 });
 
@@ -146,40 +194,84 @@ test("/blog/create redirects an anonymous visitor away", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("the sidebar navigates between routes", async ({ page }) => {
-  await page.goto("/");
-  // Located by `href` and asserted by the resulting URL and the destination's
-  // own heading. Link *text* is deliberately not the selector: #6 is extracting
-  // shared primitives and #7 is an accessibility pass, so labels and wrappers
-  // are expected to move. A test that fails on a label rename gets muted, and a
-  // muted test protects nothing -- whereas "this href still reaches this page"
-  // is the contract that must not break.
+test("the sidebar client-side navigates between routes", async ({ page }) => {
+  // Starts on /credits, not /. PUBLIC_ROUTES begins with "/", so starting there
+  // made the first iteration assert that clicking Home while already on Home
+  // leaves us on Home -- true no matter what that link does, even if its click
+  // were swallowed entirely. Beginning elsewhere makes every iteration a real
+  // transition.
+  await page.goto("/credits");
+
+  // Destinations are pinned by `href`, not by visible link text. #6 is
+  // extracting shared primitives and #7 is an accessibility pass, so labels and
+  // wrappers are expected to move; a test that fails on a rename gets muted,
+  // and a muted test protects nothing. But dropping text entirely would let an
+  // unlabelled or icon-only link pass, so the accessible name is asserted to be
+  // non-empty without pinning its wording -- the part #7 should strengthen
+  // rather than the part it will churn.
   const sidebar = page.getByRole("complementary");
 
+  // A full page load would reset this, so its survival is what distinguishes
+  // client-side routing from the browser simply following an anchor. The
+  // sidebar is a client component whose entire purpose is soft navigation.
+  await page.evaluate(() => {
+    Object.assign(window, { __sameDocument: true });
+  });
+
   for (const { path, heading } of PUBLIC_ROUTES) {
-    await sidebar.locator(`a[href="${path}"]`).click();
+    const link = sidebar
+      .getByRole("link")
+      .and(page.locator(`a[href="${path}"]`));
+    await expect(link).toHaveAccessibleName(/\S/);
+
+    await link.click();
     await expect(page).toHaveURL(path);
     await expect(
       page.getByRole("heading", { name: heading, level: 2 }),
     ).toBeVisible();
+    expect(
+      await page.evaluate(() => "__sameDocument" in window),
+      `navigating to ${path} reloaded the document instead of routing client-side`,
+    ).toBe(true);
   }
 
-  // Not clicked, for the reason given above the /contact block: the destination
-  // tears itself down without a reCAPTCHA key, so asserting anything there
-  // would be timing-dependent. The link still has to exist and still has to
-  // point at the route, which is what #6 could break.
-  await expect(sidebar.locator('a[href="/contact"]')).toBeVisible();
+  // Present and correctly pointed, but not clicked: the destination tears itself
+  // down without a reCAPTCHA key (see the /contact block above), so asserting on
+  // the page it lands on would be timing-dependent.
+  await expect(
+    sidebar.getByRole("link").and(page.locator('a[href="/contact"]')),
+  ).toHaveAccessibleName(/\S/);
 });
+
+/**
+ * Known gaps, declared as skips so they appear in the run output instead of
+ * being invisibly absent.
+ *
+ * Each body throws rather than being empty. An empty body would pass the moment
+ * someone deleted the `.skip`, turning a gap into fake coverage -- the exact
+ * failure mode this file exists to avoid.
+ */
+const unimplemented = (reason: string) => () => {
+  throw new Error(`Not implemented: ${reason}`);
+};
 
 // `/blog` and `/blog/[id]` need a real `blogs` table. There is no schema in git
 // -- the only DDL is a gitignored seed helper that declares no `private` column,
 // so it demonstrably is not the live schema -- and CI has no database. `/blog`
 // answers 200 today while rendering an error, so a naive check would look green.
-// Blocked on #3; skipped loudly rather than omitted so the gap stays visible.
-test.skip("/blog lists posts (needs a database -- see #3)", () => {});
-test.skip("/blog/[id] renders a post (needs a database -- see #3)", () => {});
+test.skip(
+  "/blog lists posts (needs a database -- see #3)",
+  unimplemented("no blogs table in CI"),
+);
+test.skip(
+  "/blog/[id] renders a post (needs a database -- see #3)",
+  unimplemented("no blogs table in CI"),
+);
 
-// Hydrated coverage of /contact needs NEXT_PUBLIC_REACT_APP_SITE_KEY_RECAPTCHA.
-// Until the form degrades gracefully without one, the page cannot be driven in a
-// real browser here at all -- not the widget, the entire route.
-test.skip("/contact hydrates and submits (needs a reCAPTCHA site key)", () => {});
+// The happy path stops at the captcha guard above. Getting past it needs a real
+// NEXT_PUBLIC_REACT_APP_SITE_KEY_RECAPTCHA plus a live token, and the send
+// beyond it needs mail credentials, none of which belong in CI.
+test.skip(
+  "/contact delivers a message end to end (needs a reCAPTCHA key and mail credentials)",
+  unimplemented("cannot obtain a captcha token without a site key"),
+);
