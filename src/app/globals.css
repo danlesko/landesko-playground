@@ -32,3 +32,20 @@ body {
   color: var(--foreground);
   background: var(--background);
 }
+
+/* Durations are collapsed rather than set to `animation: none`, so animation and
+   transition end events still fire and any code that waits on one cannot hang.
+
+   This reaches everything CSS drives — the `animate-pulse` loading skeletons and
+   rewind-ui's `transition-*` / `animate-spin` utilities. It cannot reach the
+   /animation p5 canvas (requestAnimationFrame) or the rewind-ui Modal's open
+   slide (Web Animations API); both need JS and are tracked separately. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
