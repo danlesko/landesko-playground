@@ -8,7 +8,7 @@ const CreateBlogPage = () => {
     <>
       <h2 className="text-4xl font-bold">Create New Blog Post</h2>
       <Link
-        className="text-xl text-blue-600 hover:text-blue-800 visited:text-purple-600 font-bold"
+        className="text-xl text-accent hover:text-accent-hover visited:text-accent-visited font-bold"
         href={`/blog`}
       >
         <ArrowLeft size={24} className="inline-block -translate-y-1" /> All Blog
@@ -24,12 +24,12 @@ const CreateBlogPage = () => {
           name="title"
           color="purple"
           placeholder="Title"
-          className="bg-zinc-800 text-zinc-300 focus:bg-zinc-800 focus:text-zinc-300 focus:ring-zinc-800 focus:ring-0 focus:ring-offset-0"
+          className="bg-surface text-foreground focus:bg-surface focus:text-foreground focus:ring-surface focus:ring-0 focus:ring-offset-0"
         />
 
         <Textarea
           required
-          className="h-[500px] bg-zinc-800 text-zinc-300 focus:bg-zinc-800 focus:text-zinc-300 focus:ring-zinc-800 focus:ring-0 focus:ring-offset-0 mt-1"
+          className="h-[500px] bg-surface text-foreground focus:bg-surface focus:text-foreground focus:ring-surface focus:ring-0 focus:ring-offset-0 mt-1"
           tone="solid"
           color="purple"
           placeholder="What's On Your Mind?"

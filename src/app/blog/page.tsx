@@ -22,7 +22,7 @@ export default async function Blog() {
         {session?.user && (
           <Link
             href="/blog/create"
-            className="text-blue-600 hover:text-blue-800 visited:text-purple-600 font-bold"
+            className="text-accent hover:text-accent-hover visited:text-accent-visited font-bold"
           >
             Create New Post
           </Link>

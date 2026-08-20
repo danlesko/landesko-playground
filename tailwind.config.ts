@@ -5,22 +5,31 @@ import scrollbar from "tailwind-scrollbar";
 
 export default {
   content: [
-    "./src/pages/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/components/**/*.{js,ts,jsx,tsx,mdx}",
     "./src/app/**/*.{js,ts,jsx,tsx,mdx}",
     "./node_modules/@rewind-ui/core/dist/theme/styles/*.js",
   ],
   theme: {
     extend: {
+      // Semantic tokens. Values live in src/app/globals.css so there is exactly
+      // one place to retune the palette.
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
-      },
-      gridTemplateRows: {
-        layout: "auto 1fr", // Adjust based on the layout needs
-      },
-      gridTemplateColumns: {
-        layout: "250px 1fr", // Sidebar and main content areas
+        surface: "var(--surface)",
+        muted: "var(--muted)",
+        border: "var(--border)",
+        accent: {
+          DEFAULT: "var(--accent)",
+          hover: "var(--accent-hover)",
+          visited: "var(--accent-visited)",
+        },
+        brand: "var(--brand)",
+        danger: {
+          DEFAULT: "var(--danger)",
+          hover: "var(--danger-hover)",
+        },
+        focus: "var(--focus)",
       },
     },
   },
