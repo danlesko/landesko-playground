@@ -55,14 +55,14 @@ export default async function Blog(props: { params: Promise<{ id: string }> }) {
         className="mt-4 p-4 shadow-md rounded-lg md:w-full lg:min-w-[600px] lg:w-1/2 min-h-32 border border-border overflow-auto"
       >
         <div className="flow-root">
-          <h4 className="text-sm font-medium text-muted">
+          <h2 className="text-sm font-medium text-muted">
             {new Date(blog.date).toLocaleDateString("en-US", {
               weekday: "long",
               year: "numeric",
               month: "long",
               day: "numeric",
             })}
-          </h4>
+          </h2>
         </div>
         <div className="clear-both" />
         <p className="whitespace-pre-line">{blog.content}</p>
