@@ -40,8 +40,9 @@ export default function GlobalError({
             document really has no <title> at all, and the tab falls back to the
             raw URL. React hoists it into <head>. */}
         <title>Something Went Wrong - Landesko&apos;s Playground</title>
-        {/* h1, not the PageHeading primitive: that renders an h2, and with the
-            layout gone this is the only heading in the document. */}
+        {/* Written inline rather than through a heading primitive: with the
+            layout gone this is the document's only heading, so its level must
+            not be changeable by an edit in another file. */}
         <h1 className="text-4xl font-bold text-danger">Something Went Wrong</h1>
         <div className="mt-4 p-4 shadow-md rounded-lg md:w-full lg:min-w-[600px] lg:w-1/2 min-h-32 border border-border overflow-auto">
           <p>
