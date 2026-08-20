@@ -10,7 +10,7 @@ import {
 import { Email } from "@/lib/definitions";
 import ReCAPTCHA from "react-google-recaptcha";
 import { sendContactEmail } from "@/lib/contact-actions";
-import { formControlClasses } from "@/components/ui/form";
+import { formControlClasses, formLabelClasses } from "@/components/ui/form";
 
 const MyContactForm = () => {
   const toast = useToast();
@@ -95,30 +95,40 @@ const MyContactForm = () => {
         className="text-lg mt-2 md:w-full lg:min-w-[600px] lg:w-1/2 h-1/2"
         onSubmit={handleSubmit}
       >
+        <label htmlFor="contact-name" className={formLabelClasses}>
+          Name
+        </label>
         <Input
           required
+          id="contact-name"
           disabled={isSendingEmail}
           value={userInput.name}
           type="text"
           name="name"
           color="purple"
-          placeholder="Name"
-          className={formControlClasses}
+          className={`${formControlClasses} mt-1`}
           onChange={handleChange}
         />
+        <label htmlFor="contact-email" className={formLabelClasses}>
+          Email
+        </label>
         <Input
           required
+          id="contact-email"
           disabled={isSendingEmail}
           value={userInput.email}
           type="email"
           name="email"
           color="purple"
-          placeholder="Email"
           className={`${formControlClasses} mt-1`}
           onChange={handleChange}
         />
+        <label htmlFor="contact-message" className={formLabelClasses}>
+          Message
+        </label>
         <Textarea
           required
+          id="contact-message"
           disabled={isSendingEmail}
           className={`${formControlClasses} mt-1`}
           tone="solid"
