@@ -14,7 +14,7 @@ const loadingSkeleton = () => {
 const Loading = () => {
   return (
     <>
-      <h2 className="text-4xl font-bold">Blog Posts</h2>
+      <h2 className="text-4xl font-bold">Create New Blog Post</h2>
       <Link
         className="text-xl text-accent hover:text-accent-hover visited:text-accent-visited font-bold"
         href={`/blog`}
