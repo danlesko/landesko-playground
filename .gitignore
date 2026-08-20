@@ -52,9 +52,10 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# Coding-agent scratch checkouts. git already hides these while they are
-# registered worktrees, but a directory left behind after one is unregistered
-# shows up as untracked and is then one `git add .` away from being committed.
-# Only the worktrees directory is listed, leaving room to track agent config
-# alongside the code later.
+# Coding-agent scratch checkouts. Registering one as a worktree does not hide it
+# from `git status`, so without this every agent run leaves the directory sitting
+# untracked, one `git add .` away from committing a duplicate of the tree. This
+# also keeps Prettier out, which reads .gitignore and otherwise descends into
+# dot-directories. Only the worktrees directory is listed, leaving room to track
+# agent config alongside the code later.
 /.claude/worktrees/
