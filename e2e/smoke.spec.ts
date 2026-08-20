@@ -325,3 +325,36 @@ test.skip(
   "/contact delivers a message end to end (needs a reCAPTCHA key and mail credentials)",
   unimplemented("cannot obtain a captcha token without a site key"),
 );
+
+/**
+ * The viewport here is load-bearing, and not in a way anyone would guess.
+ *
+ * `updateCanvasDimensions` picks a width-led or a height-led branch by comparing
+ * the viewport's aspect ratio against the sketch's. Playwright's default
+ * 1280x720 is 1.778, which lands in the *height*-led branch -- the branch that
+ * never overflowed. So this guard passes at the default size whether or not the
+ * bug is present, and asserting at the default would be no guard at all.
+ *
+ * 1280x1024 is 1.25, which takes the width-led branch. That branch sized the
+ * canvas from `p5.windowWidth`, ignoring the 250px sidebar and <main>'s 32px of
+ * padding, and `<main>` is a flex item whose `min-width` defaults to `auto`, so
+ * it widened to fit the oversized canvas instead of clipping it. The page ended
+ * up 232px wider than the window at this size, and at 1024x768, 1024x900 and
+ * 1440x900 too.
+ */
+test("the p5 canvas does not push the page wider than the viewport", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 1024 });
+  await page.goto("/animation");
+  // Same reason as the mount test above: the canvas is client-only, so there is
+  // nothing to measure until p5 has run `setup`.
+  await expect(page.locator("canvas")).toBeVisible({ timeout: 15_000 });
+
+  const overflow = await page.evaluate(
+    () =>
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+  );
+  expect(overflow).toBe(0);
+});
