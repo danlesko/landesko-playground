@@ -2,6 +2,7 @@
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import BackLink from "@/components/ui/BackLink";
+import PageHeading from "@/components/ui/PageHeading";
 
 export default function Error({
   error,
@@ -25,7 +26,9 @@ export default function Error({
 
   return (
     <div className="inline-block" style={{ width: "100%" }}>
-      <h2 className="text-4xl font-bold text-danger">Error Fetching Blog</h2>
+      <PageHeading>
+        <span className="text-danger">Error Fetching Blog</span>
+      </PageHeading>
       <BackLink />
       <div className="mt-4 p-4 shadow-md rounded-lg md:w-full lg:min-w-[600px] lg:w-1/2 min-h-32 border border-border overflow-auto">
         <p className="whitespace-pre-line">

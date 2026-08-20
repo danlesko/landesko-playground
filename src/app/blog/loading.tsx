@@ -1,3 +1,5 @@
+import PageHeading from "@/components/ui/PageHeading";
+
 // Ten to match the LIMIT in fetchRecentBlogs.
 const LoadingSkeletons = () => {
   return Array.from({ length: 10 }, (_, index) => (
@@ -15,7 +17,7 @@ const LoadingSkeletons = () => {
 export default function Loading() {
   return (
     <>
-      <h2 className="text-4xl font-bold">Blog Posts</h2>
+      <PageHeading>Blog Posts</PageHeading>
       <LoadingSkeletons />
     </>
   );

@@ -1,4 +1,5 @@
 import BackLink from "@/components/ui/BackLink";
+import PageHeading from "@/components/ui/PageHeading";
 
 const loadingSkeleton = () => {
   return (
@@ -13,7 +14,7 @@ const loadingSkeleton = () => {
 const Loading = () => {
   return (
     <>
-      <h2 className="text-4xl font-bold">Create New Blog Post</h2>
+      <PageHeading>Create New Blog Post</PageHeading>
       <BackLink />
       {loadingSkeleton()}
     </>
