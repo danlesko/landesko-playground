@@ -14,9 +14,14 @@ export default async function Home() {
         <Image
           src="/danPool.jpeg"
           alt="Lan Playing Pool"
-          width="802"
-          height="1020"
-          layout="responsive"
+          width="1286"
+          height="1714"
+          // The sidebar is a fixed 250px from `lg` up and <main> adds 16px of
+          // padding either side, so this column is never the 100vw that the
+          // removed `layout="responsive"` prop was declaring on its behalf.
+          sizes="(min-width: 1024px) calc((100vw - 282px) / 2), calc(100vw - 32px)"
+          className="h-auto w-full"
+          priority
         />
       </div>
     </>
