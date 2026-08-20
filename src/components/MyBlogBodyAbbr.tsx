@@ -33,7 +33,7 @@ const MyBlogBodyAbbr = ({
             />
           )}
         </div>
-        <h3 className="text-sm font-medium text-muted">
+        <p className="text-sm font-medium text-muted">
           {new Date(blog.date).toLocaleDateString("en-US", {
             weekday: "long",
             year: "numeric",
@@ -42,7 +42,7 @@ const MyBlogBodyAbbr = ({
             hour: "2-digit",
             minute: "2-digit",
           })}
-        </h3>
+        </p>
       </div>
       <p className="line-clamp-1">{blog.content}</p>
       <Modal
