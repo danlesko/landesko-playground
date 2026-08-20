@@ -1,15 +1,26 @@
+import { cache } from "react";
 import { getBlog } from "@/lib/data";
 import Link from "next/link";
 import { ArrowLeft } from "@phosphor-icons/react/dist/ssr";
 import { auth } from "@/auth";
+
+// `generateMetadata` and the component below render in the same request and both
+// need the same session and the same post, which was four sequential awaits.
+//
+// Caching `auth` is what makes caching `getBlog` work at all: `cache` keys on
+// argument identity, so two `loadBlog(session, id)` calls only collapse if both
+// receive the very same session object. Uncached, `auth()` returns a fresh one
+// each time and every lookup would miss.
+const getSession = cache(auth);
+const loadBlog = cache(getBlog);
 
 export async function generateMetadata(props: {
   params: Promise<{ id: string }>;
 }) {
   const params = await props.params;
   const { id } = params;
-  const session = await auth();
-  const blog = await getBlog(session, id);
+  const session = await getSession();
+  const blog = await loadBlog(session, id);
   // This runs alongside the page render rather than instead of it, so when the
   // post is unavailable it only has to keep the literal string "undefined" out
   // of the tab title. The page below is what decides to show the error page.
@@ -23,10 +34,10 @@ export async function generateMetadata(props: {
 }
 
 export default async function Blog(props: { params: Promise<{ id: string }> }) {
-  const session = await auth();
+  const session = await getSession();
   const params = await props.params;
   const { id } = params;
-  const blog = await getBlog(session, id);
+  const blog = await loadBlog(session, id);
 
   // Unknown id, or a private post requested without a session. A malformed id
   // already throws this from getBlog when Postgres rejects the uuid cast, so
