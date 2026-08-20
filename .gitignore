@@ -25,6 +25,12 @@ src/lib/seed/route.ts
 # testing
 /coverage
 
+# Playwright: HTML report, traces, and the browser downloads if PLAYWRIGHT_BROWSERS_PATH=0
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
 # next.js
 /.next/
 /out/
