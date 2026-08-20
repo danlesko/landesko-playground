@@ -9,6 +9,16 @@ import { test, expect } from "@playwright/test";
  * begun. So each test names a specific element or a specific navigation result.
  */
 
+// The sidebar, named rather than located by tag, so the assertions below survive
+// the wrapper moving. Defined once so a rename has one place to change -- the
+// tests that call it would all still fail, but only this line needs editing.
+//
+// `exact` because Playwright's name matching is substring and case-insensitive
+// by default, which would let a landmark named "Main menu" satisfy every
+// assertion that claims to pin the name to "Main".
+const mainNav = (page: import("@playwright/test").Page) =>
+  page.getByRole("navigation", { name: "Main", exact: true });
+
 // Routes that render *and hydrate* with no database, no session and no env
 // config. Each entry names something only that page produces, so a test cannot
 // pass against a blank shell. `/contact` is deliberately absent -- see below.
@@ -259,7 +269,11 @@ test("the sidebar client-side navigates between routes", async ({ page }) => {
   // unlabelled or icon-only link pass, so the accessible name is asserted to be
   // non-empty without pinning its wording -- the part #7 should strengthen
   // rather than the part it will churn.
-  const sidebar = page.getByRole("complementary");
+  // Was `complementary`: the sidebar is a named `navigation` landmark now, which
+  // is the "wrappers are expected to move" case above actually happening. The
+  // name is pinned rather than located by tag, so this keeps working if the
+  // wrapper moves again and fails if the landmark stops being navigation.
+  const sidebar = mainNav(page);
 
   // A full page load would reset this, so its survival is what distinguishes
   // client-side routing from the browser simply following an anchor. The
@@ -291,6 +305,127 @@ test("the sidebar client-side navigates between routes", async ({ page }) => {
   await expect(
     sidebar.getByRole("link").and(page.locator('a[href="/contact"]')),
   ).toHaveAccessibleName(/\S/);
+});
+
+test("the page exposes one banner and exactly one navigation landmark", async ({
+  page,
+}) => {
+  await page.goto("/credits");
+
+  // `header` maps to `banner` only outside article/aside/main/nav/section. It
+  // sits in a plain wrapper so it qualifies, but that is asserted rather than
+  // reasoned about: the nesting rule fails silently, leaving a generic element
+  // no one can jump to and no error anywhere.
+  await expect(page.getByRole("banner")).toHaveCount(1);
+
+  // Exactly one, not two. The top bar used to be a `nav` holding no links at
+  // all, so a screen-reader user could jump to a navigation landmark with
+  // nothing navigable in it. This count fails in both directions that matter:
+  // if the sidebar reverts to a non-navigation wrapper, and if a spurious nav
+  // landmark is reintroduced.
+  await expect(page.getByRole("navigation")).toHaveCount(1);
+  await expect(mainNav(page)).toHaveCount(1);
+});
+
+test("the sidebar toggle reports a truthful expanded state below `lg`", async ({
+  page,
+}) => {
+  // 1023px is one pixel below Tailwind's `lg`, so the disclosure is live here.
+  await page.setViewportSize({ width: 1023, height: 800 });
+  await page.goto("/credits");
+
+  const sidebar = mainNav(page);
+  const toggle = sidebar.getByRole("button", { name: "Menu" });
+  await expect(toggle).toBeVisible();
+
+  await expect(toggle).toHaveAccessibleName("Menu");
+
+  // The name assertion above cannot carry the decorative-icon claim on its own:
+  // `aria-label` outranks descendant content, so reinstating the icon's alt text
+  // would leave the computed name "Menu" and that assertion green while the
+  // image went back to being a node of its own inside the button. Mutation-
+  // tested: restoring `alt="Menu"` fails this line and only this line. The claim
+  // is one fewer node, not a duplicated announcement -- the name is unchanged.
+  await expect(toggle.getByRole("img")).toHaveCount(0);
+
+  // Resolved through the attribute rather than by hardcoding the id, so this
+  // proves the pair is actually wired: `aria-controls` naming an id that no
+  // element has is the standard way this markup rots, and a literal selector
+  // here would keep passing while pointing at nothing. The count also pins
+  // uniqueness -- a duplicated id would make the reference ambiguous.
+  const controls = await toggle.getAttribute("aria-controls");
+  expect(controls).toBeTruthy();
+  const menu = page.locator(`#${controls}`);
+  await expect(menu).toHaveCount(1);
+  // Located by href rather than by role: the menu is collapsed at this point, so
+  // its links are outside the accessibility tree and a role query legitimately
+  // finds nothing. The claim being made here is structural -- `aria-controls`
+  // points at the element that holds the navigation -- not about visibility.
+  await expect(menu.locator('a[href="/"]')).toHaveCount(1);
+
+  // The state and the thing it describes are asserted together at every step;
+  // checking `aria-expanded` alone would pass for a toggle that reports state
+  // while controlling nothing.
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(menu).toBeHidden();
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "true");
+  await expect(menu).toBeVisible();
+
+  await toggle.click();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  await expect(menu).toBeHidden();
+});
+
+test("the sidebar never announces a collapsed state at `lg` and above", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 1280, height: 800 });
+  await page.goto("/credits");
+
+  const sidebar = mainNav(page);
+
+  // The menu is on screen here whatever `isOpen` says, and the toggle still
+  // carries `aria-expanded="false"` in the DOM. That pairing is only honest
+  // because the toggle is absent from the accessibility tree, which is what
+  // these counts establish between them: excluded from the tree, but still
+  // present in the DOM. Asserting only the first would also pass if the toggle
+  // were deleted outright, and asserting neither would leave the central claim
+  // of this change resting on an inference about how `display: none` behaves.
+  await expect(sidebar.getByRole("link", { name: "Home" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Menu" })).toHaveCount(0);
+  await expect(
+    page.getByRole("button", { name: "Menu", includeHidden: true }),
+  ).toHaveCount(1);
+
+  // Not redundant with the role counts above: those two would equally describe a
+  // visible button hidden from the tree with `aria-hidden`, which would put a
+  // stale expanded state on screen while still satisfying them. This is the one
+  // that pins it to actually not being rendered.
+  await expect(sidebar.locator("button")).toBeHidden();
+});
+
+test("the sidebar marks exactly the current page, and follows the route", async ({
+  page,
+}) => {
+  await page.goto("/credits");
+  const sidebar = mainNav(page);
+
+  // `aria-current` is queried across the whole landmark rather than on the link
+  // expected to carry it, because the defect worth catching is more than one
+  // link claiming to be current -- which a check on a single link cannot see.
+  const current = sidebar.locator("[aria-current]");
+  await expect(current).toHaveCount(1);
+  await expect(current).toHaveAttribute("aria-current", "page");
+  await expect(current).toHaveAttribute("href", "/credits");
+
+  // Soft navigation, so the mark has to move. A server-rendered-only attribute
+  // would satisfy the assertions above and then go stale on the first click.
+  await sidebar.getByRole("link", { name: "Animation" }).click();
+  await expect(page).toHaveURL("/animation");
+  await expect(current).toHaveCount(1);
+  await expect(current).toHaveAttribute("href", "/animation");
 });
 
 /**

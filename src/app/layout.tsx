@@ -28,8 +28,13 @@ export default async function RootLayout({
     <html lang="en">
       <body className={`${mont.className} antialiased`}>
         <div className="flex flex-col min-h-screen">
-          {/* Navbar with z-index */}
-          <nav className="row-span-1 col-span-full bg-gradient-to-r from-purple-700 to-cyan-500 p-4 text-zinc-200 font-bold shadow-zinc-900 shadow-lg z-10">
+          {/* Site banner with z-index. A `header` and not a `nav`: it holds the
+              branding and the sign-in control and not a single link, so as a
+              `nav` it offered a navigation landmark with nothing navigable in
+              it. `banner` needs this to sit outside article/aside/main/nav/
+              section, which the plain wrapper below satisfies -- asserted in
+              e2e/smoke.spec.ts, since that nesting rule fails quietly. */}
+          <header className="row-span-1 col-span-full bg-gradient-to-r from-purple-700 to-cyan-500 p-4 text-zinc-200 font-bold shadow-zinc-900 shadow-lg z-10">
             <div className="flex items-center justify-between">
               <span className="flex items-center space-x-4">
                 <Image
@@ -74,7 +79,7 @@ export default async function RootLayout({
                 </form>
               )}
             </div>
-          </nav>
+          </header>
 
           <div className="flex flex-col lg:flex-row flex-1">
             {/* Sidebar/Navbar */}
