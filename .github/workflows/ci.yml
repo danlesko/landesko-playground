@@ -38,7 +38,8 @@ jobs:
           cache: pnpm
 
       # pnpm 10 does not run dependency build scripts by default, so the
-      # "Ignored build scripts" warning for bcrypt/sharp/etc. is expected.
+      # "Ignored build scripts" warning for sharp/@vercel/speed-insights/etc.
+      # is expected.
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
