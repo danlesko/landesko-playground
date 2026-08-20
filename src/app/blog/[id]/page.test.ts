@@ -55,6 +55,11 @@ describe("blog detail page", () => {
   // decision ignores the session. The guarantee that a private post and a
   // missing one both arrive as undefined belongs to the anonymous SQL predicate
   // and is tested against a mocked driver in src/lib/data.test.ts.
+  //
+  // Both branches expect the same digest, so a `cache(auth)` memo replaying the
+  // first session would go unnoticed here. It cannot: measured against this
+  // React, `cache` outside a request context re-runs on every call. The next
+  // test is the one that would redden if the session stopped being threaded.
   it("404s on an unavailable post whether or not the viewer is signed in", async () => {
     vi.mocked(getBlog).mockResolvedValue(undefined);
     const anonymous = await Blog(props()).catch((e: unknown) => digestOf(e));
@@ -65,6 +70,20 @@ describe("blog detail page", () => {
 
     expect(anonymous).toBe(NOT_FOUND_DIGEST);
     expect(signedIn).toBe(NOT_FOUND_DIGEST);
+  });
+
+  it("hands the viewer's own session to the query", async () => {
+    vi.mocked(getBlog).mockImplementation(async (session) =>
+      session?.user ? row : undefined,
+    );
+
+    const anonymous = await Blog(props()).catch((e: unknown) => digestOf(e));
+
+    auth.mockResolvedValue(signedInSession());
+    const signedIn = await Blog(props());
+
+    expect(anonymous).toBe(NOT_FOUND_DIGEST);
+    expect(signedIn).toBeTruthy();
   });
 
   it("does not 404 when the post is available", async () => {

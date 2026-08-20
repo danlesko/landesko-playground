@@ -1,20 +1,7 @@
 import { sql } from "@vercel/postgres";
-import { User, Blog } from "./definitions";
+import { Blog } from "./definitions";
 import { unstable_noStore as noStore } from "next/cache";
 import { Session } from "next-auth";
-
-export async function getUser(email: string) {
-  noStore();
-  try {
-    const user = await sql`SELECT * FROM users WHERE email=${email}`;
-    // `| undefined` is the honest type: a query that matches nothing still
-    // resolves, and rows[0] is then undefined.
-    return user.rows[0] as User | undefined;
-  } catch (error) {
-    console.error("Failed to fetch user:", error);
-    throw new Error("Failed to fetch user.");
-  }
-}
 
 export async function fetchRecentBlogs(session: Session | null) {
   noStore();

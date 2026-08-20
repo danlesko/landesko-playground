@@ -10,6 +10,7 @@ import {
 import { Email } from "@/lib/definitions";
 import ReCAPTCHA from "react-google-recaptcha";
 import { sendContactEmail } from "@/lib/contact-actions";
+import { formControlClasses } from "@/components/ui/form";
 
 const MyContactForm = () => {
   const toast = useToast();
@@ -102,7 +103,7 @@ const MyContactForm = () => {
           name="name"
           color="purple"
           placeholder="Name"
-          className="bg-surface text-foreground focus:bg-surface focus:text-foreground focus:ring-surface focus:ring-0 focus:ring-offset-0"
+          className={formControlClasses}
           onChange={handleChange}
         />
         <Input
@@ -113,13 +114,13 @@ const MyContactForm = () => {
           name="email"
           color="purple"
           placeholder="Email"
-          className="bg-surface text-foreground focus:bg-surface focus:text-foreground focus:ring-surface focus:ring-0 focus:ring-offset-0 mt-1"
+          className={`${formControlClasses} mt-1`}
           onChange={handleChange}
         />
         <Textarea
           required
           disabled={isSendingEmail}
-          className="bg-surface text-foreground focus:bg-surface focus:text-foreground focus:ring-surface focus:ring-0 focus:ring-offset-0 mt-1"
+          className={`${formControlClasses} mt-1`}
           tone="solid"
           color="purple"
           placeholder="Ask me anything!"
