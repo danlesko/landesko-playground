@@ -16,6 +16,17 @@ const mont = Montserrat({
 export const metadata: Metadata = {
   title: "Landesko's Playground",
   description: "Dan Lesko's Portfolio Playground and Blog",
+  // `openGraph` omits title/description on purpose: Next inherits them from
+  // each route's own `metadata`, so a link preview of /animation reads
+  // "… - Animation". Setting them here pins every route to the root title.
+  openGraph: {
+    siteName: "Landesko's Playground",
+    locale: "en_US",
+    type: "website",
+  },
+  twitter: {
+    card: "summary_large_image",
+  },
 };
 
 export default async function RootLayout({
