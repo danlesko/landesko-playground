@@ -1,7 +1,8 @@
 import { cache } from "react";
 import { getBlog } from "@/lib/data";
-import Link from "next/link";
-import { ArrowLeft } from "@phosphor-icons/react/dist/ssr";
+import BackLink from "@/components/ui/BackLink";
+import PageHeading from "@/components/ui/PageHeading";
+import Card from "@/components/ui/Card";
 import { auth } from "@/auth";
 
 // `generateMetadata` and the component below render in the same request and both
@@ -49,18 +50,9 @@ export default async function Blog(props: { params: Promise<{ id: string }> }) {
 
   return (
     <div className="inline-block" style={{ width: "100%" }}>
-      <h2 className="text-4xl font-bold">{blog.title}</h2>
-      <Link
-        className="text-xl text-accent hover:text-accent-hover visited:text-accent-visited font-bold"
-        href={`/blog`}
-      >
-        <ArrowLeft size={24} className="inline-block -translate-y-1" /> All Blog
-        Posts
-      </Link>
-      <div
-        key={blog.title}
-        className="mt-4 p-4 shadow-md rounded-lg md:w-full lg:min-w-[600px] lg:w-1/2 min-h-32 border border-border overflow-auto"
-      >
+      <PageHeading>{blog.title}</PageHeading>
+      <BackLink />
+      <Card>
         <div className="flow-root">
           <h4 className="text-sm font-medium text-muted">
             {new Date(blog.date).toLocaleDateString("en-US", {
@@ -73,7 +65,7 @@ export default async function Blog(props: { params: Promise<{ id: string }> }) {
         </div>
         <div className="clear-both" />
         <p className="whitespace-pre-line">{blog.content}</p>
-      </div>
+      </Card>
     </div>
   );
 }
