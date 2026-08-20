@@ -13,6 +13,8 @@ const ReactP5Wrapper = dynamic(
 ) as unknown as React.NamedExoticComponent<P5WrapperProps>;
 
 const MyProcessingDrawing = () => {
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
   function sketch(p5: P5CanvasInstance) {
     const baseWidth = 1180;
     const baseHeight = 735;
@@ -61,6 +63,33 @@ const MyProcessingDrawing = () => {
       }
     };
 
+    // p5.windowWidth is the whole viewport, but from `lg` up the canvas only
+    // has the viewport minus the 250px sidebar and <main>'s 32px of padding.
+    // Sizing from the viewport made the canvas overrun <main>, and because
+    // <main> is a flexbox child whose min-width defaults to auto it widened to
+    // fit rather than clip, pushing the page 232px past the viewport. So
+    // measure the box the canvas is actually in — and with the canvas itself
+    // out of layout, or an already-oversized canvas widens the box being
+    // measured and keeps its own bad size when the window narrows.
+    const measureAvailableWidth = () => {
+      const container = containerRef.current;
+      if (!container) {
+        return p5.windowWidth;
+      }
+
+      const canvas = container.querySelector("canvas");
+      if (!canvas) {
+        return container.clientWidth;
+      }
+
+      const previousDisplay = canvas.style.display;
+      canvas.style.display = "none";
+      const availableWidth = container.clientWidth;
+      canvas.style.display = previousDisplay;
+
+      return availableWidth;
+    };
+
     const updateCanvasDimensions = () => {
       if (p5.windowWidth / p5.windowHeight > aspectRatio) {
         return {
@@ -70,7 +99,7 @@ const MyProcessingDrawing = () => {
       }
 
       return {
-        canvasWidth: p5.windowWidth - 50,
+        canvasWidth: Math.min(p5.windowWidth - 50, measureAvailableWidth()),
         canvasHeight: p5.windowWidth / aspectRatio,
       };
     };
@@ -481,7 +510,11 @@ const MyProcessingDrawing = () => {
     };
   }
 
-  return <ReactP5Wrapper sketch={sketch} />;
+  return (
+    <div ref={containerRef}>
+      <ReactP5Wrapper sketch={sketch} />
+    </div>
+  );
 };
 
 export default MyProcessingDrawing;
