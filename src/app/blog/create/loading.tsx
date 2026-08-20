@@ -1,5 +1,4 @@
-import Link from "next/link";
-import { ArrowLeft } from "@phosphor-icons/react/dist/ssr";
+import BackLink from "@/components/ui/BackLink";
 
 const loadingSkeleton = () => {
   return (
@@ -15,13 +14,7 @@ const Loading = () => {
   return (
     <>
       <h2 className="text-4xl font-bold">Create New Blog Post</h2>
-      <Link
-        className="text-xl text-accent hover:text-accent-hover visited:text-accent-visited font-bold"
-        href={`/blog`}
-      >
-        <ArrowLeft size={24} className="inline-block -translate-y-1" /> All Blog
-        Posts
-      </Link>
+      <BackLink />
       {loadingSkeleton()}
     </>
   );
