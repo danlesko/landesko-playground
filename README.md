@@ -11,7 +11,7 @@ This is Dan Lesko's personal website written in [Next.js 15](https://nextjs.org)
 
 ## Running the page locally
 
-Requires Node 20 or newer (CI runs 22) and [pnpm](https://pnpm.io).
+Requires [pnpm](https://pnpm.io). CI builds on Node 22; Node 20 or newer is recommended locally.
 
 ```bash
 pnpm install
@@ -62,7 +62,7 @@ Set these in `.env.local` for local development and in the Vercel project settin
 - `NEXT_PUBLIC_EMAILJS_SERVICE_ID`
 - `NEXT_PUBLIC_EMAILJS_TEMPLATE_ID`
 
-The three prefixed EmailJS values are currently readable by the browser. Moving them server-side is tracked in [#14](https://github.com/danlesko/landesko-playground/issues/14).
+The `NEXT_PUBLIC_` prefix on those three is vestigial: the send used to happen in the browser, but it now runs inside a server action, so nothing reads them client-side and their values no longer reach the client bundle. Dropping the prefix is tracked in [#14](https://github.com/danlesko/landesko-playground/issues/14) — it needs the unprefixed names added in Vercel before the code change ships.
 
 ## Authentication
 
