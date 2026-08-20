@@ -22,8 +22,9 @@ import BlogDetail from "@/app/blog/[id]/page";
 const id = "11111111-1111-4111-8111-111111111111";
 const row = { id, title: "A post", content: "body", date: "2026-01-01" };
 
-// The tag name, not the accessible name. A role+name query matches a heading at
-// any level, so it passes on precisely the defect these tests exist to catch.
+// The tag name, not the accessible name. A role+name query can pin a level via
+// its `level` option, but it says nothing about the levels *around* it, and the
+// defect here was a sequence: a correctly-named heading at a skipped level.
 function headingLevels(markup: string): number[] {
   return [...markup.matchAll(/<h([1-6])[\s>]/g)].map((m) => Number(m[1]));
 }
@@ -83,7 +84,9 @@ describe.each([
       renderToStaticMarkup((await render()) as ReactElement),
     );
 
-    expect(levels.length).toBeGreaterThan(1);
+    // Guards vacuity without demanding a second heading: a route is free to
+    // carry only its h1, and should not have to add one to satisfy this.
+    expect(levels.length).toBeGreaterThan(0);
     expect(firstSkip(levels)).toBeUndefined();
   });
 
@@ -94,6 +97,7 @@ describe.each([
     );
 
     expect(levels[0]).toBe(1);
+    expect(countTopLevel(levels)).toBe(1);
     expect(firstSkip(levels)).toBeUndefined();
   });
 });
