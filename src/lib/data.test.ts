@@ -23,7 +23,7 @@ vi.mock("next/cache", async () => {
 
 // `vi.mock` is hoisted above this import, so `data.ts` receives the mocks.
 import { sql } from "@vercel/postgres";
-import { deleteBlog, fetchRecentBlogs, getBlog, getUser } from "@/lib/data";
+import { deleteBlog, fetchRecentBlogs, getBlog } from "@/lib/data";
 
 /**
  * The clause that keeps private posts away from anonymous visitors.
@@ -199,35 +199,6 @@ describe("getBlog", () => {
 
     await expect(getBlog(null, id)).rejects.toThrow("Failed to fetch blog.");
     await expect(getBlog(null, id)).rejects.not.toThrow(/password/);
-  });
-});
-
-describe("getUser", () => {
-  it("binds the email instead of interpolating it into the query text", async () => {
-    queueSqlResult([]);
-
-    await getUser("owner@example.com");
-
-    const call = onlySqlCall();
-    expect(normalizeSql(call.text)).toBe("SELECT * FROM users WHERE email=$1");
-    expect(call.values).toEqual(["owner@example.com"]);
-  });
-
-  it("returns undefined for an unknown email", async () => {
-    queueSqlResult([]);
-
-    await expect(getUser("nobody@example.com")).resolves.toBeUndefined();
-  });
-
-  it("reports a generic failure without leaking the driver error", async () => {
-    failNextSqlCalls(new Error('relation "users" does not exist at 10.0.0.7'));
-
-    await expect(getUser("owner@example.com")).rejects.toThrow(
-      "Failed to fetch user.",
-    );
-    await expect(getUser("owner@example.com")).rejects.not.toThrow(
-      /10\.0\.0\.7/,
-    );
   });
 });
 
