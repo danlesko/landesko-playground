@@ -24,6 +24,10 @@ const eslintConfig = [
       // 39 and reports a copy nobody edits. A worktree without its own
       // node_modules turns that into hundreds of unresolved-import errors.
       ".claude/**",
+      // Playwright's generated report and traces.
+      "test-results/**",
+      "playwright-report/**",
+      "blob-report/**",
     ],
   },
   ...compat.extends("next/core-web-vitals", "next/typescript"),
