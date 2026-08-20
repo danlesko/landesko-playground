@@ -1,5 +1,6 @@
 import { getBlog } from "@/lib/data";
 import Link from "next/link";
+import { notFound } from "next/navigation";
 import { ArrowLeft } from "@phosphor-icons/react/dist/ssr";
 import { auth } from "@/auth";
 
@@ -10,10 +11,9 @@ export async function generateMetadata(props: {
   const { id } = params;
   const session = await auth();
   const blog = await getBlog(session, id);
-  // This runs alongside the page render rather than instead of it, so when the
-  // post is unavailable it only has to keep the literal string "undefined" out
-  // of the tab title. The page below is what decides to show the error page.
-  const title = blog?.title ?? "Error Fetching Blog";
+  // Runs alongside the page render rather than instead of it, so it still has
+  // to name the unavailable case; the page below is what serves the 404.
+  const title = blog?.title ?? "Blog Post Not Found";
   const description = "One of many blog posts.";
 
   return {
@@ -28,12 +28,10 @@ export default async function Blog(props: { params: Promise<{ id: string }> }) {
   const { id } = params;
   const blog = await getBlog(session, id);
 
-  // Unknown id, or a private post requested without a session. A malformed id
-  // already throws this from getBlog when Postgres rejects the uuid cast, so
-  // raising the same error keeps all three cases on the same error boundary
-  // instead of letting this one fall through to a TypeError below.
+  // Unknown id and a private post requested without a session both arrive here
+  // as undefined, so both render the same 404 and stay indistinguishable.
   if (!blog) {
-    throw new Error("Failed to fetch blog.");
+    notFound();
   }
 
   return (
