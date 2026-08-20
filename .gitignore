@@ -2,12 +2,14 @@
 
 # Local-only seed helpers. The _lib prefix keeps them out of the App Router's
 # route tree, so they cannot resolve to a public endpoint even if committed.
-# The old src/app/lib/seed paths stay listed so an accidental `git add` of a
-# stale copy is still ignored.
+# They carry seed rows, so every location they have ever lived in stays listed
+# to keep an accidental `git add` of a stale or relocated copy ignored.
 src/app/_lib/seed/seed-data.ts
 src/app/_lib/seed/route.ts
 src/app/lib/seed/seed-data.ts
 src/app/lib/seed/route.ts
+src/lib/seed/seed-data.ts
+src/lib/seed/route.ts
 
 
 # dependencies
