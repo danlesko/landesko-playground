@@ -19,7 +19,14 @@ const MyProcessingDrawing = () => {
     const aspectRatio = baseWidth / baseHeight;
     let scaleFactor = 1;
 
-    const grassColors = ["#228B22", "#32CD32", "#7CFC00", "#ADFF2F"];
+    // Typed as non-empty so grassColors[0] is a usable fallback colour rather
+    // than `string | undefined`. Still a mutable array, which p5.random needs.
+    const grassColors: [string, ...string[]] = [
+      "#228B22",
+      "#32CD32",
+      "#7CFC00",
+      "#ADFF2F",
+    ];
     const bladeColors: string[] = [];
     const bladeHeights: number[] = [];
 
@@ -75,12 +82,12 @@ const MyProcessingDrawing = () => {
     // walks off the end of the array and p5 gets `undefined`. Wrapping the index
     // keeps the "sample a neighbouring blade" intent while making every read
     // in-bounds for any array length.
+    // An empty array makes `i % 0` NaN, which reads as undefined and hits the
+    // fallback, so no separate length guard is needed.
     const bladeColorAt = (i: number) =>
-      bladeColors.length > 0
-        ? bladeColors[i % bladeColors.length]
-        : grassColors[0];
+      bladeColors[i % bladeColors.length] ?? grassColors[0];
     const bladeHeightAt = (i: number) =>
-      bladeHeights.length > 0 ? bladeHeights[i % bladeHeights.length] : 0;
+      bladeHeights[i % bladeHeights.length] ?? 0;
 
     const bubbles: Bubble[] = [];
 
@@ -407,18 +414,21 @@ const MyProcessingDrawing = () => {
         p5.color(255, 102, 0),
       );
 
-      // Advance and reap the bubbles. Iterate backwards: splicing inside a forward
-      // loop moves the next bubble into the index just visited, so it would be
-      // skipped. An expired bubble has an alpha of <= 0, so nothing visible is
-      // lost by removing it before it is drawn.
-      for (let i = bubbles.length - 1; i >= 0; i--) {
-        const bubble = bubbles[i];
+      // Advance every bubble, then compact the survivors forward in place. This
+      // keeps oldest-first order without the index/splice interaction that made
+      // the old backwards loop easy to get wrong. An expired bubble has an alpha
+      // of <= 0, so nothing visible is lost by dropping it before it is drawn.
+      for (const bubble of bubbles) {
         bubble.update();
+      }
 
-        if (bubble.lifespan <= 0) {
-          bubbles.splice(i, 1);
+      let alive = 0;
+      for (const bubble of bubbles) {
+        if (bubble.lifespan > 0) {
+          bubbles[alive++] = bubble;
         }
       }
+      bubbles.length = alive;
 
       // Draw them in a separate forward pass so overlapping translucent bubbles
       // still composite oldest-first, the way they did before.
