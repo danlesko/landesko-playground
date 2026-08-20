@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import MyProcessingDrawing from "@/src/components/MyProcessingDrawing";
+import MyProcessingDrawing from "@/components/MyProcessingDrawing";
 
 export const metadata: Metadata = {
   title: "Landesko's Playground - Animation",

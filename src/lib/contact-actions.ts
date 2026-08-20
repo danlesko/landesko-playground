@@ -1,6 +1,6 @@
 "use server";
 import { z } from "zod";
-import { verifyRecaptchaToken } from "@/src/app/lib/recaptcha";
+import { verifyRecaptchaToken } from "@/lib/recaptcha";
 
 const EMAILJS_SEND_URL = "https://api.emailjs.com/api/v1.0/email/send";
 

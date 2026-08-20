@@ -1,4 +1,4 @@
-import { verifyRecaptchaToken } from "@/src/app/lib/recaptcha";
+import { verifyRecaptchaToken } from "@/lib/recaptcha";
 
 export async function POST(req: Request) {
   let token: unknown;

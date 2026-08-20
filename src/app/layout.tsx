@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Montserrat } from "next/font/google";
 import "./globals.css";
 import Image from "next/image";
-import MySidebar from "@/src/components/MySidebar";
+import MySidebar from "@/components/MySidebar";
 import { Button } from "@rewind-ui/core";
 import { signIn, signOut, auth } from "@/auth";
 import { Analytics } from "@vercel/analytics/next";

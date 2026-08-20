@@ -1,6 +1,6 @@
 import { Input, Textarea, Button, Checkbox } from "@rewind-ui/core";
 import Link from "next/link";
-import { createBlog } from "@/src/app/lib/actions";
+import { createBlog } from "@/lib/actions";
 import { ArrowLeft } from "@phosphor-icons/react/dist/ssr";
 
 const CreateBlogPage = () => {
