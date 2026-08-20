@@ -10,8 +10,9 @@ export async function generateMetadata(props: {
   const { id } = params;
   const session = await auth();
   const blog = await getBlog(session, id);
-  // Metadata is generated before the page throws, so this only has to avoid
-  // rendering the string "undefined" as the tab title of the error page.
+  // This runs alongside the page render rather than instead of it, so when the
+  // post is unavailable it only has to keep the literal string "undefined" out
+  // of the tab title. The page below is what decides to show the error page.
   const title = blog?.title ?? "Error Fetching Blog";
   const description = "One of many blog posts.";
 
