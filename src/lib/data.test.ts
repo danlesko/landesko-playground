@@ -25,11 +25,23 @@ import { sql } from "@vercel/postgres";
 import { deleteBlog, fetchRecentBlogs, getBlog, getUser } from "@/lib/data";
 
 /**
- * The clause that keeps private posts away from anonymous visitors. If the
- * spelling in `src/lib/data.ts` ever changes, these tests must be updated
- * deliberately rather than deleted.
+ * The clause that keeps private posts away from anonymous visitors.
+ *
+ * The anonymous queries are asserted by *exact* text, not by substring. A
+ * substring check is too weak to be a security test: `WHERE blogs.private !=
+ * TRUE OR TRUE` still contains the guard while leaking every private row.
+ * Exact matching means any edit to an anonymous query has to be made in this
+ * file too, which is the point — that edit deserves a second pair of eyes.
  */
 const PRIVATE_GUARD = "private != TRUE";
+
+const RECENT_BLOGS_ANONYMOUS =
+  "SELECT * FROM blogs WHERE blogs.private != TRUE ORDER BY blogs.date DESC LIMIT 10";
+const RECENT_BLOGS_SIGNED_IN =
+  "SELECT * FROM blogs ORDER BY blogs.date DESC LIMIT 10";
+const GET_BLOG_ANONYMOUS =
+  "SELECT * FROM blogs WHERE id=$1 AND private != TRUE";
+const GET_BLOG_SIGNED_IN = "SELECT * FROM blogs WHERE id=$1";
 
 function session(): Session {
   return {
@@ -53,15 +65,16 @@ it("resolves `sql` to the mock, so no query can reach a real database", () => {
 });
 
 describe("fetchRecentBlogs", () => {
-  it("filters out private posts when there is no session", async () => {
+  it("issues exactly the private-filtered query when there is no session", async () => {
     queueSqlResult([]);
 
     await fetchRecentBlogs(null);
 
     // This is the authorization boundary. The mock records the query text the
-    // application built; it does not synthesise it. Delete the WHERE clause
-    // from data.ts and this fails.
-    expect(normalizeSql(onlySqlCall().text)).toContain(PRIVATE_GUARD);
+    // application built; it does not synthesise it.
+    const text = normalizeSql(onlySqlCall().text);
+    expect(text).toBe(RECENT_BLOGS_ANONYMOUS);
+    expect(text).toContain(PRIVATE_GUARD);
   });
 
   it("does not filter private posts for a signed-in session", async () => {
@@ -69,8 +82,16 @@ describe("fetchRecentBlogs", () => {
 
     await fetchRecentBlogs(session());
 
-    expect(normalizeSql(onlySqlCall().text)).not.toContain(PRIVATE_GUARD);
+    const text = normalizeSql(onlySqlCall().text);
+    expect(text).toBe(RECENT_BLOGS_SIGNED_IN);
+    expect(text).not.toContain(PRIVATE_GUARD);
   });
+
+  // Known gap, deliberately not pinned as correct: data.ts branches on
+  // `session`, while actions.ts branches on `session?.user`. A session object
+  // that carries no user is therefore treated as signed in here and would
+  // receive private posts. Flagged for its own issue rather than asserted.
+  it.todo("treats a session that carries no user as anonymous");
 
   it("returns the rows the driver produced", async () => {
     const rows = [{ id: "a", title: "one", content: "c", date: "2026-01-01" }];
@@ -110,12 +131,14 @@ describe("fetchRecentBlogs", () => {
 describe("getBlog", () => {
   const id = "11111111-1111-4111-8111-111111111111";
 
-  it("filters out private posts when there is no session", async () => {
+  it("issues exactly the private-filtered query when there is no session", async () => {
     queueSqlResult([]);
 
     await getBlog(null, id);
 
-    expect(normalizeSql(onlySqlCall().text)).toContain(PRIVATE_GUARD);
+    const text = normalizeSql(onlySqlCall().text);
+    expect(text).toBe(GET_BLOG_ANONYMOUS);
+    expect(text).toContain(PRIVATE_GUARD);
   });
 
   it("does not filter private posts for a signed-in session", async () => {
@@ -123,8 +146,13 @@ describe("getBlog", () => {
 
     await getBlog(session(), id);
 
-    expect(normalizeSql(onlySqlCall().text)).not.toContain(PRIVATE_GUARD);
+    const text = normalizeSql(onlySqlCall().text);
+    expect(text).toBe(GET_BLOG_SIGNED_IN);
+    expect(text).not.toContain(PRIVATE_GUARD);
   });
+
+  // Same gap as above; see the note in the fetchRecentBlogs block.
+  it.todo("treats a session that carries no user as anonymous");
 
   it("passes the id as a bound parameter rather than inlining it", async () => {
     queueSqlResult([]);

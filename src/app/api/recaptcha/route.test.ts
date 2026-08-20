@@ -81,14 +81,20 @@ describe("POST /api/recaptcha", () => {
     await expect(readMessage(response)).resolves.toBe("Token not found");
   });
 
-  it("rejects a token without any network call when the token is unusable", async () => {
-    // The setup file installs a fetch that throws, so reaching the network
-    // here would surface as an error rather than a 400.
+  it("makes no upstream request for an unusable token", async () => {
+    // Asserting the call count, not just the status: verifyRecaptchaToken
+    // swallows fetch errors and returns false, so a 400 alone would not prove
+    // that the network was left alone.
+    process.env.SITE_SECRET_RECAPTCHA = FAKE_SECRET;
+    const fetchSpy = vi.fn(async () => new Response("{}"));
+    vi.stubGlobal("fetch", fetchSpy);
+
     const response = await POST(
       jsonRequest(JSON.stringify({ captchaValue: "" })),
     );
 
     expect(response.status).toBe(400);
+    expect(fetchSpy).not.toHaveBeenCalled();
   });
 
   it("returns 400 when verification fails", async () => {

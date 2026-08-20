@@ -160,8 +160,11 @@ describe("createBlog when signed in", () => {
   });
 
   it("treats any other checkbox value as public", async () => {
-    // A browser only ever sends "on", but the transform must not fail open on
-    // anything else either.
+    // Pins current behaviour, which is not obviously the safe default: the
+    // transform maps every string except "on" to `false`, so a client that
+    // posts `private=true` publishes the post. A browser checkbox only ever
+    // sends "on", so this is not exploitable through the UI, but it is a
+    // hardening opportunity rather than a property worth celebrating.
     await expectRedirect(
       () => createBlog(blogForm({ private: "off" })),
       "/blog",
