@@ -26,14 +26,18 @@ export default async function Blog() {
           </TextLink>
         )}
       </span>
-      {blogs.map((blog) => (
-        <MyBlogBodyAbbr
-          key={blog.id}
-          blog={blog}
-          session={session}
-          deleteBlogPost={deleteBlogPost}
-        />
-      ))}
+      {blogs.length === 0 ? (
+        <p className="mt-4 text-muted">No posts to show yet.</p>
+      ) : (
+        blogs.map((blog) => (
+          <MyBlogBodyAbbr
+            key={blog.id}
+            blog={blog}
+            session={session}
+            deleteBlogPost={deleteBlogPost}
+          />
+        ))
+      )}
     </div>
   );
 }

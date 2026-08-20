@@ -2,6 +2,9 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
+  // tsconfig sets `jsx: "preserve"` for Next, which leaves JSX in the files
+  // Vite hands to the test runner; without this it fails to parse them.
+  oxc: { jsx: { runtime: "automatic" } },
   resolve: {
     alias: {
       // Mirrors the `@/*` -> `./src/*` mapping in tsconfig.json.
