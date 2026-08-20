@@ -13,6 +13,8 @@ const CreateBlogPage = () => {
         className="text-lg mt-2 md:w-full lg:min-w-[600px] lg:w-1/2"
         action={createBlog}
       >
+        {/* Fixed ids rather than useId as MyContactForm does: a server
+            component cannot call hooks, and a route page renders once. */}
         <label htmlFor="blog-title" className={formLabelClasses}>
           Title
         </label>
