@@ -27,6 +27,44 @@ for (const { path, heading } of PUBLIC_ROUTES) {
   });
 }
 
+test("/credits attributes all four outbound resources", async ({ page }) => {
+  await page.goto("/credits");
+
+  // Scoped to <main> so the sidebar's links cannot pad the count. Nothing else
+  // in the app renders an absolute href, so this is exactly the credits list.
+  const outbound = page.getByRole("main").locator('a[href^="https://"]');
+
+  // The count is load-bearing on its own: it fails if an entry is dropped, and
+  // also if one is duplicated, neither of which a per-href check would catch.
+  await expect(outbound).toHaveCount(4);
+
+  // Compared as a sorted set rather than in order. The obligation is that all
+  // four are credited, not that they appear in a fixed sequence -- #10 may well
+  // reorder this list, and a test that fails on a reorder gets muted.
+  const hrefs = await outbound.evaluateAll((links) =>
+    links.map((link) => link.getAttribute("href")).sort(),
+  );
+  expect(hrefs).toEqual([
+    "https://nextjs.org/",
+    "https://rewind-ui.dev/",
+    "https://tailwindcss.com/",
+    "https://www.flaticon.com",
+  ]);
+
+  // A credit with no text credits nobody. Asserted as non-empty rather than by
+  // wording, which #7 is expected to revise.
+  //
+  // Visible text, deliberately, not the accessible name. These anchors carry
+  // `title={credit.title}`, and `title` is a fallback in the accessible-name
+  // computation -- so blanking the label leaves every link still *named* while
+  // rendering four empty bullets. Verified: an accessible-name check passes
+  // against that mutation and this one fails. Worth knowing for #7, where the
+  // same masking would make an audit look clean.
+  for (const link of await outbound.all()) {
+    await expect(link).toHaveText(/\S/);
+  }
+});
+
 test("the home page LCP image loads eagerly at a declared size", async ({
   page,
 }) => {
