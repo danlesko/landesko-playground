@@ -318,9 +318,14 @@ test("the sidebar toggle reports a truthful expanded state below `lg`", async ({
   const toggle = sidebar.getByRole("button", { name: "Menu" });
   await expect(toggle).toBeVisible();
 
-  // Exact, not a non-empty match: the icon is decorative now, so this fails if
-  // someone reinstates its alt text and the button starts announcing twice.
   await expect(toggle).toHaveAccessibleName("Menu");
+
+  // The name assertion above cannot carry the "announced once" claim on its own:
+  // `aria-label` outranks descendant content, so reinstating the icon's alt text
+  // would leave the computed name "Menu" and keep that assertion green while the
+  // image went back to being a named node. Counting images inside the button is
+  // what actually pins it -- a decorative image has no `img` role to find.
+  await expect(toggle.getByRole("img")).toHaveCount(0);
 
   // Resolved through the attribute rather than by hardcoding the id, so this
   // proves the pair is actually wired: `aria-controls` naming an id that no
