@@ -1,5 +1,7 @@
 import MyContactForm from "@/components/MyContactForm";
 import type { Metadata } from "next";
+import PageHeading from "@/components/ui/PageHeading";
+import { textLinkClasses } from "@/components/ui/TextLink";
 
 export const metadata: Metadata = {
   title: "Landesko's Playground - Contact",
@@ -9,13 +11,10 @@ export const metadata: Metadata = {
 export default function Contact() {
   return (
     <>
-      <h2 className="text-4xl font-bold">Contact</h2>
+      <PageHeading>Contact</PageHeading>
       <p className="text-lg mt-2">
         Email me directly at:{" "}
-        <a
-          className="text-accent hover:text-accent-hover visited:text-accent-visited"
-          href="mailto:lesko.dan.m@gmail.com"
-        >
+        <a className={textLinkClasses} href="mailto:lesko.dan.m@gmail.com">
           lesko.dan.m@gmail.com
         </a>
       </p>

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import MyProcessingDrawing from "@/components/MyProcessingDrawing";
+import PageHeading from "@/components/ui/PageHeading";
 
 export const metadata: Metadata = {
   title: "Landesko's Playground - Animation",
@@ -9,7 +10,7 @@ export const metadata: Metadata = {
 export default function Animation() {
   return (
     <>
-      <h2 className="text-4xl font-bold">Animation</h2>
+      <PageHeading>Animation</PageHeading>
       <p className="text-lg mt-2 lg:w-3/4">
         The very first class I ever took in computer science at UNC Asheville
         introduced me to Processing.js where I first learned to code. Being a
