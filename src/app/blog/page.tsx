@@ -1,15 +1,15 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { auth } from "@/auth";
-import MyBlogBodyAbbr from "@/src/components/MyBlogBodyAbbr";
-import { deleteBlogPost } from "@/src/app/lib/actions";
+import MyBlogBodyAbbr from "@/components/MyBlogBodyAbbr";
+import { deleteBlogPost } from "@/lib/actions";
 
 export const metadata: Metadata = {
   title: "Landesko's Playground - Blog",
   description: "Blog Posts",
 };
 
-import { fetchRecentBlogs } from "@/src/app/lib/data";
+import { fetchRecentBlogs } from "@/lib/data";
 
 export default async function Blog() {
   const session = await auth();

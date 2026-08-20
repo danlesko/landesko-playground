@@ -1,4 +1,4 @@
-import { getBlog } from "@/src/app/lib/data";
+import { getBlog } from "@/lib/data";
 import Link from "next/link";
 import { ArrowLeft } from "@phosphor-icons/react/dist/ssr";
 import { auth } from "@/auth";

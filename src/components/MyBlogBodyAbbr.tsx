@@ -2,7 +2,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { Trash } from "@phosphor-icons/react/dist/ssr";
-import type { Blog } from "@/src/app/lib/definitions";
+import type { Blog } from "@/lib/definitions";
 import type { Session } from "next-auth";
 import { Modal, Button } from "@rewind-ui/core";
 
