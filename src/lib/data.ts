@@ -7,7 +7,9 @@ export async function getUser(email: string) {
   noStore();
   try {
     const user = await sql`SELECT * FROM users WHERE email=${email}`;
-    return user.rows[0] as User;
+    // `| undefined` is the honest type: a query that matches nothing still
+    // resolves, and rows[0] is then undefined.
+    return user.rows[0] as User | undefined;
   } catch (error) {
     console.error("Failed to fetch user:", error);
     throw new Error("Failed to fetch user.");
@@ -42,7 +44,7 @@ export async function getBlog(session: Session | null, id: string) {
   if (session) {
     try {
       const blog = await sql`SELECT * FROM blogs WHERE id=${id}`;
-      return blog.rows[0] as Blog;
+      return blog.rows[0] as Blog | undefined;
     } catch (error) {
       console.error("Failed to fetch blog:", error);
       throw new Error("Failed to fetch blog.");
@@ -51,7 +53,9 @@ export async function getBlog(session: Session | null, id: string) {
     try {
       const blog =
         await sql`SELECT * FROM blogs WHERE id=${id} AND private != TRUE`;
-      return blog.rows[0] as Blog;
+      // Also empty when the post exists but is private, so an anonymous
+      // request for a private post is indistinguishable from a missing one.
+      return blog.rows[0] as Blog | undefined;
     } catch (error) {
       console.error("Failed to fetch blog:", error);
       throw new Error("Failed to fetch blog.");

@@ -10,7 +10,10 @@ export async function generateMetadata(props: {
   const { id } = params;
   const session = await auth();
   const blog = await getBlog(session, id);
-  const title = `${blog?.title}`;
+  // This runs alongside the page render rather than instead of it, so when the
+  // post is unavailable it only has to keep the literal string "undefined" out
+  // of the tab title. The page below is what decides to show the error page.
+  const title = blog?.title ?? "Error Fetching Blog";
   const description = "One of many blog posts.";
 
   return {
@@ -24,6 +27,15 @@ export default async function Blog(props: { params: Promise<{ id: string }> }) {
   const params = await props.params;
   const { id } = params;
   const blog = await getBlog(session, id);
+
+  // Unknown id, or a private post requested without a session. A malformed id
+  // already throws this from getBlog when Postgres rejects the uuid cast, so
+  // raising the same error keeps all three cases on the same error boundary
+  // instead of letting this one fall through to a TypeError below.
+  if (!blog) {
+    throw new Error("Failed to fetch blog.");
+  }
+
   return (
     <div className="inline-block" style={{ width: "100%" }}>
       <h2 className="text-4xl font-bold">{blog.title}</h2>
