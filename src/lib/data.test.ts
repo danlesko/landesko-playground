@@ -9,6 +9,7 @@ import {
   resetSqlMock,
 } from "@/test/sql-mock";
 import { resetNextMocks } from "@/test/next-mocks";
+import { sessionWithoutUser } from "@/test/auth-mock";
 
 vi.mock("@vercel/postgres", async () => {
   const { sql } = await import("@/test/sql-mock");
@@ -87,11 +88,18 @@ describe("fetchRecentBlogs", () => {
     expect(text).not.toContain(PRIVATE_GUARD);
   });
 
-  // Known gap, deliberately not pinned as correct: data.ts branches on
-  // `session`, while actions.ts branches on `session?.user`. A session object
-  // that carries no user is therefore treated as signed in here and would
-  // receive private posts. Flagged for its own issue rather than asserted.
-  it.todo("treats a session that carries no user as anonymous");
+  // `session?.user` is the predicate actions.ts and the UI use. The read path
+  // must agree, so a session object with no user fails closed to the
+  // private-filtered query rather than being treated as signed in.
+  it("treats a session that carries no user as anonymous", async () => {
+    queueSqlResult([]);
+
+    await fetchRecentBlogs(sessionWithoutUser());
+
+    const text = normalizeSql(onlySqlCall().text);
+    expect(text).toBe(RECENT_BLOGS_ANONYMOUS);
+    expect(text).toContain(PRIVATE_GUARD);
+  });
 
   it("returns the rows the driver produced", async () => {
     const rows = [{ id: "a", title: "one", content: "c", date: "2026-01-01" }];
@@ -151,8 +159,16 @@ describe("getBlog", () => {
     expect(text).not.toContain(PRIVATE_GUARD);
   });
 
-  // Same gap as above; see the note in the fetchRecentBlogs block.
-  it.todo("treats a session that carries no user as anonymous");
+  // Same predicate as above; see the note in the fetchRecentBlogs block.
+  it("treats a session that carries no user as anonymous", async () => {
+    queueSqlResult([]);
+
+    await getBlog(sessionWithoutUser(), id);
+
+    const text = normalizeSql(onlySqlCall().text);
+    expect(text).toBe(GET_BLOG_ANONYMOUS);
+    expect(text).toContain(PRIVATE_GUARD);
+  });
 
   it("passes the id as a bound parameter rather than inlining it", async () => {
     queueSqlResult([]);
