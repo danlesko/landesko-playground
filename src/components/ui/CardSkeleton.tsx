@@ -1,4 +1,4 @@
-// Deliberately not built on Card: this one's drop shadow is a step lighter, and
+// Deliberately not built on Card: this one's elevation is a step lighter, and
 // its height is an exact value where Card's is only a floor. That height gap is
 // the real source of the loading-to-loaded jump, and closing it belongs to #10.
 // See Card for why utility names are described rather than written out.

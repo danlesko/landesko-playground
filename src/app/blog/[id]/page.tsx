@@ -9,7 +9,7 @@ import { auth } from "@/auth";
 // need the same session and the same post, which was four sequential awaits.
 //
 // Caching `auth` is what makes caching `getBlog` work at all: `cache` keys on
-// argument identity, so two `loadBlog(session, id)` calls only collapse if both
+// argument identity, so two `loadBlog(session, id)` calls only coalesce if both
 // receive the very same session object. Uncached, `auth()` returns a fresh one
 // each time and every lookup would miss.
 const getSession = cache(auth);
