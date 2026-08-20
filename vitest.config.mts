@@ -2,8 +2,9 @@ import { fileURLToPath } from "node:url";
 import { defineConfig } from "vitest/config";
 
 export default defineConfig({
-  // tsconfig sets `jsx: "preserve"` for Next, which leaves JSX in the files
-  // Vite hands to the test runner; without this it fails to parse them.
+  // tsconfig sets `jsx: "preserve"` for Next, which leaves JSX in the output and
+  // makes any `.tsx` module unparseable here. Server components are still
+  // importable as plain functions once it is transformed.
   oxc: { jsx: { runtime: "automatic" } },
   resolve: {
     alias: {
