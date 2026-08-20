@@ -33,13 +33,17 @@ body {
   background: var(--background);
 }
 
-/* Durations are collapsed rather than set to `animation: none`, so animation and
-   transition end events still fire and any code that waits on one cannot hang.
+/* Durations are collapsed rather than set to `animation: none` so that a
+   transition which does run still emits its end event, and so an animation ends
+   on its final keyframe instead of reverting to the pre-animation state. Nothing
+   here listens for those events today; this is about not depending on that.
 
-   This reaches everything CSS drives — the `animate-pulse` loading skeletons and
-   rewind-ui's `transition-*` / `animate-spin` utilities. It cannot reach the
-   /animation p5 canvas (requestAnimationFrame) or the rewind-ui Modal's open
-   slide (Web Animations API); both need JS and are tracked separately. */
+   Covers only what CSS drives: the `animate-pulse` skeletons under blog/, and
+   rewind-ui's `transition-*` and `animate-spin`. Three animations in the app are
+   JS-driven and unaffected — the /animation p5 sketch (requestAnimationFrame),
+   the rewind-ui Modal's open slide (Web Animations API, see #60), and the
+   rewind-ui Toast used by the contact form (Framer Motion). Do not read this
+   block as full reduced-motion support. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
