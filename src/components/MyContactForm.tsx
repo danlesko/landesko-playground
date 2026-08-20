@@ -1,5 +1,5 @@
 "use client";
-import { useState, ChangeEvent, FormEventHandler, useRef } from "react";
+import { useState, ChangeEvent, FormEventHandler, useRef, useId } from "react";
 import {
   Textarea,
   Input,
@@ -15,6 +15,9 @@ import { formControlClasses, formLabelClasses } from "@/components/ui/form";
 const MyContactForm = () => {
   const toast = useToast();
   const recaptcha = useRef<ReCAPTCHA | null>(null);
+  // Per-instance, so two of these on one page cannot emit colliding ids and
+  // silently point the second form's labels at the first form's controls.
+  const fieldId = useId();
   const [userInput, setUserInput] = useState<Email>({
     name: "",
     email: "",
@@ -95,12 +98,12 @@ const MyContactForm = () => {
         className="text-lg mt-2 md:w-full lg:min-w-[600px] lg:w-1/2 h-1/2"
         onSubmit={handleSubmit}
       >
-        <label htmlFor="contact-name" className={formLabelClasses}>
+        <label htmlFor={`${fieldId}-name`} className={formLabelClasses}>
           Name
         </label>
         <Input
           required
-          id="contact-name"
+          id={`${fieldId}-name`}
           disabled={isSendingEmail}
           value={userInput.name}
           type="text"
@@ -109,12 +112,12 @@ const MyContactForm = () => {
           className={`${formControlClasses} mt-1`}
           onChange={handleChange}
         />
-        <label htmlFor="contact-email" className={formLabelClasses}>
+        <label htmlFor={`${fieldId}-email`} className={formLabelClasses}>
           Email
         </label>
         <Input
           required
-          id="contact-email"
+          id={`${fieldId}-email`}
           disabled={isSendingEmail}
           value={userInput.email}
           type="email"
@@ -123,12 +126,12 @@ const MyContactForm = () => {
           className={`${formControlClasses} mt-1`}
           onChange={handleChange}
         />
-        <label htmlFor="contact-message" className={formLabelClasses}>
+        <label htmlFor={`${fieldId}-message`} className={formLabelClasses}>
           Message
         </label>
         <Textarea
           required
-          id="contact-message"
+          id={`${fieldId}-message`}
           disabled={isSendingEmail}
           className={`${formControlClasses} mt-1`}
           tone="solid"
