@@ -12,7 +12,7 @@ export default {
   theme: {
     extend: {
       // Semantic tokens. Values live in src/app/globals.css so there is exactly
-      // one place to retune the palette.
+      // one place to retune the palette — except accent.visited, below.
       colors: {
         background: "var(--background)",
         foreground: "var(--foreground)",
@@ -22,7 +22,10 @@ export default {
         accent: {
           DEFAULT: "var(--accent)",
           hover: "var(--accent-hover)",
-          visited: "var(--accent-visited)",
+          // violet-400, 6.51:1 on --background. A literal, not a var(), so the
+          // value cannot depend on custom-property resolution inside the
+          // privacy-restricted :visited selector.
+          visited: "#a78bfa",
         },
         brand: "var(--brand)",
         danger: {
