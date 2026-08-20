@@ -1,6 +1,7 @@
-// Deliberately not built on Card: the skeleton uses shadow-sm and a fixed h-32
-// where Card uses shadow-md and min-h-32. That height difference is the real
-// source of the loading-to-loaded shift, and reconciling it belongs to #10.
+// Deliberately not built on Card: this one's drop shadow is a step lighter, and
+// its height is an exact value where Card's is only a floor. That height gap is
+// the real source of the loading-to-loaded jump, and closing it belongs to #10.
+// See Card for why utility names are described rather than written out.
 export default function CardSkeleton() {
   return (
     <div className="mt-4 p-4 border border-border shadow-sm rounded-lg md:w-full lg:min-w-[600px] lg:w-1/2 h-32 animate-pulse">
