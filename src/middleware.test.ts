@@ -15,6 +15,11 @@ import { sessionWithoutUser, signedInSession } from "@/test/auth-mock";
  *
  * Nothing here decides whether the request is authorized. The predicate under
  * test runs for real, and the assertions are on the Response it produces.
+ *
+ * What this deliberately does not cover: the wrapper's own behaviour — turning
+ * a returned undefined into `NextResponse.next()`, and re-issuing the refreshed
+ * session cookie. Exercising that would mean signing a real JWT and would test
+ * next-auth rather than this repository's authorization predicate.
  */
 vi.mock("@/auth", () => ({
   auth: (handler: MiddlewareHandler) => handler,
@@ -67,9 +72,25 @@ describe("middleware on /blog/create", () => {
   });
 
   // The other direction: the guard must not be so strict that it locks out the
-  // owner. Returning undefined is how the handler says "carry on".
+  // owner. The handler returns undefined to mean "no opinion"; the real
+  // `auth()` wrapper turns that into a `NextResponse.next()` continuation.
   it("lets a signed-in user through without a redirect", async () => {
     expect(run(await requestWith(signedInSession()))).toBeUndefined();
+  });
+
+  // Guards against over-tightening. @auth/core builds the JWT-strategy session
+  // as `user: { name: token.name, email: token.email, image: token.picture }`
+  // (@auth/core/lib/actions/session.js), so a token carrying none of those
+  // claims yields a `user` object whose every field is undefined. That user is
+  // signed in. A predicate reaching one level deeper — `req.auth?.user?.name`
+  // — would redirect them, and this is the case that catches it.
+  it("lets a signed-in user with no profile claims through", async () => {
+    const claimless: Session = {
+      user: { name: undefined, email: undefined, image: undefined },
+      expires: new Date(Date.now() + 60_000).toISOString(),
+    };
+
+    expect(run(await requestWith(claimless))).toBeUndefined();
   });
 });
 
