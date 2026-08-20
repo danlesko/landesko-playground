@@ -26,11 +26,14 @@ const MyBlogBodyAbbr = ({
             <TextLink href={`/blog/${blog.id}`}>{blog.title}</TextLink>
           </h2>
           {session?.user && (
-            <Trash
-              size={24}
-              className="text-danger hover:text-danger-hover cursor-pointer"
+            <button
+              type="button"
+              aria-label={`Delete post: ${blog.title}`}
+              className="text-danger hover:text-danger-hover rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
               onClick={() => setOpenModel(true)}
-            />
+            >
+              <Trash size={24} aria-hidden="true" />
+            </button>
           )}
         </div>
         <p className="text-sm font-medium text-muted">
