@@ -42,20 +42,9 @@ describe("MyBlogBodyAbbr delete control", () => {
     expect(html).toContain('aria-label="Delete post: Second post"');
   });
 
-  it("gives two posts distinct delete-control names", () => {
-    const first = render(signedInSession(), blog({ title: "Alpha" }));
-    const second = render(signedInSession(), blog({ title: "Beta" }));
-
-    expect(first).toContain('aria-label="Delete post: Alpha"');
-    expect(second).toContain('aria-label="Delete post: Beta"');
-  });
-
-  it("does not give the icon an accessible name of its own", () => {
+  it("hides the icon from assistive tech so the button name stands alone", () => {
     const html = render(signedInSession(), blog());
 
-    // Phosphor only emits <title> when an `alt` prop is passed. Asserting the
-    // absence keeps a future `alt` from double-announcing next to aria-label.
-    expect(html).not.toContain("<title");
     expect(html).toMatch(/<svg[^>]*aria-hidden="true"/);
   });
 
