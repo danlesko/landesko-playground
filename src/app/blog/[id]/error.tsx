@@ -39,15 +39,30 @@ export default function Error({
           The blog post for this URL could not be loaded. If the problem is
           temporary, trying again may help.
         </p>
+        {/* `aria-disabled` rather than `disabled`, so the button keeps focus
+            while the retry runs; a disabled control drops focus to the body in
+            some browsers. It does not block clicks on its own, hence the guard. */}
         <button
           type="button"
-          onClick={retry}
-          disabled={retrying}
-          aria-live="polite"
-          className="mt-4 px-4 py-2 rounded font-bold bg-surface text-accent hover:text-accent-hover disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+          onClick={() => {
+            if (!retrying) retry();
+          }}
+          aria-disabled={retrying}
+          className="mt-4 px-4 py-2 rounded font-bold bg-surface text-accent hover:text-accent-hover aria-disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
         >
-          {retrying ? "Retrying..." : "Try again"}
+          Try again
         </button>
+        {/* Mounted empty rather than conditionally, and kept off the button: a
+            live region that appears at the same moment as its text is often not
+            announced at all, and on the focused control its name, state and this
+            text would all change at once. `min-h-5` reserves the line. */}
+        <p
+          role="status"
+          aria-atomic="true"
+          className="mt-2 min-h-5 text-sm text-muted"
+        >
+          {retrying ? "Retrying..." : ""}
+        </p>
         {error.digest && (
           <p className="mt-4 text-sm text-muted">
             Error digest: <code>{error.digest}</code>
