@@ -2,7 +2,7 @@ import { Input, Textarea, Button, Checkbox } from "@rewind-ui/core";
 import { createBlog } from "@/lib/actions";
 import BackLink from "@/components/ui/BackLink";
 import PageHeading from "@/components/ui/PageHeading";
-import { formControlClasses } from "@/components/ui/form";
+import { formControlClasses, formLabelClasses } from "@/components/ui/form";
 
 const CreateBlogPage = () => {
   return (
@@ -13,17 +13,26 @@ const CreateBlogPage = () => {
         className="text-lg mt-2 md:w-full lg:min-w-[600px] lg:w-1/2"
         action={createBlog}
       >
+        {/* Fixed ids rather than useId as MyContactForm does: a server
+            component cannot call hooks, and a route page renders once. */}
+        <label htmlFor="blog-title" className={formLabelClasses}>
+          Title
+        </label>
         <Input
           required
+          id="blog-title"
           type="text"
           name="title"
           color="purple"
-          placeholder="Title"
-          className={formControlClasses}
+          className={`${formControlClasses} mt-1`}
         />
 
+        <label htmlFor="blog-content" className={formLabelClasses}>
+          Content
+        </label>
         <Textarea
           required
+          id="blog-content"
           className={`h-[500px] ${formControlClasses} mt-1`}
           tone="solid"
           color="purple"
