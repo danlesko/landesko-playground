@@ -13,7 +13,7 @@ const ReactP5Wrapper = dynamic(
 ) as unknown as React.NamedExoticComponent<P5WrapperProps>;
 
 const MyProcessingDrawing = () => {
-  const containerRef = React.useRef<HTMLDivElement>(null);
+  const wrapperRef = React.useRef<HTMLDivElement>(null);
 
   function sketch(p5: P5CanvasInstance) {
     const baseWidth = 1180;
@@ -71,20 +71,24 @@ const MyProcessingDrawing = () => {
     // measure the box the canvas is actually in — and with the canvas itself
     // out of layout, or an already-oversized canvas widens the box being
     // measured and keeps its own bad size when the window narrows.
+    //
+    // The local is `wrapper`, not the obvious alternative: Tailwind scans this
+    // file for class names and that word is a utility, so naming it that emits
+    // a dead rule into the stylesheet (see #50).
     const measureAvailableWidth = () => {
-      const container = containerRef.current;
-      if (!container) {
+      const wrapper = wrapperRef.current;
+      if (!wrapper) {
         return p5.windowWidth;
       }
 
-      const canvas = container.querySelector("canvas");
+      const canvas = wrapper.querySelector("canvas");
       if (!canvas) {
-        return container.clientWidth;
+        return wrapper.clientWidth;
       }
 
       const previousDisplay = canvas.style.display;
       canvas.style.display = "none";
-      const availableWidth = container.clientWidth;
+      const availableWidth = wrapper.clientWidth;
       canvas.style.display = previousDisplay;
 
       return availableWidth;
@@ -511,7 +515,7 @@ const MyProcessingDrawing = () => {
   }
 
   return (
-    <div ref={containerRef}>
+    <div ref={wrapperRef}>
       <ReactP5Wrapper sketch={sketch} />
     </div>
   );
