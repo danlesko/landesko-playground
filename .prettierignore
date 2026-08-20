@@ -1,0 +1,25 @@
+# Lockfiles — generated, and pnpm-lock.yaml is ~172 KB
+pnpm-lock.yaml
+package-lock.json
+yarn.lock
+
+# Dependencies
+node_modules/
+
+# Build output
+.next/
+out/
+build/
+coverage/
+next-env.d.ts
+
+# Static assets
+public/
+
+# Deploy / tooling artifacts
+.vercel/
+.husky/_/
+
+# Already-minified files
+*.min.js
+*.min.css
