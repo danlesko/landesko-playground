@@ -10,10 +10,14 @@ import { test, expect } from "@playwright/test";
  */
 
 // The sidebar, named rather than located by tag, so the assertions below survive
-// the wrapper moving. Defined once: five copies of the name would turn a rename
-// into five confusing failures instead of one.
+// the wrapper moving. Defined once so a rename has one place to change -- the
+// tests that call it would all still fail, but only this line needs editing.
+//
+// `exact` because Playwright's name matching is substring and case-insensitive
+// by default, which would let a landmark named "Main menu" satisfy every
+// assertion that claims to pin the name to "Main".
 const mainNav = (page: import("@playwright/test").Page) =>
-  page.getByRole("navigation", { name: "Main" });
+  page.getByRole("navigation", { name: "Main", exact: true });
 
 // Routes that render *and hydrate* with no database, no session and no env
 // config. Each entry names something only that page produces, so a test cannot
@@ -267,8 +271,8 @@ test("the sidebar client-side navigates between routes", async ({ page }) => {
   // rather than the part it will churn.
   // Was `complementary`: the sidebar is a named `navigation` landmark now, which
   // is the "wrappers are expected to move" case above actually happening. The
-  // name is pinned because it is the only thing telling this landmark apart from
-  // the banner nav, so losing it would be the regression worth failing on.
+  // name is pinned rather than located by tag, so this keeps working if the
+  // wrapper moves again and fails if the landmark stops being navigation.
   const sidebar = mainNav(page);
 
   // A full page load would reset this, so its survival is what distinguishes
@@ -336,11 +340,12 @@ test("the sidebar toggle reports a truthful expanded state below `lg`", async ({
 
   await expect(toggle).toHaveAccessibleName("Menu");
 
-  // The name assertion above cannot carry the "announced once" claim on its own:
+  // The name assertion above cannot carry the decorative-icon claim on its own:
   // `aria-label` outranks descendant content, so reinstating the icon's alt text
-  // would leave the computed name "Menu" and keep that assertion green while the
-  // image went back to being a named node. Counting images inside the button is
-  // what actually pins it -- a decorative image has no `img` role to find.
+  // would leave the computed name "Menu" and that assertion green while the
+  // image went back to being a node of its own inside the button. Mutation-
+  // tested: restoring `alt="Menu"` fails this line and only this line. The claim
+  // is one fewer node, not a duplicated announcement -- the name is unchanged.
   await expect(toggle.getByRole("img")).toHaveCount(0);
 
   // Resolved through the attribute rather than by hardcoding the id, so this
@@ -384,7 +389,7 @@ test("the sidebar never announces a collapsed state at `lg` and above", async ({
   // The menu is on screen here whatever `isOpen` says, and the toggle still
   // carries `aria-expanded="false"` in the DOM. That pairing is only honest
   // because the toggle is absent from the accessibility tree, which is what
-  // these two counts establish between them: excluded from the tree, but still
+  // these counts establish between them: excluded from the tree, but still
   // present in the DOM. Asserting only the first would also pass if the toggle
   // were deleted outright, and asserting neither would leave the central claim
   // of this change resting on an inference about how `display: none` behaves.
@@ -393,6 +398,12 @@ test("the sidebar never announces a collapsed state at `lg` and above", async ({
   await expect(
     page.getByRole("button", { name: "Menu", includeHidden: true }),
   ).toHaveCount(1);
+
+  // Not redundant with the role counts above: those two would equally describe a
+  // visible button hidden from the tree with `aria-hidden`, which would put a
+  // stale expanded state on screen while still satisfying them. This is the one
+  // that pins it to actually not being rendered.
+  await expect(sidebar.locator("button")).toBeHidden();
 });
 
 test("the sidebar marks exactly the current page, and follows the route", async ({

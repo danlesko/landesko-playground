@@ -19,8 +19,10 @@ const MySidebar = () => {
   };
 
   // A `nav` rather than an `aside`: this is the site's primary navigation, so
-  // the `complementary` landmark `aside` carries was simply wrong. Named so it
-  // is tellable apart from the unnamed banner nav in app/layout.tsx.
+  // the `complementary` landmark `aside` carries was simply wrong. This is the
+  // page's only navigation landmark now that the top bar is a `banner`, so the
+  // name is belt-and-braces rather than load-bearing: it keeps a future second
+  // nav from arriving as an unnamed, indistinguishable one.
   return (
     <nav
       aria-label="Main"
@@ -38,7 +40,9 @@ const MySidebar = () => {
         aria-controls={MENU_ID}
         // The name was coming from the icon's `alt`. Stating it here keeps the
         // button named if the icon is ever swapped out (#10 wants a Phosphor
-        // one), and leaves the image decorative so it is not announced twice.
+        // one). The icon then goes decorative -- not to prevent a doubled name,
+        // since `aria-label` already replaces descendant content in the name
+        // computation, but so the image stops being a node of its own.
         aria-label="Menu"
         className={clsx(
           "lg:hidden p-2 text-white bg-brand rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
