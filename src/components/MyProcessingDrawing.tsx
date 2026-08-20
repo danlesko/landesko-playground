@@ -68,9 +68,10 @@ const MyProcessingDrawing = () => {
     // Sizing from the viewport made the canvas overrun <main>, and because
     // <main> is a flexbox child whose min-width defaults to auto it widened to
     // fit rather than clip, pushing the page 232px past the viewport. So
-    // measure the box the canvas is actually in — and with the canvas itself
-    // out of layout, or an already-oversized canvas widens the box being
-    // measured and keeps its own bad size when the window narrows.
+    // measure the box the canvas is actually in, and measure it with the canvas
+    // itself out of layout: otherwise an already-oversized canvas widens the
+    // very box being measured, and keeps its own bad size when the window
+    // narrows.
     //
     // The local is `wrapper`, not the obvious alternative: Tailwind scans this
     // file for class names and that word is a utility, so naming it that emits
