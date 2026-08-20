@@ -73,6 +73,18 @@ test("the home page LCP image loads eagerly at a declared size", async ({
 
   await expect(image).toBeVisible();
 
+  // Every other assertion in this test passes against a `src` that 404s: the
+  // element stays visible, Next still generates srcset/preload/sizes from the
+  // declared dimensions, and the width/height attributes keep the box ratio.
+  // Observed by pointing src at a nonexistent file -- the server logged
+  // "The requested resource isn't a valid image ... received null" and the test
+  // went green. `complete` alone is not enough either; it is true for a failed
+  // load, which is why naturalWidth is the actual check.
+  await expect(image).toHaveJSProperty("complete", true);
+  expect(
+    await image.evaluate((el) => (el as HTMLImageElement).naturalWidth),
+  ).toBeGreaterThan(0);
+
   // `priority` is the whole point of this image: it is the LCP element. Next 15
   // does *not* implement that as fetchpriority on the <img> -- it emits a
   // `<link rel="preload" as="image">` into <head> and leaves the tag with no
