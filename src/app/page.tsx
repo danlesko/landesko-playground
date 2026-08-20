@@ -1,9 +1,10 @@
 import Image from "next/image";
+import PageHeading from "@/components/ui/PageHeading";
 
 export default async function Home() {
   return (
     <>
-      <h2 className="text-4xl font-bold">Welcome to Landesko's Playground</h2>
+      <PageHeading>Welcome to Landesko's Playground</PageHeading>
       <div>
         <p className="text-lg mt-2 lg:w-1/2">
           This is a playground for my portfolio and blog. It's a place for me to

@@ -1,19 +1,14 @@
 import { Input, Textarea, Button, Checkbox } from "@rewind-ui/core";
-import Link from "next/link";
 import { createBlog } from "@/lib/actions";
-import { ArrowLeft } from "@phosphor-icons/react/dist/ssr";
+import BackLink from "@/components/ui/BackLink";
+import PageHeading from "@/components/ui/PageHeading";
+import { formControlClasses } from "@/components/ui/form";
 
 const CreateBlogPage = () => {
   return (
     <>
-      <h2 className="text-4xl font-bold">Create New Blog Post</h2>
-      <Link
-        className="text-xl text-accent hover:text-accent-hover visited:text-accent-visited font-bold"
-        href={`/blog`}
-      >
-        <ArrowLeft size={24} className="inline-block -translate-y-1" /> All Blog
-        Posts
-      </Link>
+      <PageHeading>Create New Blog Post</PageHeading>
+      <BackLink />
       <form
         className="text-lg mt-2 md:w-full lg:min-w-[600px] lg:w-1/2"
         action={createBlog}
@@ -24,12 +19,12 @@ const CreateBlogPage = () => {
           name="title"
           color="purple"
           placeholder="Title"
-          className="bg-surface text-foreground focus:bg-surface focus:text-foreground focus:ring-surface focus:ring-0 focus:ring-offset-0"
+          className={formControlClasses}
         />
 
         <Textarea
           required
-          className="h-[500px] bg-surface text-foreground focus:bg-surface focus:text-foreground focus:ring-surface focus:ring-0 focus:ring-offset-0 mt-1"
+          className={`h-[500px] ${formControlClasses} mt-1`}
           tone="solid"
           color="purple"
           placeholder="What's On Your Mind?"

@@ -1,10 +1,10 @@
 "use client";
 import { useState } from "react";
-import Link from "next/link";
 import { Trash } from "@phosphor-icons/react/dist/ssr";
 import type { Blog } from "@/lib/definitions";
 import type { Session } from "next-auth";
 import { Modal, Button } from "@rewind-ui/core";
+import TextLink from "@/components/ui/TextLink";
 
 interface MyBlogBodyAbbrProps {
   session: Session | null; // Replace 'any' with the appropriate type if available
@@ -19,19 +19,11 @@ const MyBlogBodyAbbr = ({
 }: MyBlogBodyAbbrProps) => {
   const [openModel, setOpenModel] = useState(false);
   return (
-    <div
-      key={blog.title}
-      className="mt-4 p-4 shadow-md rounded-lg md:w-full lg:min-w-[600px] lg:max-w-[50%] min-h-32 max-h-32 border border-border overflow-auto"
-    >
+    <div className="mt-4 p-4 shadow-md rounded-lg md:w-full lg:min-w-[600px] lg:max-w-[50%] min-h-32 max-h-32 border border-border overflow-auto">
       <div className="flow-root">
         <div className="flex justify-between items-center">
           <h3 className="text-xl font-semibold">
-            <Link
-              className="text-accent hover:text-accent-hover visited:text-accent-visited"
-              href={`/blog/${blog.id}`}
-            >
-              {blog.title}
-            </Link>
+            <TextLink href={`/blog/${blog.id}`}>{blog.title}</TextLink>
           </h3>
           {session?.user && (
             <Trash
