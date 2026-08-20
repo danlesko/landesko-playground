@@ -9,6 +9,12 @@ import { test, expect } from "@playwright/test";
  * begun. So each test names a specific element or a specific navigation result.
  */
 
+// The sidebar, named rather than located by tag, so the assertions below survive
+// the wrapper moving. Defined once: five copies of the name would turn a rename
+// into five confusing failures instead of one.
+const mainNav = (page: import("@playwright/test").Page) =>
+  page.getByRole("navigation", { name: "Main" });
+
 // Routes that render *and hydrate* with no database, no session and no env
 // config. Each entry names something only that page produces, so a test cannot
 // pass against a blank shell. `/contact` is deliberately absent -- see below.
@@ -263,7 +269,7 @@ test("the sidebar client-side navigates between routes", async ({ page }) => {
   // is the "wrappers are expected to move" case above actually happening. The
   // name is pinned because it is the only thing telling this landmark apart from
   // the banner nav, so losing it would be the regression worth failing on.
-  const sidebar = page.getByRole("navigation", { name: "Main" });
+  const sidebar = mainNav(page);
 
   // A full page load would reset this, so its survival is what distinguishes
   // client-side routing from the browser simply following an anchor. The
@@ -297,14 +303,24 @@ test("the sidebar client-side navigates between routes", async ({ page }) => {
   ).toHaveAccessibleName(/\S/);
 });
 
-test("the two navigation landmarks are tellable apart", async ({ page }) => {
+test("the page exposes one banner and exactly one navigation landmark", async ({
+  page,
+}) => {
   await page.goto("/credits");
 
-  // The banner nav in app/layout.tsx and the sidebar. The count is load-bearing:
-  // it fails if the sidebar reverts to a non-navigation wrapper, and also if a
-  // third unnamed nav appears, which is when naming starts mattering again.
-  await expect(page.getByRole("navigation")).toHaveCount(2);
-  await expect(page.getByRole("navigation", { name: "Main" })).toHaveCount(1);
+  // `header` maps to `banner` only outside article/aside/main/nav/section. It
+  // sits in a plain wrapper so it qualifies, but that is asserted rather than
+  // reasoned about: the nesting rule fails silently, leaving a generic element
+  // no one can jump to and no error anywhere.
+  await expect(page.getByRole("banner")).toHaveCount(1);
+
+  // Exactly one, not two. The top bar used to be a `nav` holding no links at
+  // all, so a screen-reader user could jump to a navigation landmark with
+  // nothing navigable in it. This count fails in both directions that matter:
+  // if the sidebar reverts to a non-navigation wrapper, and if a spurious nav
+  // landmark is reintroduced.
+  await expect(page.getByRole("navigation")).toHaveCount(1);
+  await expect(mainNav(page)).toHaveCount(1);
 });
 
 test("the sidebar toggle reports a truthful expanded state below `lg`", async ({
@@ -314,7 +330,7 @@ test("the sidebar toggle reports a truthful expanded state below `lg`", async ({
   await page.setViewportSize({ width: 1023, height: 800 });
   await page.goto("/credits");
 
-  const sidebar = page.getByRole("navigation", { name: "Main" });
+  const sidebar = mainNav(page);
   const toggle = sidebar.getByRole("button", { name: "Menu" });
   await expect(toggle).toBeVisible();
 
@@ -363,7 +379,7 @@ test("the sidebar never announces a collapsed state at `lg` and above", async ({
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/credits");
 
-  const sidebar = page.getByRole("navigation", { name: "Main" });
+  const sidebar = mainNav(page);
 
   // The menu is on screen here whatever `isOpen` says, and the toggle still
   // carries `aria-expanded="false"` in the DOM. That pairing is only honest
@@ -383,7 +399,7 @@ test("the sidebar marks exactly the current page, and follows the route", async 
   page,
 }) => {
   await page.goto("/credits");
-  const sidebar = page.getByRole("navigation", { name: "Main" });
+  const sidebar = mainNav(page);
 
   // `aria-current` is queried across the whole landmark rather than on the link
   // expected to carry it, because the defect worth catching is more than one
