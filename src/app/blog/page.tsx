@@ -4,27 +4,28 @@ import PageHeading from "@/components/ui/PageHeading";
 import TextLink from "@/components/ui/TextLink";
 import MyBlogBodyAbbr from "@/components/MyBlogBodyAbbr";
 import { deleteBlogPost } from "@/lib/actions";
-import { fetchRecentBlogs } from "@/lib/data";
 
 export const metadata: Metadata = {
   title: "Landesko's Playground - Blog",
   description: "Blog Posts",
 };
 
+import { fetchRecentBlogs } from "@/lib/data";
+
 export default async function Blog() {
   const session = await auth();
   const blogs = await fetchRecentBlogs(session);
 
   return (
-    <>
-      <div className="flex justify-between items-center md:w-full lg:min-w-[600px] lg:w-1/2">
+    <div className="inline-block" style={{ width: "100%" }}>
+      <span className="flex justify-between items-center lg:max-w-[50%]">
         <PageHeading>Blog Posts</PageHeading>
         {session?.user && (
           <TextLink href="/blog/create" className="font-bold">
             Create New Post
           </TextLink>
         )}
-      </div>
+      </span>
       {blogs.map((blog) => (
         <MyBlogBodyAbbr
           key={blog.id}
@@ -33,6 +34,6 @@ export default async function Blog() {
           deleteBlogPost={deleteBlogPost}
         />
       ))}
-    </>
+    </div>
   );
 }

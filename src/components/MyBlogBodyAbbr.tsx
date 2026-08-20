@@ -4,7 +4,6 @@ import { Trash } from "@phosphor-icons/react/dist/ssr";
 import type { Blog } from "@/lib/definitions";
 import type { Session } from "next-auth";
 import { Modal, Button } from "@rewind-ui/core";
-import Card from "@/components/ui/Card";
 import TextLink from "@/components/ui/TextLink";
 
 interface MyBlogBodyAbbrProps {
@@ -20,7 +19,7 @@ const MyBlogBodyAbbr = ({
 }: MyBlogBodyAbbrProps) => {
   const [openModel, setOpenModel] = useState(false);
   return (
-    <Card>
+    <div className="mt-4 p-4 shadow-md rounded-lg md:w-full lg:min-w-[600px] lg:max-w-[50%] min-h-32 max-h-32 border border-border overflow-auto">
       <div className="flow-root">
         <div className="flex justify-between items-center">
           <h3 className="text-xl font-semibold">
@@ -76,7 +75,7 @@ const MyBlogBodyAbbr = ({
           </div>
         </div>
       </Modal>
-    </Card>
+    </div>
   );
 };
 
