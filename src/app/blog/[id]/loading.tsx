@@ -14,7 +14,14 @@ const LoadingSkeletons = () => {
 export default function Loading() {
   return (
     <>
-      <h2 className="text-4xl font-bold">Blog Posts</h2>
+      {/* The real heading is the post title, which isn't known yet. */}
+      <h2 className="text-4xl font-bold">
+        <span className="sr-only">Loading blog post</span>
+        <span
+          aria-hidden="true"
+          className="block h-10 w-3/4 lg:w-1/3 bg-gray-300 rounded animate-pulse"
+        ></span>
+      </h2>
       <Link
         className="text-xl text-accent hover:text-accent-hover visited:text-accent-visited font-bold"
         href={`/blog`}

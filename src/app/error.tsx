@@ -1,8 +1,8 @@
 "use client";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
-import { ArrowLeft } from "@phosphor-icons/react/dist/ssr";
+import PageHeading from "@/components/ui/PageHeading";
+import TextLink from "@/components/ui/TextLink";
 
 export default function Error({
   error,
@@ -26,18 +26,13 @@ export default function Error({
 
   return (
     <div className="inline-block" style={{ width: "100%" }}>
-      <h2 className="text-4xl font-bold text-danger">Error Fetching Blog</h2>
-      <Link
-        className="text-xl text-accent hover:text-accent-hover visited:text-accent-visited font-bold"
-        href={`/blog`}
-      >
-        <ArrowLeft size={24} className="inline-block -translate-y-1" /> All Blog
-        Posts
-      </Link>
+      <PageHeading>
+        <span className="text-danger">Something Went Wrong</span>
+      </PageHeading>
       <div className="mt-4 p-4 shadow-md rounded-lg md:w-full lg:min-w-[600px] lg:w-1/2 min-h-32 border border-border overflow-auto">
-        <p className="whitespace-pre-line">
-          The blog post for this URL could not be loaded. If the problem is
-          temporary, trying again may help.
+        <p>
+          This page could not be loaded. If the problem is temporary, trying
+          again may help.
         </p>
         {/* `aria-disabled` rather than `disabled`, so the button keeps focus
             while the retry runs; a disabled control drops focus to the body in
@@ -52,16 +47,19 @@ export default function Error({
         >
           Try again
         </button>
-        {/* Mounted empty rather than conditionally, and kept off the button: a
-            live region that appears at the same moment as its text is often not
-            announced at all, and on the focused control its name, state and this
-            text would all change at once. `min-h-5` reserves the line. */}
+        {/* Mounted empty rather than conditionally: a live region that appears
+            at the same moment as its text is often not announced at all. */}
         <p
           role="status"
           aria-atomic="true"
           className="mt-2 min-h-5 text-sm text-muted"
         >
           {retrying ? "Retrying..." : ""}
+        </p>
+        <p className="mt-4">
+          <TextLink href="/" className="font-bold">
+            Home
+          </TextLink>
         </p>
         {error.digest && (
           <p className="mt-4 text-sm text-muted">

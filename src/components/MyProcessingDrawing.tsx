@@ -40,8 +40,9 @@ const MyProcessingDrawing = () => {
       scaleFactor = baseWidth / canvasWidth;
 
       // windowResized re-runs setup, so the blade arrays have to be reset here.
-      // Without this they gain a whole canvas worth of entries on every resize
-      // and are never released for as long as the page is open.
+      // Without this they gain a whole canvas worth of entries every time the
+      // window changes size, and are never released for as long as the page is
+      // open.
       bladeColors.length = 0;
       bladeHeights.length = 0;
 
@@ -417,7 +418,7 @@ const MyProcessingDrawing = () => {
       // Advance every bubble, then compact the survivors forward in place. This
       // keeps oldest-first order without the index/splice interaction that made
       // the old backwards loop easy to get wrong. An expired bubble has an alpha
-      // of <= 0, so nothing visible is lost by dropping it before it is drawn.
+      // of <= 0, so nothing perceptible is lost by dropping it before it is drawn.
       for (const bubble of bubbles) {
         bubble.update();
       }
