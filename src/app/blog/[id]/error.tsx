@@ -1,8 +1,7 @@
 "use client";
-import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
-import { ArrowLeft } from "@phosphor-icons/react/dist/ssr";
+import BackLink from "@/components/ui/BackLink";
 
 export default function Error({
   error,
@@ -27,13 +26,7 @@ export default function Error({
   return (
     <div className="inline-block" style={{ width: "100%" }}>
       <h2 className="text-4xl font-bold text-danger">Error Fetching Blog</h2>
-      <Link
-        className="text-xl text-accent hover:text-accent-hover visited:text-accent-visited font-bold"
-        href={`/blog`}
-      >
-        <ArrowLeft size={24} className="inline-block -translate-y-1" /> All Blog
-        Posts
-      </Link>
+      <BackLink />
       <div className="mt-4 p-4 shadow-md rounded-lg md:w-full lg:min-w-[600px] lg:w-1/2 min-h-32 border border-border overflow-auto">
         <p className="whitespace-pre-line">
           The blog post for this URL could not be loaded. If the problem is
