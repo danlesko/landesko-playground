@@ -18,8 +18,8 @@ export default function Animation() {
         time!
       </p>
 
-      <h2 className="text-2xl font-bold mt-3">Fish Tank</h2>
-      <p className="text-lg mt-1 lg:w-3/4">
+      <h2 className="text-2xl font-semibold mt-6">Fish Tank</h2>
+      <p className="text-lg mt-2 lg:w-3/4">
         This animation was modeled after my first project in processing.js. It's
         a simple fish tank simulation. Click to blow bubbles, let the goldfish
         follow your mouse, watch as the purple fish tries to avoid it! I did my

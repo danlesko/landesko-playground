@@ -15,7 +15,7 @@ export default function Credits() {
       <ul className="list-disc ml-8">
         <li>
           <a
-            className="text-blue-600 hover:text-blue-800 visited:text-purple-600"
+            className="text-accent hover:text-accent-hover visited:text-accent-visited"
             href="https://www.flaticon.com"
             title="Flaticon"
           >
@@ -24,7 +24,7 @@ export default function Credits() {
         </li>
         <li>
           <a
-            className="text-blue-600 hover:text-blue-800 visited:text-purple-600"
+            className="text-accent hover:text-accent-hover visited:text-accent-visited"
             href="https://nextjs.org/"
             title="NextJS"
           >
@@ -33,7 +33,7 @@ export default function Credits() {
         </li>
         <li>
           <a
-            className="text-blue-600 hover:text-blue-800 visited:text-purple-600"
+            className="text-accent hover:text-accent-hover visited:text-accent-visited"
             href="https://tailwindcss.com/"
             title="TailwindCSS"
           >
@@ -42,7 +42,7 @@ export default function Credits() {
         </li>
         <li>
           <a
-            className="text-blue-600 hover:text-blue-800 visited:text-purple-600"
+            className="text-accent hover:text-accent-hover visited:text-accent-visited"
             href="https://rewind-ui.dev/"
             title="RewindUI"
           >

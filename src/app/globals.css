@@ -2,19 +2,29 @@
 @tailwind components;
 @tailwind utilities;
 
+/* This site is dark-only. There is no light palette and no `prefers-color-scheme`
+   switch: every token below is the dark value, and `darkMode` is left unset in
+   tailwind.config.ts because there is no second theme to toggle to.
+
+   Contrast ratios are against --background unless noted. */
 :root {
-  --background: rgb(24 24 27);
-  --foreground: #171717;
+  --background: #18181b; /* zinc-900 */
+  --foreground: #d4d4d8; /* zinc-300  11.99:1 */
+  --surface: #27272a; /* zinc-800  — sidebar, inputs, modals */
+  --muted: #a1a1aa; /* zinc-400   6.91:1, 5.81:1 on --surface */
+  --border: #ffffff; /* card hairline, unchanged from the literal it replaces */
+  --accent: #22d3ee; /* cyan-400   9.80:1 */
+  --accent-hover: #67e8f9; /* cyan-300  12.22:1 — brighter than rest, not dimmer */
+  --accent-visited: #a78bfa; /* violet-400 6.51:1 */
+  --brand: #9333ea; /* purple-600 — active nav, ties to the header gradient */
+  --danger: #f87171; /* red-400    6.40:1 */
+  --danger-hover: #fca5a5; /* red-300    9.33:1 */
+  --focus: #67e8f9; /* cyan-300  10.28:1 on --surface */
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --foreground: #ededed;
-  }
-}
-
+/* Set on body rather than only on <main> so content portaled out of <main>
+   (the rewind-ui Modal) inherits a readable colour instead of near-black. */
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
 }

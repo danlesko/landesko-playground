@@ -14,11 +14,14 @@ const MySidebar = () => {
   };
 
   return (
-    <aside className="bg-zinc-800 p-4 min-w-[250px] lg:max-w-[250px] text-zinc-300">
+    <aside className="bg-surface p-4 min-w-[250px] lg:max-w-[250px] text-foreground">
       <button
-        className={clsx("lg:hidden p-2 text-white bg-purple-600 rounded", {
-          "mb-2": isOpen,
-        })}
+        className={clsx(
+          "lg:hidden p-2 text-white bg-brand rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
+          {
+            "mb-2": isOpen,
+          },
+        )}
         onClick={toggleMenu}
       >
         <Image src="/menu.png" alt="Menu" width="24" height="24" />
@@ -35,10 +38,15 @@ const MySidebar = () => {
             <Link
               href={item.href}
               className={clsx(
-                "block p-2 rounded hover:bg-gray-400 hover:text-zinc-900 focus:bg-purple-600 font-bold",
+                // Keyboard focus draws a halo rather than changing the
+                // background: it used to reuse the active-page background, so
+                // the two states were indistinguishable. Avoid bare Tailwind
+                // class words in this comment; the scanner emits them as CSS.
+                "block p-2 rounded hover:bg-gray-400 hover:text-zinc-900 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
                 {
-                  "bg-purple-600": pathname === item.href,
-                  "bg-zinc-800": pathname !== item.href,
+                  // zinc-300 on --brand is only 3.64:1; white is 5.38:1.
+                  "bg-brand text-white": pathname === item.href,
+                  "bg-surface": pathname !== item.href,
                 },
               )}
               onClick={() => setIsOpen(false)}

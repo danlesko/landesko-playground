@@ -8,7 +8,10 @@ import { signIn, signOut, auth } from "@/auth";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
-const mont = Montserrat({ weight: ["400", "700"], subsets: ["latin"] });
+const mont = Montserrat({
+  weight: ["400", "500", "600", "700"],
+  subsets: ["latin"],
+});
 
 export const metadata: Metadata = {
   title: "Landesko's Playground",
@@ -78,7 +81,7 @@ export default async function RootLayout({
             <MySidebar />
 
             {/* Main Content */}
-            <main className="flex-1 bg-zinc-900 p-4 text-zinc-300">
+            <main className="flex-1 bg-background p-4 text-foreground">
               {children}
             </main>
           </div>

@@ -102,7 +102,7 @@ const MyContactForm = () => {
           name="name"
           color="purple"
           placeholder="Name"
-          className="bg-zinc-800 text-zinc-300 focus:bg-zinc-800 focus:text-zinc-300 focus:ring-zinc-800 focus:ring-0 focus:ring-offset-0"
+          className="bg-surface text-foreground focus:bg-surface focus:text-foreground focus:ring-surface focus:ring-0 focus:ring-offset-0"
           onChange={handleChange}
         />
         <Input
@@ -113,13 +113,13 @@ const MyContactForm = () => {
           name="email"
           color="purple"
           placeholder="Email"
-          className="bg-zinc-800 text-zinc-300 focus:bg-zinc-800 focus:text-zinc-300 focus:ring-zinc-800 focus:ring-0 focus:ring-offset-0 mt-1"
+          className="bg-surface text-foreground focus:bg-surface focus:text-foreground focus:ring-surface focus:ring-0 focus:ring-offset-0 mt-1"
           onChange={handleChange}
         />
         <Textarea
           required
           disabled={isSendingEmail}
-          className="bg-zinc-800 text-zinc-300 focus:bg-zinc-800 focus:text-zinc-300 focus:ring-zinc-800 focus:ring-0 focus:ring-offset-0 mt-1"
+          className="bg-surface text-foreground focus:bg-surface focus:text-foreground focus:ring-surface focus:ring-0 focus:ring-offset-0 mt-1"
           tone="solid"
           color="purple"
           placeholder="Ask me anything!"
