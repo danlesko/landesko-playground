@@ -20,7 +20,7 @@ const row = {
   id: "11111111-1111-4111-8111-111111111111",
   title: "A post",
   content: "body",
-  date: "2026-01-01",
+  date: new Date("2026-01-01"),
 };
 
 // Literal strings under intrinsic elements only. Descending into a component

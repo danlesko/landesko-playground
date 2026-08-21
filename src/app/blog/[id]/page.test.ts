@@ -22,7 +22,7 @@ const row = {
   id,
   title: "A post",
   content: "body",
-  date: "2026-01-01",
+  date: new Date("2026-01-01"),
 };
 
 function props() {
