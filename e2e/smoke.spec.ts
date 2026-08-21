@@ -432,8 +432,9 @@ test("the sidebar marks exactly the current page, and follows the route", async 
   await expect(current).toHaveCount(1);
   await expect(current).toHaveAttribute("href", "/animation");
   // Re-asserted after the move, not just before it: the locator matches any
-  // `aria-current`, so a route-dependent bug that emitted a different token would
-  // keep the count at one and satisfy the href while announcing nothing useful.
+  // `aria-current`, so a route-dependent bug emitting `true` would keep the count
+  // at one and satisfy the href. That still announces a current item, just not
+  // which kind, so only pinning the exact token holds the page-level meaning.
   await expect(current).toHaveAttribute("aria-current", "page");
 });
 
