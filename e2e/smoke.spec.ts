@@ -411,6 +411,208 @@ test("the sidebar never announces a collapsed state at `lg` and above", async ({
   await expect(sidebar.locator("button")).toBeHidden();
 });
 
+// Geometry, read off the live layout rather than off class names. A class-name
+// assertion would go green on a variant that is emitted but loses the cascade,
+// which is the failure this group of tests exists to catch.
+const boxes = (page: import("@playwright/test").Page) =>
+  page.evaluate(() => {
+    const box = (el: Element | null) => {
+      if (!el) return null;
+      const b = el.getBoundingClientRect();
+      return {
+        top: Math.round(b.top),
+        left: Math.round(b.left),
+        right: Math.round(b.right),
+        bottom: Math.round(b.bottom),
+        width: Math.round(b.width),
+        height: Math.round(b.height),
+      };
+    };
+    return {
+      nav: box(document.querySelector('nav[aria-label="Main"]')),
+      menu: box(document.getElementById("sidebar-menu")),
+      main: box(document.querySelector("main")),
+      scrollWidth: document.documentElement.scrollWidth,
+      innerWidth: window.innerWidth,
+    };
+  });
+
+test("expanding the sidebar below `lg` overlays the content instead of pushing it", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto("/credits");
+
+  const toggle = mainNav(page).getByRole("button", { name: "Menu" });
+  const collapsed = await boxes(page);
+
+  await toggle.click();
+  await expect(page.locator("#sidebar-menu")).toBeVisible();
+  const expanded = await boxes(page);
+
+  // The defect this replaces: the list was in flow, so opening it grew the
+  // landmark and moved <main> down by the list's height. Both halves are pinned,
+  // because either alone can be satisfied the wrong way -- a landmark that never
+  // grows would still push content if the list escaped it downwards, and a <main>
+  // that never moves would still be correct-by-accident if the panel were simply
+  // never shown.
+  expect(collapsed.main!.top).toBe(expanded.main!.top);
+  expect(collapsed.nav!.height).toBe(expanded.nav!.height);
+
+  // And it genuinely overlays: the panel's box has to intersect <main>'s. Without
+  // this, a panel rendered into the gap beside the toggle would satisfy the two
+  // assertions above while overlaying nothing.
+  expect(expanded.menu!.bottom).toBeGreaterThan(expanded.main!.top);
+});
+
+test("the collapsed sidebar below `lg` is no taller than its toggle", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto("/credits");
+
+  const { nav } = await boxes(page);
+  const toggle = await mainNav(page)
+    .getByRole("button", { name: "Menu" })
+    .evaluate((el) => Math.round(el.getBoundingClientRect().height));
+
+  // The landmark used to be a full-width band 32px taller than the control it
+  // held, above every page on the site. Expressed as a relationship to the
+  // toggle's own height rather than as a literal, so restyling the button does
+  // not force this number to be retuned -- and the slack is small enough that
+  // reinstating the old padding fails it.
+  expect(nav!.height).toBeLessThanOrEqual(toggle + 16);
+});
+
+test("the sidebar does not force a horizontal scrollbar at narrow widths", async ({
+  page,
+}) => {
+  // 280px is the narrowest viewport any shipping device presents. The landmark
+  // used to carry an unprefixed 250px width floor, so the document could not lay
+  // out narrower than that whatever the viewport was.
+  for (const width of [280, 320, 375]) {
+    await page.setViewportSize({ width, height: 800 });
+    await page.goto("/credits");
+
+    const collapsed = await boxes(page);
+    expect(
+      collapsed.scrollWidth,
+      `collapsed at ${width}px overflowed`,
+    ).toBeLessThanOrEqual(collapsed.innerWidth);
+
+    await mainNav(page).getByRole("button", { name: "Menu" }).click();
+    await expect(page.locator("#sidebar-menu")).toBeVisible();
+
+    // Asserted open as well as closed, and on the panel's own right edge as well
+    // as on the document: the panel is out of flow, and an out-of-flow box that
+    // overhangs the viewport does not always grow `scrollWidth`, so the document
+    // check alone would miss a panel hanging off the side.
+    const expanded = await boxes(page);
+    expect(
+      expanded.scrollWidth,
+      `expanded at ${width}px overflowed`,
+    ).toBeLessThanOrEqual(expanded.innerWidth);
+    expect(
+      expanded.menu!.right,
+      `panel at ${width}px overhangs the viewport`,
+    ).toBeLessThanOrEqual(width);
+  }
+});
+
+test("the sidebar overlay is dismissible by Escape and by a click elsewhere", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto("/credits");
+
+  const toggle = mainNav(page).getByRole("button", { name: "Menu" });
+  const menu = page.locator("#sidebar-menu");
+
+  await toggle.click();
+  await expect(menu).toBeVisible();
+  // Focus parked inside the panel, so the return is observable. Pressing Escape
+  // with focus still on the toggle would leave it there anyway and prove nothing.
+  await mainNav(page).getByRole("link", { name: "Blog" }).focus();
+  await page.keyboard.press("Escape");
+
+  await expect(menu).toBeHidden();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+  // The panel it came from is no longer laid out, so anything short of an
+  // explicit restore leaves focus on the body and a keyboard reader at the top of
+  // the document. `toBeFocused` rather than an activeElement snapshot so the
+  // failure names the element.
+  await expect(toggle).toBeFocused();
+
+  await toggle.click();
+  await expect(menu).toBeVisible();
+  // Deep inside <main> and well clear of the panel, which at 375px is 250px wide
+  // and about 250px tall.
+  await page.mouse.click(320, 700);
+  await expect(menu).toBeHidden();
+  await expect(toggle).toHaveAttribute("aria-expanded", "false");
+});
+
+test("the overlay adds no dialog semantics and no second control", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto("/credits");
+
+  const sidebar = mainNav(page);
+  await sidebar.getByRole("button", { name: "Menu" }).click();
+  await expect(page.locator("#sidebar-menu")).toBeVisible();
+
+  // This is a disclosure. The scrim behind the panel is presentational, and the
+  // dismissing click is caught on the document rather than on it, so nothing new
+  // should have reached the accessibility tree while the panel is open -- which
+  // is also what keeps the `lg`-and-above test above able to assert on a single
+  // button in this landmark.
+  await expect(sidebar.locator("button")).toHaveCount(1);
+  await expect(page.getByRole("navigation")).toHaveCount(1);
+  await expect(page.getByRole("dialog")).toHaveCount(0);
+  await expect(page.locator("[aria-modal], [inert]")).toHaveCount(0);
+});
+
+test("the sidebar column at `lg` is unaffected by the overlay styling", async ({
+  page,
+}) => {
+  // The component renders in the root layout, so it is on every page and a
+  // regression here would be site-wide. The overlay is expressed as unprefixed
+  // utilities with prefixed desktop counterparts, which is exactly the
+  // arrangement where a missing prefix leaks downward-styling into this column.
+  await page.setViewportSize({ width: 1024, height: 800 });
+  await page.goto("/credits");
+
+  const { nav, menu, main } = await boxes(page);
+
+  // Pinned as literals, not as a relationship: these are the numbers the desktop
+  // layout has always produced, and the point is that they did not move.
+  expect(nav).toMatchObject({ left: 0, width: 250 });
+  expect(main!.left).toBe(250);
+  // 250px of column minus 16px of padding on each side.
+  expect(menu).toMatchObject({ left: 16, width: 218 });
+
+  const computed = await page.evaluate(() => {
+    const el = document.querySelector('nav[aria-label="Main"]')!;
+    const list = document.getElementById("sidebar-menu")!;
+    return {
+      position: getComputedStyle(el).position,
+      padding: getComputedStyle(el).padding,
+      background: getComputedStyle(el).backgroundColor,
+      listPosition: getComputedStyle(list).position,
+    };
+  });
+  // The four properties the overlay sets below the breakpoint, each asserted back
+  // at its desktop value. A geometry-only check would pass on a column that had
+  // been made a positioning context or lost its fill.
+  expect(computed).toEqual({
+    position: "static",
+    padding: "16px",
+    background: "rgb(39, 39, 42)",
+    listPosition: "static",
+  });
+});
+
 test("the sidebar marks exactly the current page, and follows the route", async ({
   page,
 }) => {
