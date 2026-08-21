@@ -523,6 +523,11 @@ test("the p5 canvas does not push the page wider than the viewport", async ({
  * either. A floor of `1`, though, renders a visible 1x1 canvas that no crash and
  * no visibility check can see. So `> 0` was unfalsifiable and a magnitude is not:
  * it asserts the floors are still a usable minimum, not merely a positive one.
+ *
+ * The margins are exactly zero, which is the point rather than an oversight: at
+ * this viewport the branch computes -1.39 and -114, so both floors apply and the
+ * received values are precisely 120 and 75. Lowering either floor by one pixel
+ * fails here. The numbers are derived, not fitted after the fact.
  */
 test("the p5 canvas survives a window shorter than the reserved height", async ({
   page,
@@ -538,6 +543,46 @@ test("the p5 canvas survives a window shorter than the reserved height", async (
 
   expect(size.width).toBeGreaterThanOrEqual(120);
   expect(size.height).toBeGreaterThanOrEqual(75);
+});
+
+/**
+ * The guard above is directional: it catches a width floor that is too low, and
+ * cannot catch one that is too high. Too high is the more plausible edit — the
+ * floor looks like a "smallest usable tank" knob, so raising it to something
+ * comfortable reads as an improvement — and it reintroduces #57, because the
+ * floor bypasses the `Math.min` that used to make "never wider than the
+ * container" true by construction.
+ *
+ * 320px wide is what makes this checkable, and the existing overflow guard
+ * cannot substitute for it. Measured against a build with the width floor raised
+ * to 320: here the page overflows by 16px (canvas 320 in a 288px container),
+ * while at that guard's 1280x1024 the canvas is 998 in a 998px container and
+ * nothing overflows at all. An assertion that the canvas fits its container
+ * would pass there too, so the *viewport* is the load-bearing part, not the
+ * assertion. Same blind spot as 1280x720 in the guard above -- and 320px is a
+ * real phone width rather than a contrived one.
+ */
+test("the p5 canvas fits its container at the narrowest supported width", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto("/animation");
+  await expect(page.locator("canvas")).toBeVisible({ timeout: 15_000 });
+
+  const measurements = await page.evaluate(() => {
+    const canvas = document.querySelector("canvas");
+    const root = document.documentElement;
+    return {
+      overflow: root.scrollWidth - root.clientWidth,
+      canvasWidth: canvas?.width ?? 0,
+      containerWidth: canvas?.parentElement?.clientWidth ?? 0,
+    };
+  });
+
+  expect(measurements.overflow).toBe(0);
+  expect(measurements.canvasWidth).toBeLessThanOrEqual(
+    measurements.containerWidth,
+  );
 });
 
 /**

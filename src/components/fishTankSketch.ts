@@ -124,11 +124,11 @@ export function createFishTankSketch(
     // exceed it. That used to be impossible by construction — the Math.min made
     // "never wider than the container" true arithmetically — and #57 exists
     // because a canvas wider than <main> widens <main> rather than clipping.
-    // 120 is unreachable today (it needs a viewport under 120px), but raising
-    // this to a "comfortable" 320 would reintroduce #57 silently: the overflow
-    // guard runs at 1280x1024, where the available width is 998, so it is
-    // structurally unable to see it — the same blind spot that let the original
-    // overflow through at Playwright's default viewport.
+    // 120 is unreachable today (it needs a viewport under 120px). Raising it to
+    // a "comfortable" 320 does reintroduce #57 — measured at 16px of page
+    // overflow on a 320px-wide viewport — so there is an e2e guard at that
+    // width. The 1280x1024 overflow guard cannot see it: available width there
+    // is 998 and so is the canvas.
     const minCanvasWidth = 120;
     const minCanvasHeight = 75;
 
