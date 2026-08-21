@@ -514,6 +514,15 @@ test("the p5 canvas does not push the page wider than the viewport", async ({
  * 800x186 is the boundary case rather than an arbitrary tiny window:
  * 300 / (1180 / 735) = 186.86 is where the width crosses zero. A crashed tab
  * makes `evaluate` throw, so a regression fails loudly here rather than subtly.
+ *
+ * The size assertions are deliberately magnitudes, not `> 0`, and they catch a
+ * second regression the crash cannot. Floors of `0` do not render here — they
+ * crash too, because `scaleFactor` divides by the width and hands `Infinity` to
+ * the draw calls — and at the heights where a zero dimension does survive
+ * (800x250, 800x300) the canvas has an empty bounding box, so it is not visible
+ * either. A floor of `1`, though, renders a visible 1x1 canvas that no crash and
+ * no visibility check can see. So `> 0` was unfalsifiable and a magnitude is not:
+ * it asserts the floors are still a usable minimum, not merely a positive one.
  */
 test("the p5 canvas survives a window shorter than the reserved height", async ({
   page,
@@ -527,8 +536,8 @@ test("the p5 canvas survives a window shorter than the reserved height", async (
     return { width: canvas?.width ?? 0, height: canvas?.height ?? 0 };
   });
 
-  expect(size.width).toBeGreaterThan(0);
-  expect(size.height).toBeGreaterThan(0);
+  expect(size.width).toBeGreaterThanOrEqual(120);
+  expect(size.height).toBeGreaterThanOrEqual(75);
 });
 
 /**

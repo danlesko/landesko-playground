@@ -113,9 +113,22 @@ export function createFishTankSketch(
     };
 
     // The height-led branch's width goes negative under a 187px window height,
-    // which crashes the tab, and `scaleFactor` in setup divides by it, so zero is
-    // no safer. Floored on both branches for symmetry. Nothing moves at 320px
-    // wide and 375px tall or above: 375px tall hits minCanvasHeight exactly.
+    // which crashes the tab. Zero is measurably no safer: `scaleFactor` below
+    // divides by the width, so a zero floor hands `Infinity` to every draw call
+    // and the tab still dies at 800x186. Floored on both branches for symmetry.
+    // Nothing moves at 320px wide and 375px tall or above: 375px tall hits
+    // minCanvasHeight exactly.
+    //
+    // minCanvasWidth must stay below the narrowest width
+    // `measureAvailableWidth` can report, because the Math.max below can now
+    // exceed it. That used to be impossible by construction — the Math.min made
+    // "never wider than the container" true arithmetically — and #57 exists
+    // because a canvas wider than <main> widens <main> rather than clipping.
+    // 120 is unreachable today (it needs a viewport under 120px), but raising
+    // this to a "comfortable" 320 would reintroduce #57 silently: the overflow
+    // guard runs at 1280x1024, where the available width is 998, so it is
+    // structurally unable to see it — the same blind spot that let the original
+    // overflow through at Playwright's default viewport.
     const minCanvasWidth = 120;
     const minCanvasHeight = 75;
 
