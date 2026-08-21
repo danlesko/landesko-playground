@@ -1,8 +1,7 @@
 "use client";
-import { useRouter } from "next/navigation";
-import { useTransition } from "react";
 import PageHeading from "@/components/ui/PageHeading";
 import TextLink from "@/components/ui/TextLink";
+import useErrorRetry from "./useErrorRetry";
 
 export default function Error({
   error,
@@ -11,18 +10,7 @@ export default function Error({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  const router = useRouter();
-  const [retrying, startRetry] = useTransition();
-
-  // `reset()` only clears this boundary's stored error; it does not re-run the
-  // server component. Without the refresh it would re-render the same failed
-  // payload and land straight back here.
-  function retry() {
-    startRetry(() => {
-      router.refresh();
-      reset();
-    });
-  }
+  const { retrying, retry } = useErrorRetry(reset);
 
   return (
     <div className="inline-block" style={{ width: "100%" }}>
@@ -34,16 +22,14 @@ export default function Error({
           This page could not be loaded. If the problem is temporary, trying
           again may help.
         </p>
-        {/* `aria-disabled` rather than `disabled`, so the button keeps focus
-            while the retry runs; a disabled control drops focus to the body in
-            some browsers. It does not block clicks on its own, hence the guard. */}
+        {/* `aria-busy`, not `aria-disabled`: the control stays operable while the
+            retry runs, and a second click escalates to a full reload. Neither is
+            `disabled`, which would drop focus to the body in some browsers. */}
         <button
           type="button"
-          onClick={() => {
-            if (!retrying) retry();
-          }}
-          aria-disabled={retrying}
-          className="mt-4 px-4 py-2 rounded font-bold bg-surface text-accent hover:text-accent-hover aria-disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+          onClick={retry}
+          aria-busy={retrying}
+          className="mt-4 px-4 py-2 rounded font-bold bg-surface text-accent hover:text-accent-hover aria-[busy=true]:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
         >
           Try again
         </button>
@@ -54,7 +40,7 @@ export default function Error({
           aria-atomic="true"
           className="mt-2 min-h-5 text-sm text-muted"
         >
-          {retrying ? "Retrying..." : ""}
+          {retrying ? "Retrying... click Try again to reload the page." : ""}
         </p>
         <p className="mt-4">
           <TextLink href="/" className="font-bold">

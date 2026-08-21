@@ -1,7 +1,6 @@
 "use client";
-import { useRouter } from "next/navigation";
-import { useTransition } from "react";
 import TextLink from "@/components/ui/TextLink";
+import useErrorRetry from "./useErrorRetry";
 // Next renders this boundary in place of the whole document, so none of the
 // root layout's own CSS is on the page and the semantic colour utilities below
 // would emit nothing without this import.
@@ -19,19 +18,11 @@ export default function GlobalError({
   error: Error & { digest?: string };
   reset: () => void;
 }) {
-  const router = useRouter();
-  const [retrying, startRetry] = useTransition();
-
-  // Same reasoning as error.tsx, and it binds harder here: `reset()` only
-  // clears the stored error, and the payload it would re-render is the one
-  // whose root layout threw. Only the refresh asks the server to run the
-  // layout again.
-  function retry() {
-    startRetry(() => {
-      router.refresh();
-      reset();
-    });
-  }
+  // The escalation in this hook matters most here: nothing of the site survives
+  // on this page, so a stuck retry leaves the user with no other control to try
+  // — the Home link needs the same server and, already being at `/`, does not
+  // even change the pathname that would otherwise auto-reset the boundary.
+  const { retrying, retry } = useErrorRetry(reset);
 
   return (
     <html lang="en">
@@ -49,16 +40,14 @@ export default function GlobalError({
             This site could not be loaded. If the problem is temporary, trying
             again may help.
           </p>
-          {/* `aria-disabled` rather than `disabled`, so the button keeps focus
-              while the retry runs; a disabled control drops focus to the body in
-              some browsers. It does not block clicks on its own, hence the guard. */}
+          {/* `aria-busy`, not `aria-disabled`: the control stays operable while the
+              retry runs, and a second click escalates to a full reload. Neither is
+              `disabled`, which would drop focus to the body in some browsers. */}
           <button
             type="button"
-            onClick={() => {
-              if (!retrying) retry();
-            }}
-            aria-disabled={retrying}
-            className="mt-4 px-4 py-2 rounded font-bold bg-surface text-accent hover:text-accent-hover aria-disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+            onClick={retry}
+            aria-busy={retrying}
+            className="mt-4 px-4 py-2 rounded font-bold bg-surface text-accent hover:text-accent-hover aria-[busy=true]:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
           >
             Try again
           </button>
@@ -69,7 +58,7 @@ export default function GlobalError({
             aria-atomic="true"
             className="mt-2 min-h-5 text-sm text-muted"
           >
-            {retrying ? "Retrying..." : ""}
+            {retrying ? "Retrying... click Try again to reload the page." : ""}
           </p>
           <p className="mt-4">
             <TextLink href="/" className="font-bold">
