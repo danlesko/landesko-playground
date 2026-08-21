@@ -1,14 +1,20 @@
 import type { RefObject } from "react";
-import { P5CanvasInstance } from "react-p5-wrapper";
+import type { P5CanvasInstance } from "react-p5-wrapper";
 
 /**
  * The wrapper element is a parameter rather than something the sketch finds for
  * itself because `measureAvailableWidth` sizes the canvas from its container,
  * and the container is owned by React. Passing the ref keeps that one DOM
  * dependency explicit instead of hiding a `document.querySelector` in here.
+ *
+ * `prefersReducedMotion` is a parameter for the same reason: reading
+ * `matchMedia` in here would tie the sketch to a browser global and make it
+ * unrunnable in the test suite, which has no DOM. The caller reads the query
+ * and passes the answer in.
  */
 export function createFishTankSketch(
   wrapperRef: RefObject<HTMLDivElement | null>,
+  prefersReducedMotion = false,
 ) {
   return function sketch(p5: P5CanvasInstance) {
     const baseWidth = 1180;
@@ -29,6 +35,13 @@ export function createFishTankSketch(
 
     p5.windowResized = () => {
       p5.setup();
+
+      // setup() creates a fresh, blank canvas. With the draw loop stopped
+      // nothing would ever repaint it, so the still frame has to be reissued by
+      // hand or a resize leaves an empty tank.
+      if (prefersReducedMotion) {
+        p5.redraw();
+      }
     };
 
     p5.setup = () => {
@@ -55,6 +68,15 @@ export function createFishTankSketch(
         const randomHeight =
           scaleFactor < 2.5 ? p5.random(200, 400) : p5.random(120, 200); // Example range: 30 to 70 pixels
         bladeHeights.push(randomHeight);
+      }
+
+      // p5 draws one frame after setup even when looping is off, so this yields
+      // a still of the tank rather than nothing. The fish start off-canvas and
+      // only swim into shot after a few hundred frames, so that one frame has to
+      // be given positions where they are actually visible.
+      if (prefersReducedMotion) {
+        restFishInView(p5.width);
+        p5.noLoop();
       }
     };
 
@@ -264,6 +286,14 @@ export function createFishTankSketch(
     }
 
     p5.mouseClicked = () => {
+      // A bubble only exists as a thing that rises and fades, and the only way
+      // to show it would be to restart the loop or to redraw - which re-runs the
+      // whole frame and would move the fish too. So under reduced motion a click
+      // does nothing at all, rather than something half-animated.
+      if (prefersReducedMotion) {
+        return;
+      }
+
       bubbles.push(
         new Bubble(
           scaleFactor < 2.5 ? p5.mouseX - 10 : p5.mouseX + 30,
@@ -282,6 +312,24 @@ export function createFishTankSketch(
     let xPosRightLeft3 = canvasWidth + 400;
     let xPosRightLeft4 = canvasWidth + 500;
     const yPos = 200;
+
+    // Each fish is drawn at its position variable plus a constant offset (see
+    // the drawGoldfish* calls in draw), so a layout has to be written in drawn
+    // coordinates and have that offset backed out. `drawnOffset` is the number
+    // draw() adds; the fractions spread the eight fish across the tank.
+    const restFishInView = (width: number) => {
+      const restAt = (fraction: number, drawnOffset = 0) =>
+        width * fraction - drawnOffset;
+
+      xPosLeftRight1 = restAt(0.12);
+      xPosLeftRight2 = restAt(0.34);
+      xPosLeftRight3 = restAt(0.56, -400);
+      xPosLeftRight4 = restAt(0.78, -200);
+      xPosRightLeft1 = restAt(0.22);
+      xPosRightLeft2 = restAt(0.46);
+      xPosRightLeft3 = restAt(0.68, 400);
+      xPosRightLeft4 = restAt(0.88, 500);
+    };
 
     p5.draw = () => {
       const startColor = p5.color(173, 216, 230); // Light blue
@@ -332,7 +380,10 @@ export function createFishTankSketch(
       let fish1Y = (yPos + 100) / scaleFactor;
       const d = p5.dist(fish1X, fish1Y, p5.mouseX, p5.mouseY);
       const threshold = 100;
-      if (d < threshold) {
+      // On a narrow canvas the resting position is within the threshold of the
+      // untouched (0, 0) cursor, so without the flag the still frame would show
+      // this one fish shoved aside by a cursor that is not there.
+      if (!prefersReducedMotion && d < threshold) {
         // Calculate the direction away from the cursor
         const angle = p5.atan2(fish1Y - p5.mouseY, fish1X - p5.mouseX);
         fish1X += p5.cos(angle) * 50; // Move away on the x-axis
@@ -402,43 +453,51 @@ export function createFishTankSketch(
         p5.color(0, 153, 153), // Complementary of p5.color(255, 102, 102) (light red)
         p5.color(0, 102, 102), // Complementary of p5.color(255, 153, 153) (light red)
       );
-      xPosLeftRight1 += 3;
-      xPosLeftRight2 += 4;
-      xPosLeftRight3 += 4;
-      xPosLeftRight4 += 4.5;
-      xPosRightLeft1 -= 3;
-      xPosRightLeft2 -= 2.5;
-      xPosRightLeft3 -= 4;
-      xPosRightLeft4 -= 1.5;
-      if (xPosLeftRight1 > canvasWidth + 200) {
-        xPosLeftRight1 = -400;
-      }
-      if (xPosLeftRight2 > canvasWidth + 300) {
-        xPosLeftRight2 = -500;
-      }
-      if (xPosLeftRight3 > canvasWidth + 500) {
-        xPosLeftRight3 = -400;
-      }
-      if (xPosLeftRight4 > canvasWidth + 300) {
-        xPosLeftRight4 = -500;
-      }
-      if (xPosRightLeft1 < -700) {
-        xPosRightLeft1 = canvasWidth + 200;
-      }
-      if (xPosRightLeft2 < -800) {
-        xPosRightLeft2 = canvasWidth + 300;
-      }
-      if (xPosRightLeft3 < -600) {
-        xPosRightLeft3 = canvasWidth + 200;
-      }
-      if (xPosRightLeft4 < -600) {
-        xPosRightLeft4 = canvasWidth + 300;
+      // The single point where the fish advance, so honouring reduced motion is
+      // one guard rather than eight. The wrap-around resets belong inside it too:
+      // they read the canvas width captured at startup, so after a resize they
+      // can fire against a resting position and teleport a fish off-canvas.
+      if (!prefersReducedMotion) {
+        xPosLeftRight1 += 3;
+        xPosLeftRight2 += 4;
+        xPosLeftRight3 += 4;
+        xPosLeftRight4 += 4.5;
+        xPosRightLeft1 -= 3;
+        xPosRightLeft2 -= 2.5;
+        xPosRightLeft3 -= 4;
+        xPosRightLeft4 -= 1.5;
+        if (xPosLeftRight1 > canvasWidth + 200) {
+          xPosLeftRight1 = -400;
+        }
+        if (xPosLeftRight2 > canvasWidth + 300) {
+          xPosLeftRight2 = -500;
+        }
+        if (xPosLeftRight3 > canvasWidth + 500) {
+          xPosLeftRight3 = -400;
+        }
+        if (xPosLeftRight4 > canvasWidth + 300) {
+          xPosLeftRight4 = -500;
+        }
+        if (xPosRightLeft1 < -700) {
+          xPosRightLeft1 = canvasWidth + 200;
+        }
+        if (xPosRightLeft2 < -800) {
+          xPosRightLeft2 = canvasWidth + 300;
+        }
+        if (xPosRightLeft3 < -600) {
+          xPosRightLeft3 = canvasWidth + 200;
+        }
+        if (xPosRightLeft4 < -600) {
+          xPosRightLeft4 = canvasWidth + 300;
+        }
       }
 
-      // User controlled goldfish
+      // User controlled goldfish. A still frame cannot track a cursor, and the
+      // cursor is at (0, 0) until it first moves, which would clip this fish into
+      // the top-left corner - so park it in the tank instead.
       drawGoldfishColorsScale(
-        p5.mouseX,
-        p5.mouseY,
+        prefersReducedMotion ? p5.width * 0.42 : p5.mouseX,
+        prefersReducedMotion ? p5.height * 0.62 : p5.mouseY,
         1,
         p5.color(255, 153, 51),
         p5.color(255, 102, 0),
