@@ -79,6 +79,51 @@
 -- such rows so a human can decide rather than discovering it later.
 --
 -- ---------------------------------------------------------------------------
+-- PRECONDITION 4: both render sites must pass an explicit timeZone
+-- ---------------------------------------------------------------------------
+-- This one is measured, offline, and it is the reason the migration is not the
+-- tidy-up it looks like.
+--
+-- `@vercel/postgres` sends `Neon-Raw-Text-Output: true` and parses client-side:
+-- processQueryResult maps every column through `getTypeParser(dataTypeID)`, and
+-- no `types` override is passed. OIDs 1082, 1114 and 1184 all resolve to the
+-- same text parser, and it returns a JS `Date`. So:
+--
+--   * `Blog.date: string` in src/lib/definitions.ts is ALREADY a runtime lie --
+--     the value is a Date today. The migration does not create that; it is
+--     independently wrong and independently fixable. `new Date(aDate)` is a
+--     no-op, which is why nothing ever broke.
+--   * For a naive column (1114) the parser resolves the string in the *Node
+--     process's* zone. Denver locally, UTC on Vercel -- two different instants
+--     from the same stored row.
+--
+-- Neither render site passes a `timeZone`, so both format in the ambient zone:
+--   src/app/blog/[id]/page.tsx     (server component)
+--   src/components/MyBlogBodyAbbr.tsx  ("use client", also shows hour+minute)
+--
+-- Today those two errors CANCEL: the value is read in the ambient zone and
+-- formatted in the same ambient zone, so the stored Denver wall-clock is
+-- displayed verbatim, correctly, in both dev and production. That accident is
+-- what has kept this invisible.
+--
+-- The ALTER breaks the cancellation. The value becomes a correct instant while
+-- formatting still uses the ambient zone, so on Vercel (UTC) every post written
+-- after ~18:00 Denver displays the FOLLOWING day. Measured for a post written
+-- 2026-08-21 22:30 Denver, formatted under TZ=UTC:
+--
+--   before:  2026-08-21T22:30:00Z  ->  "Friday, August 21, 2026"
+--   after:   2026-08-22T04:30:00Z  ->  "Saturday, August 22, 2026"
+--
+-- So both call sites must pass `timeZone: "America/Denver"` in the same deploy,
+-- or this migration ships a visible off-by-one-day regression.
+--
+-- Separately and already broken: MyBlogBodyAbbr is a client component, so SSR
+-- formats in the server's zone and hydration re-formats in the *visitor's*
+-- zone. Those disagree today for any visitor outside UTC, at hour granularity
+-- since it renders hour and minute. An explicit timeZone fixes that too, and
+-- that fix is worth making whether or not this migration ever runs.
+--
+-- ---------------------------------------------------------------------------
 -- Locking and reversal
 -- ---------------------------------------------------------------------------
 -- ALTER COLUMN ... TYPE with a USING clause rewrites the table under an ACCESS
