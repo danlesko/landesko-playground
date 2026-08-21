@@ -112,17 +112,30 @@ export function createFishTankSketch(
       return availableWidth;
     };
 
+    // The height-led branch's width goes negative under a 187px window height,
+    // which crashes the tab, and `scaleFactor` in setup divides by it, so zero is
+    // no safer. Floored on both branches for symmetry. Nothing moves at 320px
+    // wide and 375px tall or above: 375px tall hits minCanvasHeight exactly.
+    const minCanvasWidth = 120;
+    const minCanvasHeight = 75;
+
     const updateCanvasDimensions = () => {
       if (p5.windowWidth / p5.windowHeight > aspectRatio) {
         return {
-          canvasWidth: p5.windowHeight * aspectRatio - 300,
-          canvasHeight: p5.windowHeight - 300,
+          canvasWidth: Math.max(
+            minCanvasWidth,
+            p5.windowHeight * aspectRatio - 300,
+          ),
+          canvasHeight: Math.max(minCanvasHeight, p5.windowHeight - 300),
         };
       }
 
       return {
-        canvasWidth: Math.min(p5.windowWidth - 50, measureAvailableWidth()),
-        canvasHeight: p5.windowWidth / aspectRatio,
+        canvasWidth: Math.max(
+          minCanvasWidth,
+          Math.min(p5.windowWidth - 50, measureAvailableWidth()),
+        ),
+        canvasHeight: Math.max(minCanvasHeight, p5.windowWidth / aspectRatio),
       };
     };
 

@@ -505,6 +505,33 @@ test("the p5 canvas does not push the page wider than the viewport", async ({
 });
 
 /**
+ * The height-led branch subtracts a flat 300 from both dimensions, so a short
+ * window drives them to zero and then past it: at a 186px window height the
+ * width is -1.4. p5 hands that straight to <canvas> and the renderer crashes the
+ * tab outright — reproduced at 186, 185 and 183, while 187 still rendered.
+ * `scaleFactor` divides by the same value, so zero is no safer than negative.
+ *
+ * 800x186 is the boundary case rather than an arbitrary tiny window:
+ * 300 / (1180 / 735) = 186.86 is where the width crosses zero. A crashed tab
+ * makes `evaluate` throw, so a regression fails loudly here rather than subtly.
+ */
+test("the p5 canvas survives a window shorter than the reserved height", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 800, height: 186 });
+  await page.goto("/animation");
+  await expect(page.locator("canvas")).toBeVisible({ timeout: 15_000 });
+
+  const size = await page.evaluate(() => {
+    const canvas = document.querySelector("canvas");
+    return { width: canvas?.width ?? 0, height: canvas?.height ?? 0 };
+  });
+
+  expect(size.width).toBeGreaterThan(0);
+  expect(size.height).toBeGreaterThan(0);
+});
+
+/**
  * The global CSS rule that neutralises animation and transition durations cannot
  * reach a <canvas>: the fish move because a JS draw loop mutates coordinates, not
  * because a keyframe animation is running. So the only way to know the canvas
