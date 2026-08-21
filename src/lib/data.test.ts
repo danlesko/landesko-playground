@@ -124,16 +124,27 @@ describe("fetchRecentBlogs", () => {
     }
   });
 
-  it("reports a generic failure without leaking the driver error", async () => {
-    failNextSqlCalls(
-      new Error("connection to postgres://user:hunter2@db.internal failed"),
-    );
+  // Driven from one table over both session states: when the two branches each
+  // had their own catch, only the anonymous one was exercised, so a mutant in
+  // the signed-in catch left all 16 tests green.
+  it.each([
+    ["anonymous", (): Session | null => null],
+    ["signed in", (): Session | null => session()],
+  ])(
+    "reports a generic failure without leaking the driver error (%s)",
+    async (_label, makeSession) => {
+      failNextSqlCalls(
+        new Error("connection to postgres://user:hunter2@db.internal failed"),
+      );
 
-    await expect(fetchRecentBlogs(null)).rejects.toThrow(
-      "Failed to fetch blogs.",
-    );
-    await expect(fetchRecentBlogs(null)).rejects.not.toThrow(/hunter2/);
-  });
+      await expect(fetchRecentBlogs(makeSession())).rejects.toThrow(
+        "Failed to fetch blogs.",
+      );
+      await expect(fetchRecentBlogs(makeSession())).rejects.not.toThrow(
+        /hunter2/,
+      );
+    },
+  );
 });
 
 describe("getBlog", () => {
@@ -194,12 +205,23 @@ describe("getBlog", () => {
     await expect(getBlog(null, id)).resolves.toEqual(row);
   });
 
-  it("reports a generic failure without leaking the driver error", async () => {
-    failNextSqlCalls(new Error("password authentication failed for user 'x'"));
+  // Same table as fetchRecentBlogs; see the note there.
+  it.each([
+    ["anonymous", (): Session | null => null],
+    ["signed in", (): Session | null => session()],
+  ])(
+    "reports a generic failure without leaking the driver error (%s)",
+    async (_label, makeSession) => {
+      failNextSqlCalls(
+        new Error("password authentication failed for user 'x'"),
+      );
 
-    await expect(getBlog(null, id)).rejects.toThrow("Failed to fetch blog.");
-    await expect(getBlog(null, id)).rejects.not.toThrow(/password/);
-  });
+      await expect(getBlog(makeSession(), id)).rejects.toThrow(
+        "Failed to fetch blog.",
+      );
+      await expect(getBlog(makeSession(), id)).rejects.not.toThrow(/password/);
+    },
+  );
 });
 
 describe("deleteBlog", () => {
