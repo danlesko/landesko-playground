@@ -14,11 +14,15 @@ const mont = Montserrat({
 });
 
 export const metadata: Metadata = {
-  // og:image has to be an absolute URL, and without this Next resolves it
-  // against http://localhost:3000 and says so at build time. Vercel sets
-  // VERCEL_PROJECT_PRODUCTION_URL to the project's production domain, which
-  // keeps previews pointing at the production image rather than at a
-  // deployment-specific host that changes on every push.
+  // og:image has to be an absolute URL, and without this the production build
+  // warns and falls back to http://localhost:3000.
+  //
+  // It does NOT decide the og:image host. resolve-opengraph.js overrides
+  // metadataBase whenever the URL is relative and the image comes from a
+  // file-convention route, which opengraph-image.tsx is — so Next substitutes
+  // its own fallback: the production domain in production, and the
+  // per-deployment preview host in previews. This value is what silences the
+  // warning and what every *other* relative metadata URL resolves against.
   metadataBase: new URL(
     process.env.VERCEL_PROJECT_PRODUCTION_URL
       ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
