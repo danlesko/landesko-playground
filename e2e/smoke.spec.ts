@@ -338,9 +338,14 @@ test("the sidebar toggle reports a truthful expanded state below `lg`", async ({
   const toggle = sidebar.getByRole("button", { name: "Menu" });
   await expect(toggle).toBeVisible();
 
+  // Two claims, pinned separately: the computed name is exactly "Menu", and it
+  // comes from `aria-label`. Neither implies the other -- an `aria-labelledby`
+  // would outrank the label and change the name, while `alt` is a name fallback,
+  // so the name alone was already "Menu" before `aria-label` existed.
   await expect(toggle).toHaveAccessibleName("Menu");
+  await expect(toggle).toHaveAttribute("aria-label", "Menu");
 
-  // The name assertion above cannot carry the decorative-icon claim on its own:
+  // Neither line above can carry the decorative-icon claim:
   // `aria-label` outranks descendant content, so reinstating the icon's alt text
   // would leave the computed name "Menu" and that assertion green while the
   // image went back to being a node of its own inside the button. Mutation-
@@ -426,6 +431,11 @@ test("the sidebar marks exactly the current page, and follows the route", async 
   await expect(page).toHaveURL("/animation");
   await expect(current).toHaveCount(1);
   await expect(current).toHaveAttribute("href", "/animation");
+  // Re-asserted after the move, not just before it: the locator matches any
+  // `aria-current`, so a route-dependent bug emitting `true` would keep the count
+  // at one and satisfy the href. That still announces a current item, just not
+  // which kind, so only pinning the exact token holds the page-level meaning.
+  await expect(current).toHaveAttribute("aria-current", "page");
 });
 
 /**
