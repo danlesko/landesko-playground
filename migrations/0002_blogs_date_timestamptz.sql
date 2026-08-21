@@ -1,0 +1,138 @@
+-- ============================================================================
+-- NOT EXECUTED. This file has never been run against any database.
+--
+-- It exists so the owner has something concrete to approve rather than an
+-- abstract request. Read the preconditions before running it: this migration
+-- rewrites production data irreversibly-in-practice, and it is NOT safe to
+-- deploy on its own.
+-- ============================================================================
+--
+-- Purpose: convert blogs.date from TIMESTAMP WITHOUT TIME ZONE to TIMESTAMPTZ
+-- while correctly recovering the instant each existing value was meant to
+-- denote.
+--
+-- ---------------------------------------------------------------------------
+-- Why the obvious one-liner is wrong
+-- ---------------------------------------------------------------------------
+-- A bare
+--
+--   ALTER TABLE blogs ALTER COLUMN date TYPE TIMESTAMPTZ;
+--
+-- casts using the *session* TimeZone. The Neon server's TimeZone is GMT, so
+-- every stored value -- all of which are Denver wall-clock times written by
+-- src/lib/actions.ts -- would be reinterpreted as if it had been UTC. That
+-- does not fix the existing defect, it freezes it into the data permanently
+-- and destroys the information needed to undo it. The USING clause below is
+-- the entire point of this file.
+--
+-- ---------------------------------------------------------------------------
+-- PRECONDITION 1: src/lib/actions.ts must change in the same deploy
+-- ---------------------------------------------------------------------------
+-- createBlog currently inserts a locale-formatted string:
+--
+--   new Date().toLocaleString("en-US", { timeZone: "America/Denver",
+--                                        hourCycle: "h23" })   -- "8/21/2026, 14:03:22"
+--
+-- Against the current naive column that parses (the server's DateStyle is
+-- MDY, which is the order en-US emits) and stores Denver wall-clock. Against a
+-- TIMESTAMPTZ column the same string is cast using the session TimeZone, i.e.
+-- GMT, so every NEW row would be wrong by the Denver offset. Running this
+-- migration without changing that call site introduces a fresh corruption
+-- rather than ending the old one.
+--
+-- Not fixed here, because picking the replacement is a design decision: pass a
+-- real instant (`new Date().toISOString()`), or drop `date` from the INSERT and
+-- give the column a `DEFAULT now()`. Either works; this file deliberately
+-- changes no column default.
+--
+-- ---------------------------------------------------------------------------
+-- PRECONDITION 2: what the USING clause assumes about existing rows
+-- ---------------------------------------------------------------------------
+-- It assumes every existing naive value is Denver wall-clock. That holds for
+-- any row written through createBlog. It does NOT necessarily hold for:
+--
+--   * Rows written by the original seed route, whose values came from a
+--     seed-data list into what was then a DATE column, so they carry
+--     00:00:00. For those, "midnight in Denver" is a choice this migration
+--     imposes, not a fact it recovers -- the original values denoted a
+--     calendar day with no time of day at all.
+--   * Any row inserted by hand from a machine in another zone. Such a row is
+--     shifted by the difference between Denver and whatever zone was actually
+--     meant, and it is not detectable afterwards, because the intended zone
+--     was never recorded anywhere. That is the underlying disease; this
+--     migration cannot cure rows that already have it.
+--
+-- I have NOT measured how many rows are at 00:00:00 -- database access was
+-- denied before I could, so treat the seed-row question as open. Run the
+-- verification block at the bottom first.
+--
+-- ---------------------------------------------------------------------------
+-- PRECONDITION 3: DST-ambiguous values cannot be resolved
+-- ---------------------------------------------------------------------------
+-- `naive AT TIME ZONE 'America/Denver'` is ambiguous for local times inside the
+-- autumn fall-back hour (two real instants map to one wall-clock reading) and
+-- undefined for times inside the spring-forward gap (no instant maps to it).
+-- Postgres resolves both silently, with no warning and no error. Which of the
+-- two candidates it picks is not something this migration should be trusted to
+-- get right, so any affected row may land an hour off, unrecoverably -- again
+-- because the original offset was never stored. The verification block flags
+-- such rows so a human can decide rather than discovering it later.
+--
+-- ---------------------------------------------------------------------------
+-- Locking and reversal
+-- ---------------------------------------------------------------------------
+-- ALTER COLUMN ... TYPE with a USING clause rewrites the table under an ACCESS
+-- EXCLUSIVE lock. On the current row count that is effectively instant; the
+-- note matters only if this is run against a much larger table later.
+--
+-- The type change is mechanically reversible -- AT TIME ZONE inverts itself
+-- depending on the input type, so the rollback is:
+--
+--   ALTER TABLE blogs
+--     ALTER COLUMN date TYPE TIMESTAMP WITHOUT TIME ZONE
+--     USING date AT TIME ZONE 'America/Denver';
+--
+-- But it is NOT information-preserving for rows caught by Precondition 2 or 3:
+-- a wrongly-guessed instant round-trips back to the same naive value it started
+-- as, so a rollback hides the damage instead of revealing it. Take a backup.
+
+BEGIN;
+
+ALTER TABLE blogs
+  ALTER COLUMN date TYPE TIMESTAMPTZ
+  USING date AT TIME ZONE 'America/Denver';
+
+COMMIT;
+
+-- ---------------------------------------------------------------------------
+-- Verification -- run these BEFORE the migration above, under the owner's own
+-- authorization. They are SELECTs and change nothing. Deliberately left
+-- commented out so this file cannot be executed as a whole without a decision.
+-- ---------------------------------------------------------------------------
+--
+-- How many rows carry no real time of day (probable seed rows, Precondition 2):
+--
+--   SELECT count(*) FILTER (WHERE date::time = '00:00:00') AS midnight_rows,
+--          count(*)                                       AS total_rows
+--   FROM blogs;
+--
+-- Rows whose naive value is ambiguous or nonexistent in America/Denver
+-- (Precondition 3). Note a round-trip test does NOT work here: an ambiguous
+-- autumn value round-trips cleanly through both AT TIME ZONE directions and
+-- would pass. This tests local linearity instead -- away from a transition,
+-- shifting the naive input by an hour must shift the resulting instant by
+-- exactly an hour, and that breaks in the neighbourhood of an offset change in
+-- either direction:
+--
+--   SELECT id, date
+--   FROM blogs
+--   WHERE ((date + interval '1 hour') AT TIME ZONE 'America/Denver')
+--           - (date AT TIME ZONE 'America/Denver') <> interval '1 hour'
+--      OR (date AT TIME ZONE 'America/Denver')
+--           - ((date - interval '1 hour') AT TIME ZONE 'America/Denver')
+--           <> interval '1 hour';
+--
+-- Span of stored values, to sanity-check that nothing sits far from when the
+-- posts were actually written:
+--
+--   SELECT min(date) AS earliest, max(date) AS latest FROM blogs;
