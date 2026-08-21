@@ -1,4 +1,5 @@
 import BackLink from "@/components/ui/BackLink";
+import PageHeading from "@/components/ui/PageHeading";
 
 const LoadingSkeletons = () => {
   return (
@@ -14,13 +15,13 @@ export default function Loading() {
   return (
     <>
       {/* The real heading is the post title, which isn't known yet. */}
-      <h2 className="text-4xl font-bold">
+      <PageHeading>
         <span className="sr-only">Loading blog post</span>
         <span
           aria-hidden="true"
           className="block h-10 w-3/4 lg:w-1/3 bg-gray-300 rounded animate-pulse"
         ></span>
-      </h2>
+      </PageHeading>
       <BackLink />
       <LoadingSkeletons />
     </>

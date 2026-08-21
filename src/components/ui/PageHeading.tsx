@@ -3,5 +3,5 @@ export default function PageHeading({
 }: {
   children: React.ReactNode;
 }) {
-  return <h2 className="text-4xl font-bold">{children}</h2>;
+  return <h1 className="text-4xl font-bold">{children}</h1>;
 }

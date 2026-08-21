@@ -2,6 +2,7 @@ import { cache } from "react";
 import { getBlog } from "@/lib/data";
 import { notFound } from "next/navigation";
 import BackLink from "@/components/ui/BackLink";
+import PageHeading from "@/components/ui/PageHeading";
 import { auth } from "@/auth";
 
 // `generateMetadata` and the component below render in the same request and both
@@ -47,21 +48,21 @@ export default async function Blog(props: { params: Promise<{ id: string }> }) {
 
   return (
     <div className="inline-block" style={{ width: "100%" }}>
-      <h2 className="text-4xl font-bold">{blog.title}</h2>
+      <PageHeading>{blog.title}</PageHeading>
       <BackLink />
       <div
         key={blog.title}
         className="mt-4 p-4 shadow-md rounded-lg md:w-full lg:min-w-[600px] lg:w-1/2 min-h-32 border border-border overflow-auto"
       >
         <div className="flow-root">
-          <h4 className="text-sm font-medium text-muted">
+          <p className="text-sm font-medium text-muted">
             {new Date(blog.date).toLocaleDateString("en-US", {
               weekday: "long",
               year: "numeric",
               month: "long",
               day: "numeric",
             })}
-          </h4>
+          </p>
         </div>
         <div className="clear-both" />
         <p className="whitespace-pre-line">{blog.content}</p>

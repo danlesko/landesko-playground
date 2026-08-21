@@ -22,9 +22,9 @@ const MyBlogBodyAbbr = ({
     <div className="mt-4 p-4 shadow-md rounded-lg md:w-full lg:min-w-[600px] lg:max-w-[50%] min-h-32 max-h-32 border border-border overflow-auto">
       <div className="flow-root">
         <div className="flex justify-between items-center">
-          <h3 className="text-xl font-semibold">
+          <h2 className="text-xl font-semibold">
             <TextLink href={`/blog/${blog.id}`}>{blog.title}</TextLink>
-          </h3>
+          </h2>
           {session?.user && (
             <Trash
               size={24}
@@ -33,7 +33,7 @@ const MyBlogBodyAbbr = ({
             />
           )}
         </div>
-        <h4 className="text-sm font-medium text-muted">
+        <p className="text-sm font-medium text-muted">
           {new Date(blog.date).toLocaleDateString("en-US", {
             weekday: "long",
             year: "numeric",
@@ -42,7 +42,7 @@ const MyBlogBodyAbbr = ({
             hour: "2-digit",
             minute: "2-digit",
           })}
-        </h4>
+        </p>
       </div>
       <p className="line-clamp-1">{blog.content}</p>
       <Modal

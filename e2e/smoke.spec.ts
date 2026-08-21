@@ -32,7 +32,7 @@ for (const { path, heading } of PUBLIC_ROUTES) {
   test(`${path} renders its own heading`, async ({ page }) => {
     await page.goto(path);
     await expect(
-      page.getByRole("heading", { name: heading, level: 2 }),
+      page.getByRole("heading", { name: heading, level: 1 }),
     ).toBeVisible();
   });
 }
@@ -185,7 +185,7 @@ test.describe("/contact", () => {
       await page.goto("/contact");
 
       await expect(
-        page.getByRole("heading", { name: "Contact", level: 2 }),
+        page.getByRole("heading", { name: "Contact", level: 1 }),
       ).toBeVisible();
       // By `name`, the property `sendContactEmail` reads off the submitted
       // object, rather than by placeholder copy an a11y pass may rewrite.
@@ -291,7 +291,7 @@ test("the sidebar client-side navigates between routes", async ({ page }) => {
     await link.click();
     await expect(page).toHaveURL(path);
     await expect(
-      page.getByRole("heading", { name: heading, level: 2 }),
+      page.getByRole("heading", { name: heading, level: 1 }),
     ).toBeVisible();
     expect(
       await page.evaluate(() => "__sameDocument" in window),

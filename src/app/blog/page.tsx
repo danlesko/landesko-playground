@@ -18,14 +18,14 @@ export default async function Blog() {
 
   return (
     <div className="inline-block" style={{ width: "100%" }}>
-      <span className="flex justify-between items-center lg:max-w-[50%]">
+      <div className="flex justify-between items-center lg:max-w-[50%]">
         <PageHeading>Blog Posts</PageHeading>
         {session?.user && (
           <TextLink href="/blog/create" className="font-bold">
             Create New Post
           </TextLink>
         )}
-      </span>
+      </div>
       {blogs.length === 0 ? (
         <p className="mt-4 text-muted">No posts to show yet.</p>
       ) : (
