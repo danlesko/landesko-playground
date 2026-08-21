@@ -503,3 +503,145 @@ test("the p5 canvas does not push the page wider than the viewport", async ({
   );
   expect(overflow).toBe(0);
 });
+
+/**
+ * The global CSS rule that neutralises animation and transition durations cannot
+ * reach a <canvas>: the fish move because a JS draw loop mutates coordinates, not
+ * because a keyframe animation is running. So the only way to know the canvas
+ * honours the preference is to emulate it and watch the pixels.
+ *
+ * Two shots of the same page rather than a golden image: the seaweed is
+ * randomised per load, so no stored screenshot could ever match, and "did this
+ * change" is the property under test anyway. It also covers the seam the unit
+ * tests cannot reach - the component reading `matchMedia` and handing the answer
+ * to the sketch.
+ *
+ * Crucially the running case has to be polled, not sampled once after a fixed
+ * delay. Every fish starts hundreds of pixels outside the canvas and the water,
+ * seaweed and sand are static, so the first ~40 frames of the animation are
+ * pixel-identical to each other. A 400ms sample of a perfectly healthy canvas
+ * reports "still" about half the time.
+ */
+const canvasOf = async (page: import("@playwright/test").Page) => {
+  const canvas = page.locator("canvas");
+  await expect(canvas).toBeVisible({ timeout: 15_000 });
+  return canvas;
+};
+
+async function expectCanvasToAnimate(page: import("@playwright/test").Page) {
+  const canvas = await canvasOf(page);
+  const first = await canvas.screenshot();
+
+  await expect
+    .poll(async () => (await canvas.screenshot()).equals(first), {
+      timeout: 10_000,
+      intervals: [250],
+    })
+    .toBe(false);
+}
+
+async function expectCanvasToHold(page: import("@playwright/test").Page) {
+  const canvas = await canvasOf(page);
+  const first = await canvas.screenshot();
+
+  // Two seconds is ~120 frames. With the loop running the fish cover 3px or more
+  // per frame, so the very first sample would already differ.
+  for (let sample = 0; sample < 8; sample++) {
+    await page.waitForTimeout(250);
+    expect((await canvas.screenshot()).equals(first)).toBe(true);
+  }
+}
+
+test.describe("the p5 canvas and prefers-reduced-motion", () => {
+  test("keeps swimming when no preference is set", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/animation");
+
+    await expectCanvasToAnimate(page);
+  });
+
+  test("settles into a still frame when reduce is preferred", async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/animation");
+
+    await expectCanvasToHold(page);
+  });
+
+  // A still frame is only an acceptable substitute for the animation if it still
+  // shows the aquarium the page is about. Stopping the loop without placing the
+  // fish first leaves water, seaweed and sand but no fish at all.
+  //
+  // Every fish is counted, not just one: eight of the nine are placed by the
+  // resting layout and the ninth is anchored separately, so a check that found
+  // any single fish could pass over seven missing ones. Each body colour is an
+  // exact fill that nothing else in the tank uses - except the green fish, which
+  // shares rgb(34, 139, 34) with one of the four seaweed colours, so its count
+  // proves less than the others and it is left out.
+  test("shows every fish in that still frame", async ({ page }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/animation");
+    await canvasOf(page);
+
+    const FISH_BODY_COLOURS = {
+      purpleSmall: [128, 0, 128],
+      cyanSmall: [0, 255, 255],
+      redMedium: [255, 0, 0],
+      tealLarge: [0, 128, 128],
+      lightRedSmall: [255, 102, 102],
+      paleRedLarge: [255, 128, 128],
+      darkCyanMedium: [0, 153, 153],
+      cursorGoldfish: [255, 153, 51],
+    } as const;
+
+    const counts = await page.evaluate((colours) => {
+      const canvas = document.querySelector("canvas");
+      const context = canvas?.getContext("2d");
+      if (!canvas || !context) {
+        return null;
+      }
+
+      const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+      const found: Record<string, number> = {};
+
+      for (const [name, [r, g, b]] of Object.entries(colours)) {
+        let matches = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          if (data[i] === r && data[i + 1] === g && data[i + 2] === b) {
+            matches++;
+          }
+        }
+        found[name] = matches;
+      }
+
+      return found;
+    }, FISH_BODY_COLOURS);
+
+    // The smallest fish is around 130 pixels of body at this viewport, so 50 is
+    // clear of both antialiasing and any renderer difference in CI.
+    for (const name of Object.keys(FISH_BODY_COLOURS)) {
+      expect(
+        counts?.[name],
+        `${name} is missing from the still frame`,
+      ).toBeGreaterThan(50);
+    }
+  });
+
+  test("stops when the preference is turned on without a reload", async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.goto("/animation");
+    await expectCanvasToAnimate(page);
+
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    // The change event rebuilds the sketch from scratch, so let the replacement
+    // instance settle before sampling it.
+    await page.waitForTimeout(1000);
+
+    await expectCanvasToHold(page);
+    // The old p5 instance has to go with it, or a second sketch keeps drawing.
+    await expect(page.locator("canvas")).toHaveCount(1);
+  });
+});
