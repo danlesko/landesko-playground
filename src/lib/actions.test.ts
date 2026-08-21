@@ -63,6 +63,13 @@ function blogForm(overrides: Record<string, string | null> = {}): FormData {
   return formData;
 }
 
+/**
+ * `createBlog` is a useActionState action, so the previous state comes first.
+ * Every call here starts from the empty state; nothing depends on the previous
+ * one, which is the property that lets the action stay pure.
+ */
+const submitBlog = (formData: FormData) => createBlog({}, formData);
+
 /** The `private` column value the INSERT bound, whatever its position. */
 function insertedPrivateFlag(): unknown {
   const call = onlySqlCall();
@@ -84,13 +91,13 @@ describe("createBlog authorization", () => {
   it("throws Unauthorized for an anonymous caller", async () => {
     auth.mockResolvedValue(null);
 
-    await expect(createBlog(blogForm())).rejects.toThrow("Unauthorized");
+    await expect(submitBlog(blogForm())).rejects.toThrow("Unauthorized");
   });
 
   it("writes nothing and redirects nowhere when unauthorized", async () => {
     auth.mockResolvedValue(null);
 
-    await expect(createBlog(blogForm())).rejects.toThrow("Unauthorized");
+    await expect(submitBlog(blogForm())).rejects.toThrow("Unauthorized");
 
     // The assertion that matters: the mutation never happened.
     expect(sqlCalls()).toHaveLength(0);
@@ -101,7 +108,7 @@ describe("createBlog authorization", () => {
   it("rejects a session that carries no user", async () => {
     auth.mockResolvedValue(sessionWithoutUser());
 
-    await expect(createBlog(blogForm())).rejects.toThrow("Unauthorized");
+    await expect(submitBlog(blogForm())).rejects.toThrow("Unauthorized");
     expect(sqlCalls()).toHaveLength(0);
   });
 
@@ -110,7 +117,7 @@ describe("createBlog authorization", () => {
 
     // An empty title would fail the schema. An anonymous caller must not be
     // able to tell the difference, and must not reach the parser at all.
-    await expect(createBlog(blogForm({ title: "" }))).rejects.toThrow(
+    await expect(submitBlog(blogForm({ title: "" }))).rejects.toThrow(
       "Unauthorized",
     );
   });
@@ -122,7 +129,7 @@ describe("createBlog when signed in", () => {
   });
 
   it("inserts the post, revalidates /blog and redirects there", async () => {
-    await expectRedirect(() => createBlog(blogForm()), "/blog");
+    await expectRedirect(() => submitBlog(blogForm()), "/blog");
 
     const call = onlySqlCall();
     expect(normalizeSql(call.text)).toContain(
@@ -135,7 +142,7 @@ describe("createBlog when signed in", () => {
 
   it("binds every value instead of interpolating it into the query text", async () => {
     await expectRedirect(
-      () => createBlog(blogForm({ title: "'); DROP TABLE blogs; --" })),
+      () => submitBlog(blogForm({ title: "'); DROP TABLE blogs; --" })),
       "/blog",
     );
 
@@ -146,7 +153,7 @@ describe("createBlog when signed in", () => {
 
   it('treats the checkbox value "on" as private', async () => {
     await expectRedirect(
-      () => createBlog(blogForm({ private: "on" })),
+      () => submitBlog(blogForm({ private: "on" })),
       "/blog",
     );
 
@@ -154,7 +161,7 @@ describe("createBlog when signed in", () => {
   });
 
   it("treats an absent checkbox as public", async () => {
-    await expectRedirect(() => createBlog(blogForm()), "/blog");
+    await expectRedirect(() => submitBlog(blogForm()), "/blog");
 
     expect(insertedPrivateFlag()).toBe(false);
   });
@@ -166,42 +173,81 @@ describe("createBlog when signed in", () => {
     // sends "on", so this is not exploitable through the UI, but it is a
     // hardening opportunity rather than a property worth celebrating.
     await expectRedirect(
-      () => createBlog(blogForm({ private: "off" })),
+      () => submitBlog(blogForm({ private: "off" })),
       "/blog",
     );
 
     expect(insertedPrivateFlag()).toBe(false);
   });
 
-  it("rejects an empty title", async () => {
-    await expect(createBlog(blogForm({ title: "" }))).rejects.toThrow();
+  it("returns an empty title as a field error instead of throwing", async () => {
+    const state = await submitBlog(blogForm({ title: "" }));
+
+    expect(state.fieldErrors?.title).toEqual(["Title is required"]);
+    expect(state.fieldErrors?.content).toBeUndefined();
     expect(sqlCalls()).toHaveLength(0);
+    // A returned error must not navigate, or the reader never sees it.
+    expect(redirect).not.toHaveBeenCalled();
+    expect(revalidatePath).not.toHaveBeenCalled();
   });
 
-  it("rejects a title longer than 100 characters", async () => {
-    await expect(
-      createBlog(blogForm({ title: "a".repeat(101) })),
-    ).rejects.toThrow();
+  it("returns an over-long title as a field error naming the limit", async () => {
+    const state = await submitBlog(blogForm({ title: "a".repeat(101) }));
+
+    expect(state.fieldErrors?.title).toEqual([
+      "Title must be 100 characters or fewer",
+    ]);
     expect(sqlCalls()).toHaveLength(0);
+    expect(redirect).not.toHaveBeenCalled();
+  });
+
+  it("hands back what was typed, because React resets the form on submit", async () => {
+    // react-dom 19.1 calls requestFormReset before running the action, with no
+    // opt-out, so the returned values are the only thing repopulating the
+    // fields. Without this the reader is told the title is wrong *and* loses
+    // the content they wrote.
+    const state = await submitBlog(
+      blogForm({ title: "", content: "Content worth keeping", private: "on" }),
+    );
+
+    expect(state.values).toEqual({
+      title: "",
+      content: "Content worth keeping",
+      privateBlog: true,
+    });
+  });
+
+  it("reports both fields at once when both are invalid", async () => {
+    const state = await submitBlog(blogForm({ title: "", content: "" }));
+
+    expect(state.fieldErrors?.title).toEqual(["Title is required"]);
+    expect(state.fieldErrors?.content).toEqual(["Content is required"]);
   });
 
   it("accepts a title of exactly 100 characters", async () => {
     await expectRedirect(
-      () => createBlog(blogForm({ title: "a".repeat(100) })),
+      () => submitBlog(blogForm({ title: "a".repeat(100) })),
       "/blog",
     );
 
     expect(onlySqlCall().values).toContain("a".repeat(100));
   });
 
-  it("rejects empty content", async () => {
-    await expect(createBlog(blogForm({ content: "" }))).rejects.toThrow();
+  it("returns empty content as a field error", async () => {
+    const state = await submitBlog(blogForm({ content: "" }));
+
+    expect(state.fieldErrors?.content).toEqual(["Content is required"]);
     expect(sqlCalls()).toHaveLength(0);
+    expect(redirect).not.toHaveBeenCalled();
   });
 
-  it("rejects a missing title field outright", async () => {
-    // `formData.get` returns null, which the string schema refuses.
-    await expect(createBlog(blogForm({ title: null }))).rejects.toThrow();
+  it("reports a missing title field in the reader's terms, not the parser's", async () => {
+    // `formData.get` returns null, so this trips invalid_type rather than min.
+    // Both paths have to produce the same sentence or the message leaks the
+    // difference between "left blank" and "field absent".
+    const state = await submitBlog(blogForm({ title: null }));
+
+    expect(state.fieldErrors?.title).toEqual(["Title is required"]);
     expect(sqlCalls()).toHaveLength(0);
   });
 
@@ -215,7 +261,7 @@ describe("createBlog when signed in", () => {
       now: new Date("2026-03-15T04:30:00Z"),
     });
     try {
-      await expectRedirect(() => createBlog(blogForm()), "/blog");
+      await expectRedirect(() => submitBlog(blogForm()), "/blog");
     } finally {
       vi.useRealTimers();
     }
