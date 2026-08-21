@@ -145,6 +145,9 @@ describe("createFishTankSketch", () => {
     stub.p5.draw();
     const secondFrame = stub.takeCalls("translate");
 
+    // Two empty arrays are equal, and an earlier version of this stub recorded
+    // nothing at all - so the count is asserted before the comparison.
+    expect(firstFrame).toHaveLength(9);
     expect(secondFrame).toEqual(firstFrame);
   });
 

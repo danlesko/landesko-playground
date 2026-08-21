@@ -532,9 +532,12 @@ async function expectCanvasToAnimate(page: import("@playwright/test").Page) {
   const canvas = await canvasOf(page);
   const first = await canvas.screenshot();
 
+  // The first fish needs roughly 50 real draw frames to reach the canvas, so the
+  // budget has to cover a CI runner rendering at a few frames per second. Polling
+  // returns the moment the pixels differ, so a generous ceiling costs nothing.
   await expect
     .poll(async () => (await canvas.screenshot()).equals(first), {
-      timeout: 10_000,
+      timeout: 20_000,
       intervals: [250],
     })
     .toBe(false);
@@ -573,13 +576,14 @@ test.describe("the p5 canvas and prefers-reduced-motion", () => {
   // shows the aquarium the page is about. Stopping the loop without placing the
   // fish first leaves water, seaweed and sand but no fish at all.
   //
-  // Every fish is counted, not just one: eight of the nine are placed by the
-  // resting layout and the ninth is anchored separately, so a check that found
-  // any single fish could pass over seven missing ones. Each body colour is an
-  // exact fill that nothing else in the tank uses - except the green fish, which
-  // shares rgb(34, 139, 34) with one of the four seaweed colours, so its count
-  // proves less than the others and it is left out.
-  test("shows every fish in that still frame", async ({ page }) => {
+  // Each fish is counted separately, not just one: eight of the nine are placed
+  // by the resting layout and the ninth is anchored separately, so a check that
+  // found any single fish could pass over seven missing ones - the first version
+  // of this test looked only for the anchored goldfish and passed against main.
+  // Each body colour is an exact fill that nothing else in the tank uses, except
+  // the green fish, which shares rgb(34, 139, 34) with one of the four seaweed
+  // colours; its count would prove nothing, so it is the one left uncounted.
+  test("shows eight of the nine fish in that still frame", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "reduce" });
     await page.goto("/animation");
     await canvasOf(page);
@@ -642,6 +646,24 @@ test.describe("the p5 canvas and prefers-reduced-motion", () => {
 
     await expectCanvasToHold(page);
     // The old p5 instance has to go with it, or a second sketch keeps drawing.
+    await expect(page.locator("canvas")).toHaveCount(1);
+  });
+
+  // The other direction is a separate failure mode, not a mirror image: a
+  // listener that only reacts when the query starts matching passes every other
+  // test here and leaves the canvas frozen for a reader who turns the preference
+  // back off.
+  test("resumes when the preference is turned off without a reload", async ({
+    page,
+  }) => {
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    await page.goto("/animation");
+    await expectCanvasToHold(page);
+
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.waitForTimeout(1000);
+
+    await expectCanvasToAnimate(page);
     await expect(page.locator("canvas")).toHaveCount(1);
   });
 });
