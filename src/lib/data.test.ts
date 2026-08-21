@@ -74,6 +74,27 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+/**
+ * Asserts the catch logged the prefix and *the original error object*, once.
+ *
+ * Deliberately not `expect(consoleError).toHaveBeenCalledWith(prefix, error)`:
+ * that compares arguments by deep equality, and Vitest compares Errors by name,
+ * message, cause and enumerable properties. So it accepts a catch that logs
+ * `new Error(error.message)` — a different object that reads the same but has
+ * lost the driver's stack. Verified rather than assumed: with the
+ * `toHaveBeenCalledWith` form, a re-wrapping mutant passed at 24/24.
+ *
+ * `toBe` is what pins identity. The call count is asserted too, so a catch that
+ * logs twice, or logs in a loop, does not slip through on one matching call.
+ */
+function expectLoggedExactly(prefix: string, error: Error): void {
+  expect(consoleError).toHaveBeenCalledOnce();
+  const call = consoleError.mock.calls[0];
+  if (!call) throw new Error("Unreachable: asserted called once above.");
+  expect(call[0]).toBe(prefix);
+  expect(call[1]).toBe(error);
+}
+
 it("resolves `sql` to the mock, so no query can reach a real database", () => {
   expect(vi.isMockFunction(sql)).toBe(true);
 });
@@ -151,20 +172,16 @@ describe("fetchRecentBlogs", () => {
       );
       failNextSqlCalls(driverError);
 
-      await expect(fetchRecentBlogs(makeSession())).rejects.toThrow(
-        "Failed to fetch blogs.",
-      );
-      await expect(fetchRecentBlogs(makeSession())).rejects.not.toThrow(
-        /hunter2/,
-      );
+      // One invocation, awaited twice. Calling the subject a second time would
+      // reject again and log again, which is what makes the log count below
+      // exact rather than a restatement of how this test is written.
+      const rejected = fetchRecentBlogs(makeSession());
+      await expect(rejected).rejects.toThrow("Failed to fetch blogs.");
+      await expect(rejected).rejects.not.toThrow(/hunter2/);
 
       // Swallowing the detail at the boundary is only safe because it still
-      // reaches the server log. Asserted by identity, so a catch that logs a
-      // re-wrapped or stringified error fails here.
-      expect(consoleError).toHaveBeenCalledWith(
-        "Failed to fetch blogs:",
-        driverError,
-      );
+      // reaches the server log.
+      expectLoggedExactly("Failed to fetch blogs:", driverError);
     },
   );
 });
@@ -239,18 +256,14 @@ describe("getBlog", () => {
       );
       failNextSqlCalls(driverError);
 
-      await expect(getBlog(makeSession(), id)).rejects.toThrow(
-        "Failed to fetch blog.",
-      );
-      await expect(getBlog(makeSession(), id)).rejects.not.toThrow(/password/);
+      const rejected = getBlog(makeSession(), id);
+      await expect(rejected).rejects.toThrow("Failed to fetch blog.");
+      await expect(rejected).rejects.not.toThrow(/password/);
 
-      // See the note in the fetchRecentBlogs block. Note the prefix differs by
-      // one character from that one, so a copy-paste of the wrong message is
-      // caught here rather than silently logging the wrong operation.
-      expect(consoleError).toHaveBeenCalledWith(
-        "Failed to fetch blog:",
-        driverError,
-      );
+      // Note the prefix differs by one character from the fetchRecentBlogs one,
+      // so a copy-paste of the wrong message is caught here rather than
+      // silently logging the wrong operation.
+      expectLoggedExactly("Failed to fetch blog:", driverError);
     },
   );
 });
@@ -268,13 +281,11 @@ describe("deleteBlog", () => {
     const driverError = new Error("deadlock detected on db.internal");
     failNextSqlCalls(driverError);
 
-    await expect(deleteBlog("x")).rejects.toThrow("Failed to delete blog.");
-    await expect(deleteBlog("x")).rejects.not.toThrow(/db\.internal/);
+    const rejected = deleteBlog("x");
+    await expect(rejected).rejects.toThrow("Failed to delete blog.");
+    await expect(rejected).rejects.not.toThrow(/db\.internal/);
 
-    expect(consoleError).toHaveBeenCalledWith(
-      "Failed to delete blog:",
-      driverError,
-    );
+    expectLoggedExactly("Failed to delete blog:", driverError);
   });
 });
 
@@ -307,8 +318,12 @@ describe("cache opt-out", () => {
 
   // Position, asserted without reading invocation counters: `noStore()` runs
   // before the query, so it still runs when the query throws. A `noStore()`
-  // moved below the query — where it would opt nothing out — passes the test
-  // above and fails this one.
+  // moved below the query passes the test above and fails this one.
+  //
+  // What that pins is execution *before a failure*, not cache semantics —
+  // `noStore()` marks the surrounding render scope dynamic and is not a wrapper
+  // around the query, so a post-query call still opts the scope out on the
+  // success path. The failure path is where the position becomes observable.
   it.each(EVERY_EXPORT)(
     "%s still opts out when the query fails",
     async (_label, run) => {
