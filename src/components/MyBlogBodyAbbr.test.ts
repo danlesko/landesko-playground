@@ -119,9 +119,13 @@ describe("attemptDelete", () => {
 
   it("reports nothing when the delete succeeds", async () => {
     const onFailure = vi.fn();
+    const deleteBlogPost = vi.fn().mockResolvedValue(undefined);
 
-    await attemptDelete(vi.fn().mockResolvedValue(undefined), ID, onFailure);
+    await attemptDelete(deleteBlogPost, ID, onFailure);
 
+    // Both halves: "no failure reported" is also true of never trying, so the
+    // attempt has to be pinned or this passes over a helper that does nothing.
+    expect(deleteBlogPost).toHaveBeenCalledTimes(1);
     expect(onFailure).not.toHaveBeenCalled();
   });
 
@@ -130,10 +134,28 @@ describe("attemptDelete", () => {
   // failure message on screen after every delete that actually worked.
   it("reports nothing when the delete succeeds by redirecting", async () => {
     const onFailure = vi.fn();
+    const deleteBlogPost = rejectingWith(redirectRejection());
 
-    await attemptDelete(rejectingWith(redirectRejection()), ID, onFailure);
+    await attemptDelete(deleteBlogPost, ID, onFailure);
 
+    expect(deleteBlogPost).toHaveBeenCalledTimes(1);
     expect(onFailure).not.toHaveBeenCalled();
+  });
+
+  // The digest grammar is `NEXT_REDIRECT;<type>;<url>;<status>;`, so a bare
+  // prefix match on the code would also swallow this and lose a real failure.
+  it("does not mistake a digest merely starting with the code for a redirect", async () => {
+    const onFailure = vi.fn();
+
+    await attemptDelete(
+      rejectingWith(
+        Object.assign(new Error("nope"), { digest: "NEXT_REDIRECTED" }),
+      ),
+      ID,
+      onFailure,
+    );
+
+    expect(onFailure).toHaveBeenCalledTimes(1);
   });
 
   it("reports a genuine failure exactly once, with a message", async () => {
@@ -149,8 +171,10 @@ describe("attemptDelete", () => {
     // The argument list, not just the first argument: a second argument would
     // be a silent extra that a `toHaveBeenCalledWith` on one value still passes.
     expect(onFailure.mock.calls[0]).toHaveLength(1);
-    expect(onFailure.mock.calls[0]?.[0]).toContain(
-      "Could not delete this post",
+    // Equality, not `toContain`: a substring check passes over a message that
+    // appends the thrown text to the fixed one.
+    expect(onFailure.mock.calls[0]?.[0]).toBe(
+      "Could not delete this post. Please try again.",
     );
   });
 
@@ -169,6 +193,11 @@ describe("attemptDelete", () => {
     await attemptDelete(rejectingWith(redacted), ID, onFailure);
 
     expect(onFailure).toHaveBeenCalledTimes(1);
+    // Being called is not enough: passing the redacted paragraph straight
+    // through would satisfy a count-only assertion.
+    expect(onFailure.mock.calls[0]?.[0]).toBe(
+      "Could not delete this post. Please try again.",
+    );
   });
 
   // The user-facing message must not be the thrown one: in production that is
@@ -182,6 +211,10 @@ describe("attemptDelete", () => {
       onFailure,
     );
 
+    // Called first, then checked: `calls[0]?.[0]` is `undefined` when the
+    // callback never ran, and `undefined` does not contain "Unauthorized", so
+    // the interesting assertion alone would pass on a helper that reports nothing.
+    expect(onFailure).toHaveBeenCalledTimes(1);
     expect(onFailure.mock.calls[0]?.[0]).not.toContain("Unauthorized");
   });
 
@@ -194,9 +227,13 @@ describe("attemptDelete", () => {
   });
 
   it("settles rather than rejecting, so no click leaves a loose rejection", async () => {
+    const onFailure = vi.fn();
+
     await expect(
-      attemptDelete(rejectingWith(new Error("Unauthorized")), ID, vi.fn()),
+      attemptDelete(rejectingWith(new Error("Unauthorized")), ID, onFailure),
     ).resolves.toBeUndefined();
+    // Otherwise a helper with an empty body also settles to `undefined`.
+    expect(onFailure).toHaveBeenCalledTimes(1);
   });
 
   it("tolerates a rejection that is not an Error at all", async () => {
