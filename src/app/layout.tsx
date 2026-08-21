@@ -14,6 +14,16 @@ const mont = Montserrat({
 });
 
 export const metadata: Metadata = {
+  // og:image has to be an absolute URL, and without this Next resolves it
+  // against http://localhost:3000 and says so at build time. Vercel sets
+  // VERCEL_PROJECT_PRODUCTION_URL to the project's production domain, which
+  // keeps previews pointing at the production image rather than at a
+  // deployment-specific host that changes on every push.
+  metadataBase: new URL(
+    process.env.VERCEL_PROJECT_PRODUCTION_URL
+      ? `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL}`
+      : "http://localhost:3000",
+  ),
   title: "Landesko's Playground",
   description: "Dan Lesko's Portfolio Playground and Blog",
   // `openGraph` omits title/description on purpose: Next inherits them from
