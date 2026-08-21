@@ -487,10 +487,17 @@ test("the collapsed sidebar below `lg` is no taller than its toggle", async ({
 test("the sidebar does not force a horizontal scrollbar at narrow widths", async ({
   page,
 }) => {
-  // 280px is the narrowest viewport any shipping device presents. The landmark
-  // used to carry an unprefixed 250px width floor, so the document could not lay
-  // out narrower than that whatever the viewport was.
-  for (const width of [280, 320, 375]) {
+  // 280px is the narrowest viewport any shipping device presents, and 320px the
+  // narrowest anyone designs for. 240px is in the list because neither of those
+  // exercises the defect: the landmark used to carry an unprefixed 250px width
+  // floor, so the document could not lay out narrower than 250px whatever the
+  // viewport was -- and every width at or above that satisfies this test whether
+  // the floor is there or not. Mutation-tested: reinstating the floor fails only
+  // the 240px iteration.
+  //
+  // Not extended below 240px, because a 221px floor remains at 200px and it is
+  // the header's login control, not this landmark.
+  for (const width of [240, 280, 320, 375]) {
     await page.setViewportSize({ width, height: 800 });
     await page.goto("/credits");
 
