@@ -86,11 +86,21 @@ afterEach(() => {
  *
  * `toBe` is what pins identity. The call count is asserted too, so a catch that
  * logs twice, or logs in a loop, does not slip through on one matching call.
+ *
+ * The arity is asserted for the same reason the count is: checking only
+ * arguments 0 and 1 leaves a catch free to append a third. Verified rather than
+ * assumed: `console.error(prefix, error, session)` on all three paths passed at
+ * 24/24 without the length assertion, logging the signed-in user's email.
+ *
+ * What this cannot see is a log that never reaches the spy — a module-level
+ * `const log = console.error` captured at import time would bypass it. No
+ * assertion on the spy can cover that; only reading data.ts can.
  */
 function expectLoggedExactly(prefix: string, error: Error): void {
   expect(consoleError).toHaveBeenCalledOnce();
   const call = consoleError.mock.calls[0];
   if (!call) throw new Error("Unreachable: asserted called once above.");
+  expect(call).toHaveLength(2);
   expect(call[0]).toBe(prefix);
   expect(call[1]).toBe(error);
 }
