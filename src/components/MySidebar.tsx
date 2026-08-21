@@ -15,6 +15,7 @@ const MySidebar = () => {
   const [isOpen, setIsOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLUListElement>(null);
+  const scrimRef = useRef<HTMLDivElement>(null);
 
   // Returning focus is unconditional because the DOM already encodes the
   // condition: at and above the large breakpoint the toggle is not laid out, and
@@ -48,14 +49,28 @@ const MySidebar = () => {
       if (event.key === "Escape") closeMenu();
     };
 
-    // The dismissing click is not given focus: the reader has just pointed at
-    // something else, and pulling focus back to the toggle would take it away
-    // from whatever they were reaching for. Escape and link activation are the
-    // cases where focus was inside the panel and has nowhere to fall back to.
+    // The dismissing click normally keeps its hands off focus: the reader has
+    // just pointed at something else, and pulling focus back to the toggle would
+    // take it away from whatever they were reaching for.
+    //
+    // The exception is focus that is inside the panel, because hiding the panel
+    // would drop it to the body and strand a keyboard reader at the top of the
+    // document -- the same outcome Escape restores from.
+    //
+    // Restoring it takes a `preventDefault`, and only on the scrim. A press
+    // clears focus as part of its own default action, which runs after this
+    // listener and would undo the restore; suppressing that is free on the scrim,
+    // which has nothing to focus and nothing to select, and is not done anywhere
+    // else, so a press on a real control still focuses it.
     const handlePointerDown = (event: PointerEvent) => {
       const target = event.target as Node;
       if (menuRef.current?.contains(target)) return;
       if (toggleRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(document.activeElement)) {
+        if (scrimRef.current?.contains(target)) event.preventDefault();
+        closeMenu();
+        return;
+      }
       setIsOpen(false);
     };
 
@@ -77,11 +92,13 @@ const MySidebar = () => {
       aria-label="Main"
       // Every width, colour and padding value that belongs to the desktop column
       // is now prefixed, and the unprefixed values below the breakpoint are the
-      // overlay's. Splitting it that way rather than overriding the old
-      // unprefixed classes at a variant is deliberate: variant and base
-      // utilities land in the same layer at the same specificity, so which one
-      // wins is decided by emission order rather than by anything readable here.
-      // With no pair of classes setting the same property there is no contest.
+      // overlay's. Each unprefixed declaration has a prefixed counterpart that
+      // resets it -- `relative` against `lg:static`, `p-2` against `lg:p-4` -- so
+      // the desktop column is not relying on the absence of a conflict. It is
+      // relying on the variant winning the conflict, which it does because
+      // variant and base utilities land in the same layer at the same specificity
+      // and the variant is emitted second. Anything unprefixed added here without
+      // a counterpart reaches desktop too.
       //
       // Below the breakpoint the landmark is a bare strip holding the toggle: no
       // background of its own, so it is indistinguishable from the page, and no
@@ -100,6 +117,7 @@ const MySidebar = () => {
           activate whichever link or control happened to be underneath. */}
       {isOpen ? (
         <div
+          ref={scrimRef}
           aria-hidden="true"
           className="fixed inset-0 bg-black/60 lg:hidden"
         />
@@ -145,8 +163,12 @@ const MySidebar = () => {
         // cap exists to avoid, so at a narrow width it would reintroduce the
         // overflow by the scrollbar's own width.
         //
-        // Each desktop line here restores a property default, which is what the
-        // list computed to before it had any of these.
+        // The desktop line restores a property default for each overlay value it
+        // faces, with three deliberate exceptions: the two insets and the
+        // z-index have no counterpart, because `lg:static` leaves all three
+        // inoperative -- insets and z-index do nothing on a static box. They are
+        // still declared at desktop, so anything that makes this box positioned
+        // again at `lg` activates all three at once.
         className={clsx(
           "absolute left-2 top-full z-10 w-[250px] max-w-[calc(100%-1rem)] rounded bg-surface p-2 shadow-2xl shadow-black",
           "lg:static lg:w-auto lg:max-w-none lg:rounded-none lg:bg-transparent lg:p-0 lg:shadow-none",

@@ -461,8 +461,13 @@ test("expanding the sidebar below `lg` overlays the content instead of pushing i
 
   // And it genuinely overlays: the panel's box has to intersect <main>'s. Without
   // this, a panel rendered into the gap beside the toggle would satisfy the two
-  // assertions above while overlaying nothing.
+  // assertions above while overlaying nothing. Both axes, because one alone is
+  // not intersection -- a panel parked below <main>, or off to the side of it,
+  // satisfies the vertical or the horizontal test on its own.
   expect(expanded.menu!.bottom).toBeGreaterThan(expanded.main!.top);
+  expect(expanded.menu!.top).toBeLessThan(expanded.main!.bottom);
+  expect(expanded.menu!.right).toBeGreaterThan(expanded.main!.left);
+  expect(expanded.menu!.left).toBeLessThan(expanded.main!.right);
 });
 
 test("the collapsed sidebar below `lg` is no taller than its toggle", async ({
@@ -479,9 +484,10 @@ test("the collapsed sidebar below `lg` is no taller than its toggle", async ({
   // The landmark used to be a full-width band 32px taller than the control it
   // held, above every page on the site. Expressed as a relationship to the
   // toggle's own height rather than as a literal, so restyling the button does
-  // not force this number to be retuned -- and the slack is small enough that
-  // reinstating the old padding fails it.
-  expect(nav!.height).toBeLessThanOrEqual(toggle + 16);
+  // not force this number to be retuned. Exact rather than an upper bound: 16px
+  // is not slack, it is the strip's own 8px of padding above and below, so any
+  // other number means the band has grown something it should not have.
+  expect(nav!.height).toBe(toggle + 16);
 });
 
 test("the sidebar does not force a horizontal scrollbar at narrow widths", async ({
@@ -523,6 +529,13 @@ test("the sidebar does not force a horizontal scrollbar at narrow widths", async
       expanded.menu!.right,
       `panel at ${width}px overhangs the viewport`,
     ).toBeLessThanOrEqual(width);
+    // Both edges. Bounding the right edge alone passes an oversized panel that
+    // has been shifted left, since a box hanging off the left does not grow
+    // `scrollWidth` either.
+    expect(
+      expanded.menu!.left,
+      `panel at ${width}px hangs off the left edge`,
+    ).toBeGreaterThanOrEqual(0);
   }
 });
 
@@ -557,6 +570,46 @@ test("the sidebar overlay is dismissible by Escape and by a click elsewhere", as
   await page.mouse.click(320, 700);
   await expect(menu).toBeHidden();
   await expect(toggle).toHaveAttribute("aria-expanded", "false");
+
+  // The same dismissal with focus parked inside the panel. This is the case the
+  // click above cannot see: there, focus was on the toggle and stayed put by
+  // default, whereas here the element holding focus is about to stop being laid
+  // out, and without a restore the reader is returned to the top of the document.
+  await toggle.click();
+  await expect(menu).toBeVisible();
+  await mainNav(page).getByRole("link", { name: "Blog" }).focus();
+  await page.mouse.click(320, 700);
+  await expect(menu).toBeHidden();
+  await expect(toggle).toBeFocused();
+});
+
+test("the sidebar overlay does not trap focus", async ({ page }) => {
+  await page.setViewportSize({ width: 375, height: 800 });
+  await page.goto("/credits");
+
+  const sidebar = mainNav(page);
+  await sidebar.getByRole("button", { name: "Menu" }).click();
+  await expect(page.locator("#sidebar-menu")).toBeVisible();
+
+  // The absence of `role="dialog"` and of `[inert]` is asserted elsewhere, but
+  // those are attributes: a focus trap written in JavaScript would leave every one
+  // of them untouched. This walks out of the panel instead. Tabbing off the last
+  // link has to leave the landmark, which is the whole behavioural difference
+  // between the disclosure this is and the modal it is not.
+  const links = sidebar.getByRole("link");
+  await links.nth((await links.count()) - 1).focus();
+  await page.keyboard.press("Tab");
+
+  await expect(page.locator("#sidebar-menu")).toBeVisible();
+  expect(
+    await page.evaluate(
+      () =>
+        !!document.activeElement &&
+        document
+          .querySelector('nav[aria-label="Main"]')!
+          .contains(document.activeElement),
+    ),
+  ).toBe(false);
 });
 
 test("the overlay adds no dialog semantics and no second control", async ({
