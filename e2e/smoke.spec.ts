@@ -338,11 +338,10 @@ test("the sidebar toggle reports a truthful expanded state below `lg`", async ({
   const toggle = sidebar.getByRole("button", { name: "Menu" });
   await expect(toggle).toBeVisible();
 
-  // The name, and then separately where the name comes from. On its own the first
-  // line is vacuous here: it passes unmodified `origin/main`, where the name came
-  // from the icon's `alt`, and it would keep passing if a `title` arrived later --
-  // both are name fallbacks. The `aria-label` this change actually adds needs
-  // asserting directly, or the deliverable is untested and the test still green.
+  // Two claims, pinned separately: the computed name is exactly "Menu", and it
+  // comes from `aria-label`. Neither implies the other -- an `aria-labelledby`
+  // would outrank the label and change the name, while `alt` is a name fallback,
+  // so the name alone was already "Menu" before `aria-label` existed.
   await expect(toggle).toHaveAccessibleName("Menu");
   await expect(toggle).toHaveAttribute("aria-label", "Menu");
 
