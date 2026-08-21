@@ -43,12 +43,30 @@ export const metadata: Metadata = {
   },
 };
 
+// Two actions on purpose, even though the form below is now shared: collapsing
+// these into one that re-reads `auth()` would make both states post the same
+// request, so signing in and signing out would become indistinguishable in the
+// rendered markup and in a network log.
+async function signInWithGithub() {
+  "use server";
+  await signIn("github");
+}
+
+async function signOutOfSession() {
+  "use server";
+  await signOut();
+}
+
 export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
   const session = await auth();
+  // Guarded on `session.user` and not `session`: a broken auth config makes
+  // `auth()` resolve to a truthy object with no user, so the looser check
+  // renders the logged-in header to anonymous readers.
+  const signedIn = Boolean(session?.user);
   return (
     <html lang="en">
       <body className={`${mont.className} antialiased`}>
@@ -70,39 +88,16 @@ export default async function RootLayout({
                 />
                 <span className="pl-1 text-xl">Landesko's Playground</span>
               </span>
-              {!session?.user ? (
-                <form
-                  action={async () => {
-                    "use server";
-                    await signIn("github");
-                  }}
+              <form action={signedIn ? signOutOfSession : signInWithGithub}>
+                <Button
+                  type="submit"
+                  variant="primary"
+                  className="mt-1"
+                  size="sm"
                 >
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    className="mt-1"
-                    size="sm"
-                  >
-                    Login
-                  </Button>
-                </form>
-              ) : (
-                <form
-                  action={async () => {
-                    "use server";
-                    await signOut();
-                  }}
-                >
-                  <Button
-                    type="submit"
-                    variant="primary"
-                    className="mt-1"
-                    size="sm"
-                  >
-                    Logout
-                  </Button>
-                </form>
-              )}
+                  {signedIn ? "Logout" : "Login"}
+                </Button>
+              </form>
             </div>
           </header>
 
