@@ -1,5 +1,13 @@
 import type { Session } from "next-auth";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+  type MockInstance,
+} from "vitest";
 
 import {
   normalizeSql,
@@ -8,7 +16,7 @@ import {
   failNextSqlCalls,
   resetSqlMock,
 } from "@/test/sql-mock";
-import { resetNextMocks } from "@/test/next-mocks";
+import { resetNextMocks, unstable_noStore } from "@/test/next-mocks";
 import { sessionWithoutUser } from "@/test/auth-mock";
 
 vi.mock("@vercel/postgres", async () => {
@@ -51,15 +59,51 @@ function session(): Session {
   };
 }
 
+// Held in a variable so the error cases can assert on it. Silencing the log
+// without asserting it made the log itself deletable: every `console.error` in
+// data.ts could be removed with the whole suite still green.
+let consoleError: MockInstance<typeof console.error>;
+
 beforeEach(() => {
   resetSqlMock();
   resetNextMocks();
-  vi.spyOn(console, "error").mockImplementation(() => {});
+  consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
 });
 
 afterEach(() => {
   vi.restoreAllMocks();
 });
+
+/**
+ * Asserts the catch logged the prefix and *the original error object*, once.
+ *
+ * Deliberately not `expect(consoleError).toHaveBeenCalledWith(prefix, error)`:
+ * that compares arguments by deep equality, and Vitest compares Errors by name,
+ * message, cause and enumerable properties. So it accepts a catch that logs
+ * `new Error(error.message)` — a different object that reads the same but has
+ * lost the driver's stack. Verified rather than assumed: with the
+ * `toHaveBeenCalledWith` form, a re-wrapping mutant passed at 24/24.
+ *
+ * `toBe` is what pins identity. The call count is asserted too, so a catch that
+ * logs twice, or logs in a loop, does not slip through on one matching call.
+ *
+ * The arity is asserted for the same reason the count is: checking only
+ * arguments 0 and 1 leaves a catch free to append a third. Verified rather than
+ * assumed: `console.error(prefix, error, session)` on all three paths passed at
+ * 24/24 without the length assertion, logging the signed-in user's email.
+ *
+ * What this cannot see is a log that never reaches the spy — a module-level
+ * `const log = console.error` captured at import time would bypass it. No
+ * assertion on the spy can cover that; only reading data.ts can.
+ */
+function expectLoggedExactly(prefix: string, error: Error): void {
+  expect(consoleError).toHaveBeenCalledOnce();
+  const call = consoleError.mock.calls[0];
+  if (!call) throw new Error("Unreachable: asserted called once above.");
+  expect(call).toHaveLength(2);
+  expect(call[0]).toBe(prefix);
+  expect(call[1]).toBe(error);
+}
 
 it("resolves `sql` to the mock, so no query can reach a real database", () => {
   expect(vi.isMockFunction(sql)).toBe(true);
@@ -124,16 +168,32 @@ describe("fetchRecentBlogs", () => {
     }
   });
 
-  it("reports a generic failure without leaking the driver error", async () => {
-    failNextSqlCalls(
-      new Error("connection to postgres://user:hunter2@db.internal failed"),
-    );
+  // Driven from one table over both session states: when the two branches each
+  // had their own catch, only the anonymous one was exercised, so a mutant in
+  // the signed-in catch left all 16 tests green.
+  it.each([
+    ["anonymous", (): Session | null => null],
+    ["signed in", (): Session | null => session()],
+  ])(
+    "reports a generic failure without leaking the driver error (%s)",
+    async (_label, makeSession) => {
+      const driverError = new Error(
+        "connection to postgres://user:hunter2@db.internal failed",
+      );
+      failNextSqlCalls(driverError);
 
-    await expect(fetchRecentBlogs(null)).rejects.toThrow(
-      "Failed to fetch blogs.",
-    );
-    await expect(fetchRecentBlogs(null)).rejects.not.toThrow(/hunter2/);
-  });
+      // One invocation, awaited twice. Calling the subject a second time would
+      // reject again and log again, which is what makes the log count below
+      // exact rather than a restatement of how this test is written.
+      const rejected = fetchRecentBlogs(makeSession());
+      await expect(rejected).rejects.toThrow("Failed to fetch blogs.");
+      await expect(rejected).rejects.not.toThrow(/hunter2/);
+
+      // Swallowing the detail at the boundary is only safe because it still
+      // reaches the server log.
+      expectLoggedExactly("Failed to fetch blogs:", driverError);
+    },
+  );
 });
 
 describe("getBlog", () => {
@@ -194,12 +254,28 @@ describe("getBlog", () => {
     await expect(getBlog(null, id)).resolves.toEqual(row);
   });
 
-  it("reports a generic failure without leaking the driver error", async () => {
-    failNextSqlCalls(new Error("password authentication failed for user 'x'"));
+  // Same table as fetchRecentBlogs; see the note there.
+  it.each([
+    ["anonymous", (): Session | null => null],
+    ["signed in", (): Session | null => session()],
+  ])(
+    "reports a generic failure without leaking the driver error (%s)",
+    async (_label, makeSession) => {
+      const driverError = new Error(
+        "password authentication failed for user 'x'",
+      );
+      failNextSqlCalls(driverError);
 
-    await expect(getBlog(null, id)).rejects.toThrow("Failed to fetch blog.");
-    await expect(getBlog(null, id)).rejects.not.toThrow(/password/);
-  });
+      const rejected = getBlog(makeSession(), id);
+      await expect(rejected).rejects.toThrow("Failed to fetch blog.");
+      await expect(rejected).rejects.not.toThrow(/password/);
+
+      // Note the prefix differs by one character from the fetchRecentBlogs one,
+      // so a copy-paste of the wrong message is caught here rather than
+      // silently logging the wrong operation.
+      expectLoggedExactly("Failed to fetch blog:", driverError);
+    },
+  );
 });
 
 describe("deleteBlog", () => {
@@ -212,9 +288,60 @@ describe("deleteBlog", () => {
   });
 
   it("reports a generic failure without leaking the driver error", async () => {
-    failNextSqlCalls(new Error("deadlock detected on db.internal"));
+    const driverError = new Error("deadlock detected on db.internal");
+    failNextSqlCalls(driverError);
 
-    await expect(deleteBlog("x")).rejects.toThrow("Failed to delete blog.");
-    await expect(deleteBlog("x")).rejects.not.toThrow(/db\.internal/);
+    const rejected = deleteBlog("x");
+    await expect(rejected).rejects.toThrow("Failed to delete blog.");
+    await expect(rejected).rejects.not.toThrow(/db\.internal/);
+
+    expectLoggedExactly("Failed to delete blog:", driverError);
   });
+});
+
+/**
+ * `noStore()` is retained on purpose even though it is currently inert: every
+ * caller already awaits `auth()` in the root layout, which opts the request out
+ * of caching anyway. It is kept for the day `auth()` moves out of the root
+ * layout, at which point it becomes the only thing keeping private rows out of a
+ * shared cache. Nothing asserted it before, so a safeguard whose whole purpose
+ * is to survive a future refactor had no test protecting it from one.
+ *
+ * One table shared by both cases below, so the two can never drift apart and
+ * leave an export covered on one path only.
+ */
+const EVERY_EXPORT: [string, () => Promise<unknown>][] = [
+  ["fetchRecentBlogs", () => fetchRecentBlogs(null)],
+  ["getBlog", () => getBlog(null, "11111111-1111-4111-8111-111111111111")],
+  ["deleteBlog", () => deleteBlog("22222222-2222-4222-8222-222222222222")],
+];
+
+describe("cache opt-out", () => {
+  it.each(EVERY_EXPORT)(
+    "%s opts the request out of the data cache",
+    async (_label, run) => {
+      await run();
+
+      expect(unstable_noStore).toHaveBeenCalledOnce();
+    },
+  );
+
+  // Position, asserted without reading invocation counters: `noStore()` runs
+  // before the query, so it still runs when the query throws. A `noStore()`
+  // moved below the query passes the test above and fails this one.
+  //
+  // What that pins is execution *before a failure*, not cache semantics —
+  // `noStore()` marks the surrounding render scope dynamic and is not a wrapper
+  // around the query, so a post-query call still opts the scope out on the
+  // success path. The failure path is where the position becomes observable.
+  it.each(EVERY_EXPORT)(
+    "%s still opts out when the query fails",
+    async (_label, run) => {
+      failNextSqlCalls(new Error("connection refused"));
+
+      await expect(run()).rejects.toThrow();
+
+      expect(unstable_noStore).toHaveBeenCalledOnce();
+    },
+  );
 });
