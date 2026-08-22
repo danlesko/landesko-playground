@@ -359,7 +359,10 @@ describe("blog row validation", () => {
   });
 
   it("rejects a row that is missing a column entirely", async () => {
-    const { private: _omitted, ...withoutPrivate } = validRow();
+    // Deleted from a copy rather than written out without the field, so adding a
+    // column to `validRow` cannot leave this case quietly testing an old shape.
+    const withoutPrivate: Partial<ReturnType<typeof validRow>> = validRow();
+    delete withoutPrivate.private;
     queueSqlResult([withoutPrivate]);
 
     await expect(fetchRecentBlogs(session())).rejects.toThrow(
