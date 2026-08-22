@@ -6,13 +6,22 @@ import { P5WrapperProps } from "react-p5-wrapper";
 
 import { createFishTankSketch } from "./fishTankSketch";
 
-// Importing this way removes window is not defined error
-const ReactP5Wrapper = dynamic(
-  () => import("react-p5-wrapper").then((mod) => mod.ReactP5Wrapper as any),
-  {
-    ssr: false,
-  },
-) as unknown as React.NamedExoticComponent<P5WrapperProps>;
+// Deferred, not just tidied: p5 touches `window` at module scope, so a static
+// import breaks the server render. `ssr: false` is what makes that safe and is
+// load-bearing.
+//
+// The explicit type argument is what removes the two casts this used to carry.
+// `ReactP5Wrapper` is a `MemoExoticComponent` wrapping a *generic* function, and
+// `dynamic` cannot infer props through that — the old code silenced it with an
+// inner `as any` and then re-asserted the result with an outer
+// `as unknown as NamedExoticComponent<P5WrapperProps>`. The inner cast made the
+// outer one unfalsifiable: any prop mismatch would have been erased before the
+// assertion could catch it. Naming the props up front lets both go, and `sketch`
+// is genuinely part of `P5WrapperProps` (via `InputProps`), so nothing is lost.
+const ReactP5Wrapper = dynamic<P5WrapperProps>(
+  () => import("react-p5-wrapper").then((mod) => mod.ReactP5Wrapper),
+  { ssr: false },
+);
 
 const REDUCED_MOTION_QUERY = "(prefers-reduced-motion: reduce)";
 

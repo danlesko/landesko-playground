@@ -2,6 +2,19 @@ import type { RefObject } from "react";
 import type { P5CanvasInstance } from "react-p5-wrapper";
 
 /**
+ * What `p5.color()` hands back. Deliberately `unknown` and not a real colour
+ * type: p5 ships **no** type declarations — `@types/p5` is not installed and the
+ * package exposes only `p5.min.js` — so `P5CanvasInstance`'s p5 half degrades to
+ * `any` and there is no `Color` to import. `unknown` is as precise as this
+ * codebase can honestly be, and it is strictly better than the `any` it replaces:
+ * these values are only ever forwarded to `p5.fill()` / `p5.stroke()`, and
+ * `unknown` still permits that (those parameters are themselves `any`) while
+ * refusing any attempt to *read* off the value. Tighten this to `p5.Color` if
+ * `@types/p5` is ever added.
+ */
+type P5Color = unknown;
+
+/**
  * The wrapper element is a parameter rather than something the sketch finds for
  * itself because `measureAvailableWidth` sizes the canvas from its container,
  * and the container is owned by React. Passing the ref keeps that one DOM
@@ -236,8 +249,8 @@ export function createFishTankSketch(
       x: number,
       y: number,
       scale: number,
-      bColor: any,
-      fColor: any,
+      bColor: P5Color,
+      fColor: P5Color,
     ) {
       // Set the colors for the goldfish
       const bodyColor = bColor;
@@ -282,8 +295,8 @@ export function createFishTankSketch(
       x: number,
       y: number,
       scale: number,
-      bColor: any,
-      fColor: any,
+      bColor: P5Color,
+      fColor: P5Color,
     ) {
       // Random colors for the goldfish
       const bodyColor = bColor;

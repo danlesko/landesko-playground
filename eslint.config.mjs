@@ -40,7 +40,11 @@ const eslintConfig = [
     rules: {
       "react/no-unescaped-entities": "off",
       "@next/next/no-page-custom-font": "off",
-      "@typescript-eslint/no-explicit-any": "off",
+      // `@typescript-eslint/no-explicit-any` is deliberately NOT disabled here.
+      // It was, project-wide, and that is the only reason the two `any` sites
+      // this commit removes ever passed lint. Leaving it on is the half that
+      // stops them coming back; re-adding the "off" line silently re-opens the
+      // hole rather than failing anything.
     },
   },
 ];
