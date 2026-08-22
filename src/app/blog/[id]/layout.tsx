@@ -14,12 +14,14 @@ import { getSession, loadBlog } from "./loaders";
  * It must be *this* segment's layout, because a layout only receives params
  * from its own segment and above -- `/blog`'s layout never sees `id` at all.
  *
- * This costs the route its streaming: TTFB becomes the lookup time, measured at
- * ~31ms warm and ~160ms on a cold connection, because `getBlog` is one HTTPS
- * round trip and no more (it times the same as `SELECT 1`). The full
- * measurement is on issue #52. It buys a truthful status on every non-RSC
- * request, and it costs no extra query: `loadBlog` is the same memo `page.tsx`
- * and `generateMetadata` use, so all three share one lookup.
+ * This costs the route its streaming: TTFB becomes the lookup time. Measured
+ * end to end on this route, p50 goes 9ms -> 42ms; the delta is one HTTPS round
+ * trip to Postgres and no more, because `getBlog` times the same as `SELECT 1`
+ * (`@vercel/postgres` opens a connection per call, so there is no pool to
+ * warm). `/blog` is unaffected -- it keeps its own boundary. The full
+ * measurement is on issue #52. It costs no extra query either: `loadBlog` is
+ * the same memo `page.tsx` and `generateMetadata` use, so all three share one
+ * lookup.
  */
 export default async function BlogPostLayout(props: {
   children: React.ReactNode;

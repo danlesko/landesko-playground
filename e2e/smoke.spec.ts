@@ -794,6 +794,16 @@ test.skip(
   "/blog/[id] renders a post (needs a database -- see #3)",
   unimplemented("no blogs table in CI"),
 );
+// The status is the entire claim of the `[id]/layout.tsx` lookup, and it cannot
+// be checked here for the same reason: an unknown id still costs a query, so
+// without credentials the route throws into its error boundary instead of
+// answering 404, and a status assertion would be measuring the wrong failure.
+// Verified by hand against a real database instead -- GET and HEAD both 404,
+// recorded on #52.
+test.skip(
+  "/blog/[id] answers 404 for an unknown id (needs a database -- see #3)",
+  unimplemented("an unknown id still needs a blogs table to come back empty"),
+);
 
 // The happy path stops at the captcha guard above. Getting past it needs a real
 // NEXT_PUBLIC_REACT_APP_SITE_KEY_RECAPTCHA plus a live token, and the send
