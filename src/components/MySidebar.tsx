@@ -1,5 +1,5 @@
 "use client";
-import { useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import Link from "next/link";
@@ -13,10 +13,74 @@ const MENU_ID = "sidebar-menu";
 const MySidebar = () => {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
+  const toggleRef = useRef<HTMLButtonElement>(null);
+  const menuRef = useRef<HTMLUListElement>(null);
+  const scrimRef = useRef<HTMLDivElement>(null);
+
+  // Returning focus is unconditional because the DOM already encodes the
+  // condition: at and above the large breakpoint the toggle is not laid out, and
+  // focusing an element that is not laid out is a no-op that leaves focus where
+  // it was. So this restores focus exactly when the panel was an overlay, with
+  // no media query to keep in sync.
+  //
+  // It has to run before the state change lands, not after. Once the list is no
+  // longer laid out the browser drops focus to the body, which is the "dumped at
+  // the top of the document" outcome this exists to prevent.
+  const closeMenu = useCallback(() => {
+    toggleRef.current?.focus();
+    setIsOpen(false);
+  }, []);
 
   const toggleMenu = () => {
     setIsOpen(!isOpen);
   };
+
+  // A disclosure, not a dialog: no `role="dialog"`, no `aria-modal`, no focus
+  // trap and nothing made inert. `aria-expanded` on the toggle already describes
+  // this control truthfully, and the three attributes above would contradict it
+  // by announcing a modal that the rest of the page is still reachable from.
+  //
+  // What overlaying does add is the two dismissals a panel floating over content
+  // owes the reader: Escape, and a click that lands anywhere else.
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") closeMenu();
+    };
+
+    // The dismissing click normally keeps its hands off focus: the reader has
+    // just pointed at something else, and pulling focus back to the toggle would
+    // take it away from whatever they were reaching for.
+    //
+    // The exception is focus that is inside the panel, because hiding the panel
+    // would drop it to the body and strand a keyboard reader at the top of the
+    // document -- the same outcome Escape restores from.
+    //
+    // Restoring it takes a `preventDefault`, and only on the scrim. A press
+    // clears focus as part of its own default action, which runs after this
+    // listener and would undo the restore; suppressing that is free on the scrim,
+    // which has nothing to focus and nothing to select, and is not done anywhere
+    // else, so a press on a real control still focuses it.
+    const handlePointerDown = (event: PointerEvent) => {
+      const target = event.target as Node;
+      if (menuRef.current?.contains(target)) return;
+      if (toggleRef.current?.contains(target)) return;
+      if (menuRef.current?.contains(document.activeElement)) {
+        if (scrimRef.current?.contains(target)) event.preventDefault();
+        closeMenu();
+        return;
+      }
+      setIsOpen(false);
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    document.addEventListener("pointerdown", handlePointerDown);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.removeEventListener("pointerdown", handlePointerDown);
+    };
+  }, [isOpen, closeMenu]);
 
   // A `nav` rather than an `aside`: this is the site's primary navigation, so
   // the `complementary` landmark `aside` carries was simply wrong. This is the
@@ -26,9 +90,40 @@ const MySidebar = () => {
   return (
     <nav
       aria-label="Main"
-      className="bg-surface p-4 min-w-[250px] lg:max-w-[250px] text-foreground"
+      // Every width, colour and padding value that belongs to the desktop column
+      // is now prefixed, and the unprefixed values below the breakpoint are the
+      // overlay's. Each unprefixed declaration has a prefixed counterpart that
+      // resets it -- `relative` against `lg:static`, `p-2` against `lg:p-4` -- so
+      // the desktop column is not relying on the absence of a conflict. It is
+      // relying on the variant winning the conflict, which it does because
+      // variant and base utilities land in the same layer at the same specificity
+      // and the variant is emitted second. Anything unprefixed added here without
+      // a counterpart reaches desktop too.
+      //
+      // Below the breakpoint the landmark is a bare strip holding the toggle: no
+      // background of its own, so it is indistinguishable from the page, and no
+      // width floor, which is what used to force a horizontal scrollbar on a
+      // viewport narrower than 250px. It is the positioning ancestor the panel
+      // and the scrim are placed against, and it outranks the header so the panel
+      // is not painted underneath it.
+      className="relative z-40 p-2 text-foreground lg:static lg:z-auto lg:min-w-[250px] lg:max-w-[250px] lg:bg-surface lg:p-4"
     >
+      {/* A scrim, not a modal backdrop. It carries no role, no handler and no
+          name, so it adds nothing to the accessibility tree -- the dismissing
+          click is caught on the document, which works with or without it. It is
+          here for two visual reasons. `--surface` sits at #27272a against a
+          #18181b page, so an undimmed panel edge is nearly invisible over
+          content; and it absorbs the dismissing click, which would otherwise
+          activate whichever link or control happened to be underneath. */}
+      {isOpen ? (
+        <div
+          ref={scrimRef}
+          aria-hidden="true"
+          className="fixed inset-0 bg-black/60 lg:hidden"
+        />
+      ) : null}
       <button
+        ref={toggleRef}
         type="button"
         // `aria-expanded` tracks `isOpen`, which is the whole truth only below
         // the large breakpoint. At and above it the list is always laid out and
@@ -45,19 +140,41 @@ const MySidebar = () => {
         // since `aria-label` already replaces descendant content in the name
         // computation, but so the image stops being a node of its own.
         aria-label="Menu"
-        className={clsx(
-          "lg:hidden p-2 text-white bg-brand rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
-          {
-            "mb-2": isOpen,
-          },
-        )}
+        // Positioned so it paints above the scrim. Without this the toggle would
+        // sit under it and the one control guaranteed to close the panel would be
+        // the one click the scrim swallowed. It dropped a conditional bottom
+        // margin that spaced it from the list; the panel is out of flow now and
+        // the strip's own padding is the gap.
+        className="relative z-10 lg:hidden p-2 text-white bg-brand rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
         onClick={toggleMenu}
       >
         <Image src="/menu.png" alt="" width="24" height="24" />
       </button>
       <ul
+        ref={menuRef}
         id={MENU_ID}
-        className={`space-y-2 ${isOpen ? "block" : "hidden"} lg:block`}
+        // Out of flow below the breakpoint, so expanding no longer moves <main>
+        // down the page. Still toggled with a layout-affecting class rather than
+        // opacity: the collapsed list has to stay out of the accessibility tree,
+        // and e2e/smoke.spec.ts asserts exactly that on both sides.
+        //
+        // The width cap is a percentage of the strip, which spans the viewport,
+        // rather than a viewport unit -- `100vw` counts the classic scrollbar the
+        // cap exists to avoid, so at a narrow width it would reintroduce the
+        // overflow by the scrollbar's own width.
+        //
+        // The desktop line restores a property default for each overlay value it
+        // faces, with three deliberate exceptions: the two insets and the
+        // z-index have no counterpart, because `lg:static` leaves all three
+        // inoperative -- insets and z-index do nothing on a static box. They are
+        // still declared at desktop, so anything that makes this box positioned
+        // again at `lg` activates all three at once.
+        className={clsx(
+          "absolute left-2 top-full z-10 w-[250px] max-w-[calc(100%-1rem)] rounded bg-surface p-2 shadow-2xl shadow-black",
+          "lg:static lg:w-auto lg:max-w-none lg:rounded-none lg:bg-transparent lg:p-0 lg:shadow-none",
+          "space-y-2 lg:block",
+          isOpen ? "block" : "hidden",
+        )}
       >
         {[
           { href: "/", label: "Home" },
@@ -89,7 +206,7 @@ const MySidebar = () => {
                     "bg-surface": !isActive,
                   },
                 )}
-                onClick={() => setIsOpen(false)}
+                onClick={closeMenu}
               >
                 {item.label}
               </Link>
