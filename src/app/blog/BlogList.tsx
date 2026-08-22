@@ -1,4 +1,4 @@
-import { auth } from "@/auth";
+import { getSession } from "@/lib/session";
 import PageHeading from "@/components/ui/PageHeading";
 import TextLink from "@/components/ui/TextLink";
 import MyBlogBodyAbbr from "@/components/MyBlogBodyAbbr";
@@ -26,7 +26,7 @@ export const BlogListSkeleton = () => (
 // synchronous shell whose only job is to declare the Suspense boundary. This is
 // the component that actually awaits, so it is also the one the tests can call.
 export default async function BlogList() {
-  const session = await auth();
+  const session = await getSession();
   const blogs = await fetchRecentBlogs(session);
 
   return (

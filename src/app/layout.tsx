@@ -5,7 +5,8 @@ import Image from "next/image";
 import MySidebar from "@/components/MySidebar";
 import { Button } from "@rewind-ui/core";
 import { primaryButtonClasses } from "@/components/ui/button";
-import { signIn, signOut, auth } from "@/auth";
+import { signIn, signOut } from "@/auth";
+import { getSession } from "@/lib/session";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 
@@ -65,7 +66,7 @@ export default async function RootLayout({
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  const session = await auth();
+  const session = await getSession();
   // Guarded on `session.user` and not `session`: a broken auth config makes
   // `auth()` resolve to a truthy object with no user, so the looser check
   // renders the logged-in header to anonymous readers.
