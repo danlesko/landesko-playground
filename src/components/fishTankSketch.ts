@@ -3,14 +3,18 @@ import type { P5CanvasInstance } from "react-p5-wrapper";
 
 /**
  * What `p5.color()` hands back. Deliberately `unknown` and not a real colour
- * type: p5 ships **no** type declarations — `@types/p5` is not installed and the
- * package exposes only `p5.min.js` — so `P5CanvasInstance`'s p5 half degrades to
- * `any` and there is no `Color` to import. `unknown` is as precise as this
- * codebase can honestly be, and it is strictly better than the `any` it replaces:
- * these values are only ever forwarded to `p5.fill()` / `p5.stroke()`, and
- * `unknown` still permits that (those parameters are themselves `any`) while
- * refusing any attempt to *read* off the value. Tighten this to `p5.Color` if
- * `@types/p5` is ever added.
+ * type: p5 1.11.8 ships no type declarations at all — not one `.d.ts` in the
+ * package, no `types`/`typings` field, and `@types/p5` is not installed — so
+ * under `skipLibCheck` the p5 half of `P5CanvasInstance` degrades to `any` and
+ * there is no `Color` to import. `unknown` is as precise as this codebase can
+ * honestly be, and it is strictly better than the `any` it replaces: these
+ * values are only ever forwarded to `p5.fill()`, never read, indexed or
+ * mutated, so nothing needs the real type today.
+ *
+ * Be aware of *why* `unknown` is accepted at those `fill()` calls: only because
+ * `fill` is reached through an `any` receiver. Adding `@types/p5` would make
+ * these params start failing there, which is the correct outcome — that is the
+ * point at which to change them to `p5.Color`.
  */
 type P5Color = unknown;
 

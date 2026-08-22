@@ -2,23 +2,19 @@
 
 import dynamic from "next/dynamic";
 import React from "react";
-import { P5WrapperProps } from "react-p5-wrapper";
 
 import { createFishTankSketch } from "./fishTankSketch";
 
-// Deferred, not just tidied: p5 touches `window` at module scope, so a static
-// import breaks the server render. `ssr: false` is what makes that safe and is
-// load-bearing.
+// `ssr: false` is load-bearing rather than tidiness: p5 touches `window` at
+// module scope, so a static import breaks the server render.
 //
-// The explicit type argument is what removes the two casts this used to carry.
-// `ReactP5Wrapper` is a `MemoExoticComponent` wrapping a *generic* function, and
-// `dynamic` cannot infer props through that — the old code silenced it with an
-// inner `as any` and then re-asserted the result with an outer
-// `as unknown as NamedExoticComponent<P5WrapperProps>`. The inner cast made the
-// outer one unfalsifiable: any prop mismatch would have been erased before the
-// assertion could catch it. Naming the props up front lets both go, and `sketch`
-// is genuinely part of `P5WrapperProps` (via `InputProps`), so nothing is lost.
-const ReactP5Wrapper = dynamic<P5WrapperProps>(
+// This call used to carry two casts — an inner `mod.ReactP5Wrapper as any` and
+// an outer `as unknown as React.NamedExoticComponent<P5WrapperProps>` — and
+// neither was needed: `dynamic` infers the props from the loader on its own.
+// The inner `as any` was the one that cost something, because it erased the
+// loader's return type before the outer assertion could look at it, so a loader
+// resolving to the wrong export compiled clean. Without it that is a TS2345.
+const ReactP5Wrapper = dynamic(
   () => import("react-p5-wrapper").then((mod) => mod.ReactP5Wrapper),
   { ssr: false },
 );
