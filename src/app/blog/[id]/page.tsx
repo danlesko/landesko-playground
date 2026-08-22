@@ -1,19 +1,7 @@
-import { cache } from "react";
-import { getBlog } from "@/lib/data";
 import { notFound } from "next/navigation";
 import BackLink from "@/components/ui/BackLink";
 import PageHeading from "@/components/ui/PageHeading";
-import { auth } from "@/auth";
-
-// `generateMetadata` and the component below render in the same request and both
-// need the same session and the same post, which was four sequential awaits.
-//
-// Caching `auth` is what makes caching `getBlog` work at all: `cache` keys on
-// argument identity, so two `loadBlog(session, id)` calls only collapse if both
-// receive the very same session object. Uncached, `auth()` returns a fresh one
-// each time and every lookup would miss.
-const getSession = cache(auth);
-const loadBlog = cache(getBlog);
+import { getSession, loadBlog } from "./loaders";
 
 export async function generateMetadata(props: {
   params: Promise<{ id: string }>;
@@ -22,9 +10,12 @@ export async function generateMetadata(props: {
   const { id } = params;
   const session = await getSession();
   const blog = await loadBlog(session, id);
-  // Runs alongside the page render rather than instead of it, so it still has
-  // to name the unavailable case; the page below is what serves the 404. The
-  // shared `loadBlog` memo does not remove the need for the fallback.
+  // Runs alongside the render rather than instead of it, so it still has to
+  // name the unavailable case; ./layout.tsx is what serves the 404. Throwing
+  // `notFound()` from here would not set the status either -- metadata resolves
+  // before the shell flushes, which makes it look like it should work, and it
+  // measures 200. The shared `loadBlog` memo does not remove the need for this
+  // fallback.
   const title = blog?.title ?? "Blog Post Not Found";
   const description = "One of many blog posts.";
 
@@ -40,8 +31,13 @@ export default async function Blog(props: { params: Promise<{ id: string }> }) {
   const { id } = params;
   const blog = await loadBlog(session, id);
 
-  // Unknown id and a private post requested without a session both arrive here
-  // as undefined, so both render the same 404 and stay indistinguishable.
+  // Unreachable at runtime, and kept deliberately. ./layout.tsx has already
+  // served the 404 by the time this renders, and it shares this exact memo, so
+  // `blog` cannot be undefined here -- a throw from this line would also be too
+  // late to set a status. What it does is narrow `blog` for the JSX below, which
+  // nothing else can do, and keep the page correct on its own terms if that
+  // layout is ever moved or removed. Read it as a type guard plus a seatbelt,
+  // not as a branch that runs.
   if (!blog) {
     notFound();
   }

@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { isValidElement, type ReactNode } from "react";
+import {
+  Fragment,
+  Suspense,
+  isValidElement,
+  type ReactElement,
+  type ReactNode,
+} from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 import { auth, resetAuthMock, signedInSession } from "@/test/auth-mock";
 
@@ -12,6 +19,12 @@ vi.mock("@/lib/data", () => ({ fetchRecentBlogs: vi.fn() }));
 vi.mock("@/lib/actions", () => ({ deleteBlogPost: vi.fn() }));
 
 import { fetchRecentBlogs } from "@/lib/data";
+import MyBlogBodyAbbr from "@/components/MyBlogBodyAbbr";
+// ./BlogList and not ./page: `page.tsx` is a synchronous shell that only
+// declares the Suspense boundary, so calling it renders no rows and every
+// assertion below would pass or fail for reasons unrelated to the list.
+import BlogList, { BlogListSkeleton } from "@/app/blog/BlogList";
+// The shell itself, covered separately at the bottom of this file.
 import Blog from "@/app/blog/page";
 
 const EMPTY_MESSAGE = "No posts to show yet.";
@@ -32,10 +45,41 @@ const row = {
 function textOf(node: ReactNode): string {
   if (typeof node === "string" || typeof node === "number") return String(node);
   if (Array.isArray(node)) return node.map(textOf).join(" ");
-  if (isValidElement(node) && typeof node.type === "string") {
+  // Fragments are descended into as well as intrinsics. A fragment is not a
+  // component -- it renders its children verbatim and cannot drop them -- so
+  // this does not reopen the hole the rule above closes. Without it a component
+  // whose root is `<>` reads as rendering nothing, which is precisely how three
+  // assertions here reported empty output while the markup was fine.
+  if (
+    isValidElement(node) &&
+    (typeof node.type === "string" || node.type === Fragment)
+  ) {
     return textOf((node.props as { children?: ReactNode }).children);
   }
   return "";
+}
+
+// `textOf` cannot see row content at all: every post renders inside
+// `MyBlogBodyAbbr`, and descending into components is exactly what it refuses to
+// do. So "no posts message absent" is satisfied by rendering *nothing*, and the
+// negative assertion below needs a positive counterpart that counts the rows as
+// elements instead of as text. Walks the same nodes -- intrinsics, fragments and
+// arrays -- but reports the component elements it passes rather than entering
+// them.
+function countElements(node: ReactNode, type: unknown): number {
+  if (Array.isArray(node)) {
+    return node.reduce(
+      (sum: number, child) => sum + countElements(child, type),
+      0,
+    );
+  }
+  if (!isValidElement(node)) return 0;
+  const children = (node.props as { children?: ReactNode }).children;
+  const here = node.type === type ? 1 : 0;
+  if (typeof node.type === "string" || node.type === Fragment) {
+    return here + countElements(children, type);
+  }
+  return here;
 }
 
 beforeEach(() => {
@@ -48,20 +92,29 @@ describe("blog list page", () => {
   it("says so when there are no posts to show", async () => {
     vi.mocked(fetchRecentBlogs).mockResolvedValue([]);
 
-    expect(textOf(await Blog())).toContain(EMPTY_MESSAGE);
+    const tree = await BlogList();
+    expect(countElements(tree, MyBlogBodyAbbr)).toBe(0);
+    expect(textOf(tree)).toContain(EMPTY_MESSAGE);
   });
 
   it("does not say so when there are posts", async () => {
     vi.mocked(fetchRecentBlogs).mockResolvedValue([row]);
 
-    expect(textOf(await Blog())).not.toContain(EMPTY_MESSAGE);
+    const tree = await BlogList();
+    // The row count is the load-bearing half. `not.toContain` alone is
+    // satisfied by an empty render, so on its own it passed even when this
+    // called a shell that rendered no list at all.
+    expect(countElements(tree, MyBlogBodyAbbr)).toBe(1);
+    expect(textOf(tree)).not.toContain(EMPTY_MESSAGE);
   });
 
   it("shows the same empty message to a signed-in viewer", async () => {
     auth.mockResolvedValue(signedInSession());
     vi.mocked(fetchRecentBlogs).mockResolvedValue([]);
 
-    expect(textOf(await Blog())).toContain(EMPTY_MESSAGE);
+    const tree = await BlogList();
+    expect(countElements(tree, MyBlogBodyAbbr)).toBe(0);
+    expect(textOf(tree)).toContain(EMPTY_MESSAGE);
   });
 
   it("keeps a fetch failure out of the empty state", async () => {
@@ -69,6 +122,60 @@ describe("blog list page", () => {
       new Error("Failed to fetch blogs."),
     );
 
-    await expect(Blog()).rejects.toThrow("Failed to fetch blogs.");
+    await expect(BlogList()).rejects.toThrow("Failed to fetch blogs.");
+  });
+});
+
+// Covered here because nothing else can. `page.tsx` is the file that keeps
+// `/blog` streaming *and* keeps `/blog/[id]` able to answer 404: the boundary
+// has to be declared inside this page rather than in a `loading.tsx`, because a
+// `loading.tsx` at this segment would also cover the child route and flush its
+// shell before the layout could set a status. That makes the boundary's
+// existence a real invariant, and deleting it would regress the detail route's
+// status with every test in this file still green.
+describe("the /blog shell", () => {
+  const findSuspense = (node: ReactNode): ReactElement | undefined => {
+    if (!isValidElement(node)) return undefined;
+    if (node.type === Suspense) return node;
+    const { children } = node.props as { children?: ReactNode };
+    for (const child of Array.isArray(children) ? children : [children]) {
+      const found = findSuspense(child);
+      if (found) return found;
+    }
+    return undefined;
+  };
+
+  it("declares a Suspense boundary whose fallback is the skeleton", () => {
+    const suspense = findSuspense(Blog());
+
+    expect(suspense).toBeDefined();
+    const { fallback, children } = suspense!.props as {
+      fallback: ReactElement;
+      children: ReactElement;
+    };
+    // Component identity, not rendered output: two different components can
+    // render the same pulse bars, and it is the wiring that is under test.
+    expect(fallback.type).toBe(BlogListSkeleton);
+    expect(children.type).toBe(BlogList);
+  });
+
+  it("renders no rows itself, which is why the other suites import BlogList", () => {
+    vi.mocked(fetchRecentBlogs).mockResolvedValue([row]);
+
+    expect(countElements(Blog(), MyBlogBodyAbbr)).toBe(0);
+    expect(vi.mocked(fetchRecentBlogs)).not.toHaveBeenCalled();
+  });
+
+  it("gives the fallback the same single h1 as the loaded list", () => {
+    const markup = renderToStaticMarkup(BlogListSkeleton());
+    const levels = [...markup.matchAll(/<h([1-6])[\s>]/g)].map((m) =>
+      Number(m[1]),
+    );
+
+    // The heading order has to hold *during* the load too, and
+    // ./heading-order.test.ts cannot see this: it renders BlogList, which is
+    // what replaces this markup once the fetch resolves.
+    expect(levels).toEqual([1]);
+    expect(markup).toContain("Blog Posts");
   });
 });
