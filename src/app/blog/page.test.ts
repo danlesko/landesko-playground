@@ -1,5 +1,12 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { Fragment, isValidElement, type ReactNode } from "react";
+import {
+  Fragment,
+  Suspense,
+  isValidElement,
+  type ReactElement,
+  type ReactNode,
+} from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 
 import { auth, resetAuthMock, signedInSession } from "@/test/auth-mock";
 
@@ -16,7 +23,9 @@ import MyBlogBodyAbbr from "@/components/MyBlogBodyAbbr";
 // ./BlogList and not ./page: `page.tsx` is a synchronous shell that only
 // declares the Suspense boundary, so calling it renders no rows and every
 // assertion below would pass or fail for reasons unrelated to the list.
-import BlogList from "@/app/blog/BlogList";
+import BlogList, { BlogListSkeleton } from "@/app/blog/BlogList";
+// The shell itself, covered separately at the bottom of this file.
+import Blog from "@/app/blog/page";
 
 const EMPTY_MESSAGE = "No posts to show yet.";
 
@@ -114,5 +123,59 @@ describe("blog list page", () => {
     );
 
     await expect(BlogList()).rejects.toThrow("Failed to fetch blogs.");
+  });
+});
+
+// Covered here because nothing else can. `page.tsx` is the file that keeps
+// `/blog` streaming *and* keeps `/blog/[id]` able to answer 404: the boundary
+// has to be declared inside this page rather than in a `loading.tsx`, because a
+// `loading.tsx` at this segment would also cover the child route and flush its
+// shell before the layout could set a status. That makes the boundary's
+// existence a real invariant, and deleting it would regress the detail route's
+// status with every test in this file still green.
+describe("the /blog shell", () => {
+  const findSuspense = (node: ReactNode): ReactElement | undefined => {
+    if (!isValidElement(node)) return undefined;
+    if (node.type === Suspense) return node;
+    const { children } = node.props as { children?: ReactNode };
+    for (const child of Array.isArray(children) ? children : [children]) {
+      const found = findSuspense(child);
+      if (found) return found;
+    }
+    return undefined;
+  };
+
+  it("declares a Suspense boundary whose fallback is the skeleton", () => {
+    const suspense = findSuspense(Blog());
+
+    expect(suspense).toBeDefined();
+    const { fallback, children } = suspense!.props as {
+      fallback: ReactElement;
+      children: ReactElement;
+    };
+    // Component identity, not rendered output: two different components can
+    // render the same pulse bars, and it is the wiring that is under test.
+    expect(fallback.type).toBe(BlogListSkeleton);
+    expect(children.type).toBe(BlogList);
+  });
+
+  it("renders no rows itself, which is why the other suites import BlogList", () => {
+    vi.mocked(fetchRecentBlogs).mockResolvedValue([row]);
+
+    expect(countElements(Blog(), MyBlogBodyAbbr)).toBe(0);
+    expect(vi.mocked(fetchRecentBlogs)).not.toHaveBeenCalled();
+  });
+
+  it("gives the fallback the same single h1 as the loaded list", () => {
+    const markup = renderToStaticMarkup(BlogListSkeleton());
+    const levels = [...markup.matchAll(/<h([1-6])[\s>]/g)].map((m) =>
+      Number(m[1]),
+    );
+
+    // The heading order has to hold *during* the load too, and
+    // ./heading-order.test.ts cannot see this: it renders BlogList, which is
+    // what replaces this markup once the fetch resolves.
+    expect(levels).toEqual([1]);
+    expect(markup).toContain("Blog Posts");
   });
 });

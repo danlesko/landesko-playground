@@ -31,11 +31,13 @@ export default async function Blog(props: { params: Promise<{ id: string }> }) {
   const { id } = params;
   const blog = await loadBlog(session, id);
 
-  // ./layout.tsx has already served the 404 by the time this renders -- it is
-  // what makes the status truthful, which a throw from here cannot do. This is
-  // kept because it is the only thing that narrows `blog` for the JSX below,
-  // and because a page that trusted an ancestor to have checked would break
-  // silently if that layout were ever moved or removed.
+  // Unreachable at runtime, and kept deliberately. ./layout.tsx has already
+  // served the 404 by the time this renders, and it shares this exact memo, so
+  // `blog` cannot be undefined here -- a throw from this line would also be too
+  // late to set a status. What it does is narrow `blog` for the JSX below, which
+  // nothing else can do, and keep the page correct on its own terms if that
+  // layout is ever moved or removed. Read it as a type guard plus a seatbelt,
+  // not as a branch that runs.
   if (!blog) {
     notFound();
   }

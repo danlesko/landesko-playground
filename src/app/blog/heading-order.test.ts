@@ -16,7 +16,14 @@ vi.mock("@/lib/data", () => ({
 vi.mock("@/lib/actions", () => ({ deleteBlogPost: vi.fn() }));
 
 import { fetchRecentBlogs, getBlog } from "@/lib/data";
-import BlogList from "@/app/blog/page";
+// `./BlogList` and not `./page`. `page.tsx` is now a synchronous shell whose
+// only job is to declare a `<Suspense>`, so `renderToStaticMarkup` on it renders
+// the *fallback*: this file used to import `./page` under the name `BlogList`,
+// which kept compiling and kept passing while asserting the heading order of the
+// skeleton. Measured: the markup contained no row title and `fetchRecentBlogs`
+// was never called, so the signed-in case below rendered zero of the controls it
+// exists to check. The shell's own fallback is covered in ./page.test.ts.
+import BlogList from "@/app/blog/BlogList";
 import BlogDetail from "@/app/blog/[id]/page";
 
 const id = "11111111-1111-4111-8111-111111111111";

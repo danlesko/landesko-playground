@@ -4,15 +4,20 @@ import { getSession, loadBlog } from "./loaders";
 /**
  * Exists only to decide the HTTP status, and it has to be a layout to do it.
  *
- * `notFound()` from `page.tsx` alone returns **200**. Any Suspense boundary
- * above the throw lets Next flush the shell first, and once bytes are sent the
- * status is already committed -- so `loading.tsx` turns the 404 into a 200 with
- * a 404 body streamed in after it. Search engines and `curl -I` see success.
+ * `notFound()` from `page.tsx` alone returns **200** on this route. A Suspense
+ * boundary above the throw lets Next flush the shell first, and once bytes are
+ * sent the status is already committed -- so `loading.tsx` turns the 404 into a
+ * 200 with a 404 body streamed in after it. Search engines and `curl -I` see
+ * success. (With no boundary anywhere above it, `notFound()` from a page does
+ * set 404 -- the boundary is the cause, not the throw site.)
  *
- * The lookup therefore has to happen above every boundary on the route, which
- * means a layout: layouts render before the `loading.tsx` of their own segment.
- * It must be *this* segment's layout, because a layout only receives params
- * from its own segment and above -- `/blog`'s layout never sees `id` at all.
+ * So the lookup has to happen above every boundary on the route, and there are
+ * two ways to get there: delete the route's `loading.tsx` files, or move the
+ * lookup into a layout, since layouts render before the `loading.tsx` of their
+ * own segment. This picks the layout because the other option pays for the
+ * status by giving up the route's loading UI entirely. It must be *this*
+ * segment's layout: a layout only receives params from its own segment and
+ * above, so `/blog`'s layout never sees `id` at all.
  *
  * This costs the route its streaming: TTFB becomes the lookup time. Measured
  * end to end on this route, p50 goes 9ms -> 42ms; the delta is one HTTPS round
