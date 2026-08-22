@@ -249,17 +249,26 @@ export function createFishTankSketch(
       }
     }
 
-    function drawGoldfishColorsScale(
+    /**
+     * Which way a fish faces, and so which way it swims: `1` is left-to-right,
+     * `-1` right-to-left. It is the sign of every x in `drawGoldfish`, so it is
+     * a mirror about the fish's own origin and nothing else — the body ellipse
+     * is centred on that origin and the mouth arc spans 0..PI, which is
+     * symmetric about the vertical axis, so both are unchanged by it.
+     */
+    type Direction = 1 | -1;
+
+    // Was two functions whose bodies differed only in the sign of every x
+    // literal, so a change to the fish had to be made twice and could be made
+    // inconsistently. The literals below are the left-to-right ones.
+    function drawGoldfish(
       x: number,
       y: number,
       scale: number,
-      bColor: P5Color,
-      fColor: P5Color,
+      bodyColor: P5Color,
+      finColor: P5Color,
+      direction: Direction,
     ) {
-      // Set the colors for the goldfish
-      const bodyColor = bColor;
-      const finColor = fColor;
-
       p5.push(); // Save the current transformation state
       p5.translate(x, y); // Move origin to the goldfish's position
       p5.scale(scale / scaleFactor); // Apply the scaling
@@ -269,9 +278,9 @@ export function createFishTankSketch(
       // Draw the tail
       p5.fill(finColor);
       p5.beginShape();
-      p5.vertex(30, 0); // Flipped horizontally
-      p5.vertex(80, -30); // Flipped horizontally
-      p5.vertex(80, 30); // Flipped horizontally
+      p5.vertex(-30 * direction, 0);
+      p5.vertex(-80 * direction, -30);
+      p5.vertex(-80 * direction, 30);
       p5.endShape(p5.CLOSE);
 
       // Draw the body
@@ -280,63 +289,17 @@ export function createFishTankSketch(
 
       // Draw the fins
       p5.fill(finColor);
-      p5.triangle(0, 0, 50, 30, -10, 20); // Flipped horizontally
+      p5.triangle(0, 0, -50 * direction, 30, 10 * direction, 20);
 
       // Draw the eye
       p5.fill(255);
-      p5.ellipse(-30, -10, 20, 20); // Flipped horizontally
+      p5.ellipse(30 * direction, -10, 20, 20);
       p5.fill(0);
-      p5.ellipse(-30, -10, 10, 10); // Flipped horizontally
+      p5.ellipse(30 * direction, -10, 10, 10);
 
       p5.noFill();
       p5.stroke(0);
-      p5.arc(-39, 10, 15, 10, 0, p5.PI); // Small arc for the mouth
-
-      p5.pop(); // Restore the transformation state
-    }
-
-    function drawGoldfishFlippedColorsScale(
-      x: number,
-      y: number,
-      scale: number,
-      bColor: P5Color,
-      fColor: P5Color,
-    ) {
-      // Random colors for the goldfish
-      const bodyColor = bColor;
-      const finColor = fColor;
-
-      p5.push(); // Save the current transformation state
-      p5.translate(x, y); // Move origin to the goldfish's position
-      p5.scale(scale / scaleFactor); // Apply the scaling
-
-      p5.stroke("black");
-
-      // Draw the tail
-      p5.fill(finColor);
-      p5.beginShape();
-      p5.vertex(-30, 0);
-      p5.vertex(-80, -30);
-      p5.vertex(-80, 30);
-      p5.endShape(p5.CLOSE);
-
-      // Draw the body
-      p5.fill(bodyColor);
-      p5.ellipse(0, 0, 100, 60);
-
-      // Draw the fins
-      p5.fill(finColor);
-      p5.triangle(0, 0, -50, 30, 10, 20);
-
-      // Draw the eye
-      p5.fill(255);
-      p5.ellipse(30, -10, 20, 20);
-      p5.fill(0);
-      p5.ellipse(30, -10, 10, 10);
-
-      p5.noFill();
-      p5.stroke(0);
-      p5.arc(39, 10, 15, 10, 0, p5.PI);
+      p5.arc(39 * direction, 10, 15, 10, 0, p5.PI); // Small arc for the mouth
 
       p5.pop(); // Restore the transformation state
     }
@@ -358,33 +321,177 @@ export function createFishTankSketch(
       );
     };
 
-    let xPosLeftRight1 = -200;
-    let xPosLeftRight2 = -300;
-    let xPosLeftRight3 = -200;
-    let xPosLeftRight4 = -300;
-    const { canvasWidth } = updateCanvasDimensions();
-    let xPosRightLeft1 = canvasWidth + 200;
-    let xPosRightLeft2 = canvasWidth + 300;
-    let xPosRightLeft3 = canvasWidth + 400;
-    let xPosRightLeft4 = canvasWidth + 500;
     const yPos = 200;
 
-    // Each fish is drawn at its position variable plus a constant offset (see
-    // the drawGoldfish* calls in draw), so a layout has to be written in drawn
-    // coordinates and have that offset backed out. `drawnOffset` is the number
-    // draw() adds; the fractions spread the eight fish across the tank.
-    const restFishInView = (width: number) => {
-      const restAt = (fraction: number, drawnOffset = 0) =>
-        width * fraction - drawnOffset;
+    /**
+     * The edge a fish leaves by, and the edge it comes back in at. Both are a
+     * margin *outside* the canvas, expressed so that neither depends on which
+     * way the fish is going: a left-to-right fish exits past the right-hand
+     * edge and re-enters left of zero, and the mirror holds going the other way.
+     * That is the whole reason the eight wrap-around `if`s could collapse into
+     * one — as written out per variable, the two directions did not look like
+     * the same rule.
+     */
+    const farEdge = (direction: Direction, width: number, margin: number) =>
+      direction === 1 ? width + margin : -margin;
+    const nearEdge = (direction: Direction, width: number, margin: number) =>
+      direction === 1 ? -margin : width + margin;
 
-      xPosLeftRight1 = restAt(0.12);
-      xPosLeftRight2 = restAt(0.34);
-      xPosLeftRight3 = restAt(0.56, -400);
-      xPosLeftRight4 = restAt(0.78, -200);
-      xPosRightLeft1 = restAt(0.22);
-      xPosRightLeft2 = restAt(0.46);
-      xPosRightLeft3 = restAt(0.68, 400);
-      xPosRightLeft4 = restAt(0.88, 500);
+    type FishSpec = {
+      direction: Direction;
+      /** Unsigned px per frame; `direction` supplies the sign. */
+      speed: number;
+      /** Added to `yPos`, before the `scaleFactor` divide. */
+      yOffset: number;
+      scale: number;
+      /**
+       * Added to `x` at the moment of drawing. Only three fish have one, and it
+       * is kept rather than folded into `x` because it also shifts where the
+       * fish wraps: the thresholds below are compared against `x`, not against
+       * the drawn position, so folding it in would move the wrap points.
+       */
+      drawnOffset: number;
+      /** Where this fish parks under reduced motion, as a share of the width. */
+      restFraction: number;
+      /** How far off-canvas it starts, and how far it swims before wrapping. */
+      startMargin: number;
+      exitMargin: number;
+      /** How far off-canvas it reappears after wrapping. */
+      entryMargin: number;
+      body: readonly [number, number, number];
+      fin: readonly [number, number, number];
+      /** Only the leading fish gets out of the cursor's way. */
+      dodgesCursor?: true;
+    };
+
+    /** A fish, plus the one thing about it that changes: where it is. */
+    type Fish = FishSpec & { x: number };
+
+    // Draw order, which is also z-order: earlier fish are behind later ones.
+    const SPECS: FishSpec[] = [
+      {
+        direction: 1,
+        speed: 3,
+        yOffset: 100,
+        scale: 0.4,
+        drawnOffset: 0,
+        restFraction: 0.12,
+        startMargin: 200,
+        exitMargin: 200,
+        entryMargin: 400,
+        body: [128, 0, 128],
+        fin: [186, 85, 211],
+        dodgesCursor: true,
+      },
+      {
+        direction: 1,
+        speed: 4,
+        yOffset: 0,
+        scale: 1,
+        drawnOffset: 0,
+        restFraction: 0.34,
+        startMargin: 300,
+        exitMargin: 300,
+        entryMargin: 500,
+        body: [34, 139, 34],
+        fin: [50, 205, 50],
+      },
+      {
+        direction: 1,
+        speed: 4,
+        yOffset: 140,
+        scale: 0.4,
+        drawnOffset: -400,
+        restFraction: 0.56,
+        startMargin: 200,
+        exitMargin: 500,
+        entryMargin: 400,
+        body: [0, 255, 255],
+        fin: [69, 170, 44],
+      },
+      {
+        direction: 1,
+        speed: 4.5,
+        yOffset: 160,
+        scale: 1,
+        drawnOffset: -200,
+        restFraction: 0.78,
+        startMargin: 300,
+        exitMargin: 300,
+        entryMargin: 500,
+        body: [255, 0, 0],
+        fin: [205, 50, 50],
+      },
+      {
+        direction: -1,
+        speed: 3,
+        yOffset: 300,
+        scale: 1.3,
+        drawnOffset: 0,
+        restFraction: 0.22,
+        startMargin: 200,
+        exitMargin: 700,
+        entryMargin: 200,
+        body: [0, 128, 128],
+        fin: [54, 117, 136],
+      },
+      {
+        direction: -1,
+        speed: 2.5,
+        yOffset: -110,
+        scale: 0.8,
+        drawnOffset: 0,
+        restFraction: 0.46,
+        startMargin: 300,
+        exitMargin: 800,
+        entryMargin: 300,
+        body: [255, 102, 102],
+        fin: [255, 153, 153],
+      },
+      {
+        direction: -1,
+        speed: 4,
+        yOffset: 320,
+        scale: 1.3,
+        drawnOffset: 400,
+        restFraction: 0.68,
+        startMargin: 400,
+        exitMargin: 600,
+        entryMargin: 200,
+        body: [255, 128, 128],
+        fin: [201, 138, 119],
+      },
+      {
+        direction: -1,
+        speed: 1.5,
+        yOffset: 90,
+        scale: 0.8,
+        drawnOffset: 500,
+        restFraction: 0.88,
+        startMargin: 500,
+        exitMargin: 600,
+        entryMargin: 300,
+        body: [0, 153, 153],
+        fin: [0, 102, 102],
+      },
+    ];
+
+    // The canvas does not exist yet, so a starting position cannot come from
+    // p5.width. This is the same measurement setup() is about to make.
+    const { canvasWidth } = updateCanvasDimensions();
+
+    const school: Fish[] = SPECS.map((spec) => ({
+      ...spec,
+      x: nearEdge(spec.direction, canvasWidth, spec.startMargin),
+    }));
+
+    // Each fish is drawn at its position plus `drawnOffset`, so a layout has to
+    // be written in drawn coordinates and have that offset backed out. The
+    // fractions spread the eight fish across the tank.
+    const restFishInView = (width: number) => {
+      for (const fish of school) {
+        fish.x = width * fish.restFraction - fish.drawnOffset;
+      }
     };
 
     p5.draw = () => {
@@ -429,134 +536,74 @@ export function createFishTankSketch(
       }
 
       // Goldfish animations
+      const cursorDodgeRadius = 100;
 
-      // experiment for just a single fish for now
-      // move fish away from orange fish
-      let fish1X = xPosLeftRight1;
-      let fish1Y = (yPos + 100) / scaleFactor;
-      const d = p5.dist(fish1X, fish1Y, p5.mouseX, p5.mouseY);
-      const threshold = 100;
-      // On a narrow canvas the resting position is within the threshold of the
-      // untouched (0, 0) cursor, so without the flag the still frame would show
-      // this one fish shoved aside by a cursor that is not there.
-      if (!prefersReducedMotion && d < threshold) {
-        // Calculate the direction away from the cursor
-        const angle = p5.atan2(fish1Y - p5.mouseY, fish1X - p5.mouseX);
-        fish1X += p5.cos(angle) * 50; // Move away on the x-axis
-        fish1Y += p5.sin(angle) * 50; // Move away on the y-axis
+      for (const fish of school) {
+        let x = fish.x + fish.drawnOffset;
+        let y = (yPos + fish.yOffset) / scaleFactor;
+
+        // On a narrow canvas the resting position is within the radius of the
+        // untouched (0, 0) cursor, so without the flag the still frame would
+        // show this one fish shoved aside by a cursor that is not there.
+        if (
+          fish.dodgesCursor &&
+          !prefersReducedMotion &&
+          p5.dist(x, y, p5.mouseX, p5.mouseY) < cursorDodgeRadius
+        ) {
+          // Calculate the direction away from the cursor
+          const angle = p5.atan2(y - p5.mouseY, x - p5.mouseX);
+          x += p5.cos(angle) * 50; // Move away on the x-axis
+          y += p5.sin(angle) * 50; // Move away on the y-axis
+        }
+
+        drawGoldfish(
+          x,
+          y,
+          fish.scale,
+          p5.color(...fish.body),
+          p5.color(...fish.fin),
+          fish.direction,
+        );
       }
-      // left right purple fish small
-      drawGoldfishFlippedColorsScale(
-        fish1X,
-        fish1Y,
-        0.4,
-        p5.color(128, 0, 128),
-        p5.color(186, 85, 211),
-      );
-      // left right green fish medium
-      drawGoldfishFlippedColorsScale(
-        xPosLeftRight2,
-        yPos / scaleFactor,
-        1,
-        p5.color(34, 139, 34),
-        p5.color(50, 205, 50),
-      );
-      // left right cyan fish small
-      drawGoldfishFlippedColorsScale(
-        xPosLeftRight3 - 400,
-        (yPos + 140) / scaleFactor,
-        0.4,
-        p5.color(0, 255, 255),
-        p5.color(69, 170, 44),
-      );
-      // left right red fish medium
-      drawGoldfishFlippedColorsScale(
-        xPosLeftRight4 - 200,
-        (yPos + 160) / scaleFactor,
-        1,
-        p5.color(255, 0, 0),
-        p5.color(205, 50, 50),
-      );
-      // right left teal fish large
-      drawGoldfishColorsScale(
-        xPosRightLeft1,
-        (yPos + 300) / scaleFactor,
-        1.3,
-        p5.color(0, 128, 128), // Teal 1
-        p5.color(54, 117, 136),
-      );
-      // right left light red fish small
-      drawGoldfishColorsScale(
-        xPosRightLeft2,
-        (yPos - 110) / scaleFactor,
-        0.8,
-        p5.color(255, 102, 102), // Light Red 1
-        p5.color(255, 153, 153), // Light Red 2,
-      );
-      // right left light red fish large
-      drawGoldfishColorsScale(
-        xPosRightLeft3 + 400,
-        (yPos + 320) / scaleFactor, // Updated y-position
-        1.3,
-        p5.color(255, 128, 128), // Complementary of p5.color(0, 128, 128) (teal)
-        p5.color(201, 138, 119), // Approximate complementary of p5.color(54, 117, 136)
-      );
-      // right left dark cyan fish medium
-      drawGoldfishColorsScale(
-        xPosRightLeft4 + 500,
-        (yPos + 90) / scaleFactor, // Updated y-position
-        0.8,
-        p5.color(0, 153, 153), // Complementary of p5.color(255, 102, 102) (light red)
-        p5.color(0, 102, 102), // Complementary of p5.color(255, 153, 153) (light red)
-      );
+
       // The single point where the fish advance, so honouring reduced motion is
       // one guard rather than eight. The wrap-around resets belong inside it too:
-      // they read the canvas width captured at startup, so after a resize they
-      // can fire against a resting position and teleport a fish off-canvas.
+      // under reduced motion they would fire against a resting position and
+      // teleport a fish off-canvas.
+      //
+      // p5.width, not the `canvasWidth` measured at startup: that one is never
+      // refreshed, so after a resize the thresholds were comparing against a
+      // width the canvas no longer had. Narrowing the window left the left-to-
+      // right fish swimming a long way past the right-hand edge before wrapping;
+      // widening it wrapped them while still on screen.
       if (!prefersReducedMotion) {
-        xPosLeftRight1 += 3;
-        xPosLeftRight2 += 4;
-        xPosLeftRight3 += 4;
-        xPosLeftRight4 += 4.5;
-        xPosRightLeft1 -= 3;
-        xPosRightLeft2 -= 2.5;
-        xPosRightLeft3 -= 4;
-        xPosRightLeft4 -= 1.5;
-        if (xPosLeftRight1 > canvasWidth + 200) {
-          xPosLeftRight1 = -400;
-        }
-        if (xPosLeftRight2 > canvasWidth + 300) {
-          xPosLeftRight2 = -500;
-        }
-        if (xPosLeftRight3 > canvasWidth + 500) {
-          xPosLeftRight3 = -400;
-        }
-        if (xPosLeftRight4 > canvasWidth + 300) {
-          xPosLeftRight4 = -500;
-        }
-        if (xPosRightLeft1 < -700) {
-          xPosRightLeft1 = canvasWidth + 200;
-        }
-        if (xPosRightLeft2 < -800) {
-          xPosRightLeft2 = canvasWidth + 300;
-        }
-        if (xPosRightLeft3 < -600) {
-          xPosRightLeft3 = canvasWidth + 200;
-        }
-        if (xPosRightLeft4 < -600) {
-          xPosRightLeft4 = canvasWidth + 300;
+        for (const fish of school) {
+          fish.x += fish.speed * fish.direction;
+          // Signed comparison, so one line covers both directions: a fish is
+          // past its far edge when the gap has the same sign as its heading.
+          if (
+            (fish.x - farEdge(fish.direction, p5.width, fish.exitMargin)) *
+              fish.direction >
+            0
+          ) {
+            fish.x = nearEdge(fish.direction, p5.width, fish.entryMargin);
+          }
         }
       }
 
-      // User controlled goldfish. A still frame cannot track a cursor, and the
-      // cursor is at (0, 0) until it first moves, which would clip this fish into
-      // the top-left corner - so park it in the tank instead.
-      drawGoldfishColorsScale(
+      // User controlled goldfish, and the ninth fish: it is not in `school`
+      // because it has no position of its own to advance, and it is drawn after
+      // the loop so it stays in front of the other eight. A still frame cannot
+      // track a cursor, and the cursor is at (0, 0) until it first moves, which
+      // would clip this fish into the top-left corner - so park it in the tank
+      // instead.
+      drawGoldfish(
         prefersReducedMotion ? p5.width * 0.42 : p5.mouseX,
         prefersReducedMotion ? p5.height * 0.62 : p5.mouseY,
         1,
         p5.color(255, 153, 51),
         p5.color(255, 102, 0),
+        -1,
       );
 
       // Advance every bubble, then compact the survivors forward in place. This
