@@ -78,6 +78,9 @@ importers:
       '@types/react-google-recaptcha':
         specifier: 2.1.9
         version: 2.1.9
+      axe-core:
+        specifier: 4.10.3
+        version: 4.10.3
       eslint:
         specifier: ^9
         version: 9.28.0(jiti@1.21.7)
