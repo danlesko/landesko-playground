@@ -20,7 +20,13 @@ import BlogList from "@/app/blog/page";
 import BlogDetail from "@/app/blog/[id]/page";
 
 const id = "11111111-1111-4111-8111-111111111111";
-const row = { id, title: "A post", content: "body", date: "2026-01-01" };
+const row = {
+  id,
+  title: "A post",
+  content: "body",
+  date: new Date("2026-01-01"),
+  private: false,
+};
 
 // The tag name, not the accessible name. A role+name query can pin a level via
 // its `level` option, but it says nothing about the levels *around* it, and the

@@ -52,6 +52,14 @@ const GET_BLOG_ANONYMOUS =
   "SELECT * FROM blogs WHERE id=$1 AND private != TRUE";
 const GET_BLOG_SIGNED_IN = "SELECT * FROM blogs WHERE id=$1";
 
+/**
+ * What the driver produces for the naive `timestamp` column: a `Date`, built
+ * from a zone-less wall clock the way the parser builds one. Not
+ * `new Date("2026-01-01")`, which is parsed as UTC and so stands in for a
+ * value the driver never returns.
+ */
+const NAIVE_DATE = new Date(2026, 0, 1, 0, 0, 0);
+
 function session(): Session {
   return {
     user: { name: "Dan", email: "owner@example.com" },
@@ -146,7 +154,13 @@ describe("fetchRecentBlogs", () => {
   });
 
   it("returns the rows the driver produced", async () => {
-    const rows = [{ id: "a", title: "one", content: "c", date: "2026-01-01" }];
+    // A `Date` and a `private` flag, because that is what the driver hands
+    // back for these columns. The cast in data.ts means nothing here would
+    // complain about a string and a missing field, which is exactly why the
+    // mock has to be written faithfully by hand.
+    const rows = [
+      { id: "a", title: "one", content: "c", date: NAIVE_DATE, private: false },
+    ];
     queueSqlResult(rows);
 
     await expect(fetchRecentBlogs(null)).resolves.toEqual(rows);
@@ -248,7 +262,14 @@ describe("getBlog", () => {
   });
 
   it("returns the first row when one matched", async () => {
-    const row = { id, title: "one", content: "c", date: "2026-01-01" };
+    // See the note on the equivalent row in fetchRecentBlogs.
+    const row = {
+      id,
+      title: "one",
+      content: "c",
+      date: NAIVE_DATE,
+      private: false,
+    };
     queueSqlResult([row]);
 
     await expect(getBlog(null, id)).resolves.toEqual(row);
