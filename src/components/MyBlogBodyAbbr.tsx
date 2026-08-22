@@ -6,7 +6,10 @@ import type { Session } from "next-auth";
 import { Modal, Button } from "@rewind-ui/core";
 import TextLink from "@/components/ui/TextLink";
 import { formErrorClasses } from "@/components/ui/form";
-import { primaryButtonClasses } from "@/components/ui/button";
+import {
+  dangerButtonClasses,
+  primaryButtonClasses,
+} from "@/components/ui/button";
 
 interface MyBlogBodyAbbrProps {
   session: Session | null;
@@ -115,7 +118,11 @@ const MyBlogBodyAbbr = ({
             >
               Cancel
             </Button>
-            <Button color="red" onClick={handleDelete}>
+            <Button
+              color="red"
+              className={dangerButtonClasses}
+              onClick={handleDelete}
+            >
               Delete
             </Button>
           </div>

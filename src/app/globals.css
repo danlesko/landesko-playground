@@ -29,6 +29,12 @@
   --brand-hover: #7e22ce; /* purple-700 — 6.98:1 under white, 5.38:1 for --brand */
   --danger: #f87171; /* red-400    6.40:1 */
   --danger-hover: #fca5a5; /* red-300    9.33:1 */
+  /* A second red pair, because the two above are *text* — the delete icon on
+     --background, where a lighter red reads better. These are the fill under a
+     white label, where the direction reverses: --danger itself measures 2.77:1
+     that way. Same split, and the same reason, as --brand vs --accent. */
+  --danger-fill: #dc2626; /* red-600    4.83:1 under white */
+  --danger-fill-hover: #b91c1c; /* red-700    6.47:1 under white */
   --focus: #67e8f9; /* cyan-300  10.28:1 on --surface */
 }
 
