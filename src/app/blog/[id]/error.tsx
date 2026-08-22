@@ -18,7 +18,7 @@ export default function Error({
         <span className="text-danger">Error Fetching Blog</span>
       </PageHeading>
       <BackLink />
-      <div className="mt-4 p-4 shadow-md rounded-lg md:w-full lg:min-w-[600px] lg:w-1/2 min-h-32 border border-border overflow-auto">
+      <div className="mt-4 p-4 shadow-md rounded-lg lg:min-w-[600px] lg:w-1/2 min-h-32 border border-border overflow-auto">
         <p className="whitespace-pre-line">
           The blog post for this URL could not be loaded. If the problem is
           temporary, trying again may help.

@@ -95,7 +95,7 @@ const MyContactForm = () => {
   return (
     <>
       <form
-        className="text-lg mt-2 md:w-full lg:min-w-[600px] lg:w-1/2 h-1/2"
+        className="text-lg mt-2 lg:min-w-[600px] lg:w-1/2 h-1/2"
         onSubmit={handleSubmit}
       >
         <label htmlFor={`${fieldId}-name`} className={formLabelClasses}>

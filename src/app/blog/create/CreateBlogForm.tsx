@@ -20,7 +20,7 @@ const CreateBlogForm = () => {
 
   return (
     <form
-      className="text-lg mt-2 md:w-full lg:min-w-[600px] lg:w-1/2"
+      className="text-lg mt-2 lg:min-w-[600px] lg:w-1/2"
       action={formAction}
     >
       <label htmlFor={`${fieldId}-title`} className={formLabelClasses}>

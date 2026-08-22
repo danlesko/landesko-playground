@@ -7,7 +7,7 @@ export default function NotFound() {
   return (
     <div className="inline-block" style={{ width: "100%" }}>
       <PageHeading>Page Not Found</PageHeading>
-      <div className="mt-4 p-4 shadow-md rounded-lg md:w-full lg:min-w-[600px] lg:w-1/2 min-h-32 border border-border">
+      <div className="mt-4 p-4 shadow-md rounded-lg lg:min-w-[600px] lg:w-1/2 min-h-32 border border-border">
         <p>
           There is nothing at this URL. It may have moved, or it may never have
           existed.

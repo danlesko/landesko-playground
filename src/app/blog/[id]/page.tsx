@@ -52,7 +52,7 @@ export default async function Blog(props: { params: Promise<{ id: string }> }) {
       <BackLink />
       <div
         key={blog.title}
-        className="mt-4 p-4 shadow-md rounded-lg md:w-full lg:min-w-[600px] lg:w-1/2 min-h-32 border border-border overflow-auto"
+        className="mt-4 p-4 shadow-md rounded-lg lg:min-w-[600px] lg:w-1/2 min-h-32 border border-border overflow-auto"
       >
         <div className="flow-root">
           <p className="text-sm font-medium text-muted">
