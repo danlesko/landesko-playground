@@ -4,9 +4,19 @@ export type Blog = {
   id: string;
   title: string;
   content: string;
-  // `timestamp` in Postgres, so the driver resolves it to a `Date`, not the
-  // string this used to declare. Naive — no zone — which is why the render
-  // sites deliberately format in the reader's ambient zone.
+  // `timestamp` in Postgres, and the driver's OID 1114 parser hands back a
+  // `Date`, not the string this used to declare. The column is naive, so that
+  // `Date` is a wall clock read in the *query* process's zone — not the
+  // reader's, and not necessarily the writer's either: the create action
+  // formats in `America/Denver` before inserting.
+  //
+  // `Date` is narrower than the parser's full range: `infinity`/`-infinity`
+  // parse to the *numbers* `Infinity`/`-Infinity`, and nothing on the column
+  // excludes them. It still describes every row this codebase can produce,
+  // because the only INSERT writes a formatted wall clock. Widening to
+  // `Date | number` would make both render sites handle a value only
+  // hand-written SQL could put there; a CHECK constraint is the fix if that
+  // ever stops being true.
   date: Date;
   // The column is `private`, which only reads as a reserved word in identifier
   // position; as a property name it is fine. actions.ts calls its form field
