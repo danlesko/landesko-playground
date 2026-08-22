@@ -21,6 +21,7 @@ const row = {
   title: "A post",
   content: "body",
   date: new Date("2026-01-01"),
+  private: false,
 };
 
 // Literal strings under intrinsic elements only. Descending into a component

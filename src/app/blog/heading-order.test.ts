@@ -25,6 +25,7 @@ const row = {
   title: "A post",
   content: "body",
   date: new Date("2026-01-01"),
+  private: false,
 };
 
 // The tag name, not the accessible name. A role+name query can pin a level via
