@@ -1,3 +1,5 @@
+import { inspect } from "node:util";
+
 import type { Session } from "next-auth";
 import {
   afterEach,
@@ -60,6 +62,9 @@ const GET_BLOG_SIGNED_IN = "SELECT * FROM blogs WHERE id=$1";
  */
 const NAIVE_DATE = new Date(2026, 0, 1, 0, 0, 0);
 
+/** A real uuid, because the column is `UUID` and the row parser checks it. */
+const ROW_ID = "22222222-2222-4222-8222-222222222222";
+
 function session(): Session {
   return {
     user: { name: "Dan", email: "owner@example.com" },
@@ -75,7 +80,17 @@ let consoleError: MockInstance<typeof console.error>;
 beforeEach(() => {
   resetSqlMock();
   resetNextMocks();
-  consoleError = vi.spyOn(console, "error").mockImplementation(() => {});
+  // The stand-in still runs Node's real formatter over every argument, rather
+  // than being an empty function. `console.error` formats its arguments eagerly,
+  // and on this runtime it *throws* on some of them: handed a `ZodError`, the
+  // inspector raises `TypeError: Cannot read properties of undefined (reading
+  // 'value')`, which would replace the generic error data.ts means to throw. A
+  // no-op mock cannot see that, so it hid the defect until a review reproduced
+  // it outside the suite. Formatting here means any un-loggable payload fails
+  // the test that logs it, wherever in this file that happens.
+  consoleError = vi.spyOn(console, "error").mockImplementation((...args) => {
+    args.forEach((arg) => inspect(arg));
+  });
 });
 
 afterEach(() => {
@@ -154,12 +169,19 @@ describe("fetchRecentBlogs", () => {
   });
 
   it("returns the rows the driver produced", async () => {
-    // A `Date` and a `private` flag, because that is what the driver hands
-    // back for these columns. The cast in data.ts means nothing here would
-    // complain about a string and a missing field, which is exactly why the
-    // mock has to be written faithfully by hand.
+    // Every field as the driver actually produces it, including a real uuid.
+    // This mock no longer only documents the row shape, it has to satisfy it:
+    // `data.ts` parses now, so an unfaithful field here fails the test rather
+    // than passing through a row the database could not return. The `id: "a"`
+    // this used to carry is what the parser rejected first.
     const rows = [
-      { id: "a", title: "one", content: "c", date: NAIVE_DATE, private: false },
+      {
+        id: ROW_ID,
+        title: "one",
+        content: "c",
+        date: NAIVE_DATE,
+        private: false,
+      },
     ];
     queueSqlResult(rows);
 
@@ -297,6 +319,205 @@ describe("getBlog", () => {
       expectLoggedExactly("Failed to fetch blog:", driverError);
     },
   );
+});
+
+/**
+ * The row parser, exercised through the two reads rather than by importing the
+ * schema — the schema is not exported, and what matters is that a bad row cannot
+ * reach a render site, not that a schema object rejects it in isolation.
+ *
+ * Every case here passed before the parser existed. The cast asserted the shape
+ * without looking, so each of these rows went straight through to the page.
+ */
+describe("blog row validation", () => {
+  const CONTENT = "a-private-post-body-that-must-not-be-logged";
+
+  const validRow = () => ({
+    id: ROW_ID,
+    title: "one",
+    content: CONTENT,
+    date: NAIVE_DATE,
+    private: true,
+  });
+
+  /** The valid row is asserted to pass first, so each rejection below is
+   * attributable to the one field it breaks rather than to the fixture. */
+  it("accepts the row the driver actually produces", async () => {
+    queueSqlResult([validRow()]);
+
+    await expect(fetchRecentBlogs(session())).resolves.toEqual([validRow()]);
+  });
+
+  it.each([
+    [
+      "date arriving as a string, which is what the old type claimed",
+      "date",
+      "2026-01-01",
+    ],
+    [
+      "date arriving as Postgres infinity, which parses to a number",
+      "date",
+      Infinity,
+    ],
+    // What the driver actually returns for a timestamp it cannot read: its
+    // parser only accepts year-first text, so a server whose `DateStyle` is not
+    // the default ISO yields `null` for every row rather than a `Date`.
+    [
+      "date arriving as null, which is what a non-ISO DateStyle yields",
+      "date",
+      null,
+    ],
+    ["private arriving as the string Postgres never sends", "private", "false"],
+    ["id that is not a uuid", "id", "a"],
+    ["title arriving as null", "title", null],
+    // Without a case per column, a schema that stopped checking one of them —
+    // `content: z.any()` is still assignable through the `z.ZodType<Blog>`
+    // annotation — would keep the whole suite green.
+    ["content arriving as a number", "content", 42],
+  ])("rejects a row with %s", async (_label, field, value) => {
+    queueSqlResult([{ ...validRow(), [field]: value }]);
+
+    await expect(fetchRecentBlogs(session())).rejects.toThrow(
+      "Failed to fetch blogs.",
+    );
+  });
+
+  // Every other case here puts the bad row first, which a parser that only ever
+  // looked at `rows[0]` would satisfy. This one is the reason the list read uses
+  // `z.array(...)` rather than parsing a single row and trusting the rest.
+  it("rejects a bad row that is not the first one", async () => {
+    queueSqlResult([validRow(), { ...validRow(), date: "2026-01-01" }]);
+
+    await expect(fetchRecentBlogs(session())).rejects.toThrow(
+      "Failed to fetch blogs.",
+    );
+  });
+
+  it("strips an undeclared column from a row that is not the first one", async () => {
+    queueSqlResult([
+      validRow(),
+      { ...validRow(), author_email: "someone@example.com" },
+    ]);
+
+    const rows = await fetchRecentBlogs(session());
+
+    expect(rows).toEqual([validRow(), validRow()]);
+  });
+
+  it("rejects a row that is missing a column entirely", async () => {
+    // Deleted from a copy rather than written out without the field, so adding a
+    // column to `validRow` cannot leave this case quietly testing an old shape.
+    const withoutPrivate: Partial<ReturnType<typeof validRow>> = validRow();
+    delete withoutPrivate.private;
+    queueSqlResult([withoutPrivate]);
+
+    await expect(fetchRecentBlogs(session())).rejects.toThrow(
+      "Failed to fetch blogs.",
+    );
+  });
+
+  // The reader is told nothing useful, so the detail has to reach the log or the
+  // failure is undiagnosable. Asserts the field path is there, which is the part
+  // that says *which* column drifted.
+  /** What data.ts logged, as the single argument after the prefix. */
+  function loggedPayload(prefix: string): unknown {
+    expect(consoleError).toHaveBeenCalledOnce();
+    const call = consoleError.mock.calls[0];
+    if (!call) throw new Error("Unreachable: asserted called once above.");
+    expect(call).toHaveLength(2);
+    expect(call[0]).toBe(prefix);
+    return call[1];
+  }
+
+  it("logs which field failed, under the same prefix as a query failure", async () => {
+    queueSqlResult([{ ...validRow(), date: "2026-01-01" }]);
+    await expect(fetchRecentBlogs(session())).rejects.toThrow();
+
+    const logged = loggedPayload("Failed to fetch blogs:");
+    expect(JSON.stringify(logged)).toContain('"path":[0,"date"]');
+  });
+
+  /**
+   * The regression test for the reason data.ts reduces the error at all: given
+   * the `ZodError` itself, `console.error` throws
+   * `TypeError: Cannot read properties of undefined (reading 'value')` on this
+   * runtime, and that `TypeError` replaces the generic error below — so the
+   * reader gets an inspector crash and the log is lost. Asserting the message
+   * here is what pins it: the `beforeEach` stand-in formats what it is given, so
+   * an un-inspectable payload makes this reject with the wrong error.
+   */
+  it("logs something Node can actually format, so the generic error survives", async () => {
+    queueSqlResult([{ ...validRow(), date: "2026-01-01" }]);
+
+    await expect(fetchRecentBlogs(session())).rejects.toThrow(
+      "Failed to fetch blogs.",
+    );
+
+    expect(() =>
+      inspect(loggedPayload("Failed to fetch blogs:")),
+    ).not.toThrow();
+  });
+
+  // Guards the claim in data.ts that nothing from a private post reaches the
+  // log. A validation error that quoted the offending row would put post bodies
+  // into the server log on every schema drift — and zod does carry the offending
+  // value for some issue types, so this holds because of the reduction rather
+  // than because ZodError is inherently value-free.
+  it("keeps the post's content out of what it logs", async () => {
+    queueSqlResult([{ ...validRow(), date: "2026-01-01" }]);
+    await expect(fetchRecentBlogs(session())).rejects.toThrow();
+
+    const logged = loggedPayload("Failed to fetch blogs:");
+    // Both serialisers, because JSON.stringify drops keys that `inspect` shows.
+    expect(JSON.stringify(logged)).not.toContain(CONTENT);
+    expect(inspect(logged, { depth: null })).not.toContain(CONTENT);
+  });
+
+  // Not tidiness: these rows are handed to `MyBlogBodyAbbr`, a client
+  // component, so anything left on them is serialised into the page. A column
+  // added to the table must not ride along.
+  it("strips a column the type does not declare instead of passing it on", async () => {
+    queueSqlResult([{ ...validRow(), author_email: "someone@example.com" }]);
+
+    const rows = await fetchRecentBlogs(session());
+
+    expect(rows[0]).toEqual(validRow());
+    expect(Object.keys(rows[0] ?? {})).not.toContain("author_email");
+  });
+
+  // More than one field, and the stripping too, because a single bad-date case
+  // here would also be satisfied by a separate single-row schema that happened
+  // to check only `date`. These pin that `getBlog` uses the *same* schema.
+  it.each([
+    ["date", "2026-01-01"],
+    ["private", "false"],
+    ["id", "a"],
+    ["content", 42],
+  ])(
+    "applies the same parsing to the single-post read (%s)",
+    async (field, value) => {
+      queueSqlResult([{ ...validRow(), [field]: value }]);
+
+      await expect(getBlog(session(), ROW_ID)).rejects.toThrow(
+        "Failed to fetch blog.",
+      );
+    },
+  );
+
+  it("strips an undeclared column on the single-post read too", async () => {
+    queueSqlResult([{ ...validRow(), author_email: "someone@example.com" }]);
+
+    await expect(getBlog(session(), ROW_ID)).resolves.toEqual(validRow());
+  });
+
+  // The empty result is the ordinary answer for a missing *or* private post, so
+  // it has to survive a parser that rejects everything else.
+  it("still reports no post rather than failing when nothing matched", async () => {
+    queueSqlResult([]);
+
+    await expect(getBlog(session(), ROW_ID)).resolves.toBeUndefined();
+    expect(consoleError).not.toHaveBeenCalled();
+  });
 });
 
 describe("deleteBlog", () => {
