@@ -60,13 +60,23 @@ const BlogRowSchema: z.ZodType<Blog> = z.object({
  *
  * Reducing the error also pins what is allowed into the log, which a comment on
  * its own could not. Only `code` and `path` are copied, plus `received` for
- * `invalid_type`, where zod sets it to a type name and not to the value. So no
- * field value can reach the log even if this schema later grows a literal, an
- * enum or a custom refinement — each of which *does* carry the offending value
- * on the issue, and `ZodError.message` serialises the issues array whole.
+ * `invalid_type`, where zod sets it to a `ZodParsedType` name and never to the
+ * value. That matters because `ZodError.message` serialises the issues array
+ * whole, and a literal or an enum issue *does* carry the offending value — on
+ * `received`, which is not copied for those codes. So growing this schema in
+ * either direction cannot start leaking a row.
+ *
+ * One case is not covered by construction: a custom refinement chooses its own
+ * `path`, which `makeIssue` appends verbatim (zod 3.24.2,
+ * `helpers/parseUtil.js`), so `ctx.addIssue({ path: [someValue] })` would put a
+ * value somewhere this function copies. Nothing here does that, and a refinement
+ * that did would be the thing to fix — but the guarantee below is about the
+ * declared fields, not about any issue zod can be asked to produce.
  *
  * Anything that is not a `ZodError` passes through untouched, so a driver error
- * is still logged as itself, with its stack.
+ * is still logged as itself, with its stack. The only two things thrown inside
+ * these `try` blocks are the driver and `parse`, and driver errors carry a
+ * normal `stack` value and inspect fine.
  */
 function loggable(error: unknown): unknown {
   if (!(error instanceof z.ZodError)) return error;
