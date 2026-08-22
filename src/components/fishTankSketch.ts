@@ -124,11 +124,24 @@ export function createFishTankSketch(
     // exceed it. That used to be impossible by construction — the Math.min made
     // "never wider than the container" true arithmetically — and #57 exists
     // because a canvas wider than <main> widens <main> rather than clipping.
-    // 120 is unreachable today (it needs a viewport under 120px). Raising it to
-    // a "comfortable" 320 does reintroduce #57 — measured at 16px of page
+    // Two different thresholds, neither of them 120px of viewport: the floor
+    // starts applying below a 170px viewport width, because `windowWidth - 50`
+    // is what drops under 120 first, and it starts exceeding the container below
+    // 152px, because the wrapper's padding costs 32px. So 120 is reachable, and
+    // between 170 and 152 it is reached without overflowing anything. Raising it
+    // to a "comfortable" 320 does reintroduce #57 — measured at 16px of page
     // overflow on a 320px-wide viewport — so there is an e2e guard at that
     // width. The 1280x1024 overflow guard cannot see it: available width there
     // is 998 and so is the canvas.
+    //
+    // These stop the crash; they do not make the result look right, and it would
+    // be wrong to read them as a "smallest usable tank". Fish Y centres and sizes
+    // scale from the width alone, so wherever only the height floor bites — window
+    // heights from roughly 262 to 375 — the canvas gets wider while staying 75px
+    // tall and the lower fish sit below it. Seaweed blades stay 120-200px on a
+    // 75px canvas for the same reason. That band used to be a crash (height goes
+    // non-positive under 300), so this is strictly better, but it is degraded
+    // rather than good.
     const minCanvasWidth = 120;
     const minCanvasHeight = 75;
 

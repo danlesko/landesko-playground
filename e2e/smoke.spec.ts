@@ -521,13 +521,23 @@ test("the p5 canvas does not push the page wider than the viewport", async ({
  * the draw calls — and at the heights where a zero dimension does survive
  * (800x250, 800x300) the canvas has an empty bounding box, so it is not visible
  * either. A floor of `1`, though, renders a visible 1x1 canvas that no crash and
- * no visibility check can see. So `> 0` was unfalsifiable and a magnitude is not:
- * it asserts the floors are still a usable minimum, not merely a positive one.
+ * no visibility check can see. So `> 0` was unfalsifiable and a magnitude is not.
+ *
+ * What that buys is narrow, and worth stating so nobody reads more into a pass:
+ * it pins the two constants and nothing else. It does not establish that 120x75
+ * is *usable* — see the comment on `minCanvasHeight`, where it is not — and any
+ * larger canvas passes too.
  *
  * The margins are exactly zero, which is the point rather than an oversight: at
  * this viewport the branch computes -1.39 and -114, so both floors apply and the
  * received values are precisely 120 and 75. Lowering either floor by one pixel
- * fails here. The numbers are derived, not fitted after the fact.
+ * fails here.
+ *
+ * Measured via `getBoundingClientRect`, not the `width`/`height` attributes. p5
+ * calls `pixelDensity(window.devicePixelRatio)`, so those attributes are
+ * backing-store pixels — 2x the floors at DPR 2 — while the floors are logical
+ * dimensions. The Chromium project runs at DPR 1, so the two happen to coincide
+ * today and the distinction is invisible; the rect is the quantity actually meant.
  */
 test("the p5 canvas survives a window shorter than the reserved height", async ({
   page,
@@ -537,8 +547,8 @@ test("the p5 canvas survives a window shorter than the reserved height", async (
   await expect(page.locator("canvas")).toBeVisible({ timeout: 15_000 });
 
   const size = await page.evaluate(() => {
-    const canvas = document.querySelector("canvas");
-    return { width: canvas?.width ?? 0, height: canvas?.height ?? 0 };
+    const rect = document.querySelector("canvas")?.getBoundingClientRect();
+    return { width: rect?.width ?? 0, height: rect?.height ?? 0 };
   });
 
   expect(size.width).toBeGreaterThanOrEqual(120);
@@ -561,8 +571,17 @@ test("the p5 canvas survives a window shorter than the reserved height", async (
  * would pass there too, so the *viewport* is the load-bearing part, not the
  * assertion. Same blind spot as 1280x720 in the guard above -- and 320px is a
  * real phone width rather than a contrived one.
+ *
+ * 320 is the narrowest width this suite covers, not a support boundary the repo
+ * declares anywhere. It is also not where the floor stops fitting: the container
+ * here is 288px, so any floor up to 288 still passes, and the floor only exceeds
+ * its container below a 152px viewport. This catches the plausible mutation, not
+ * every one.
+ *
+ * `getBoundingClientRect`, again, because `canvas.width` is backing-store pixels
+ * against a CSS-pixel `clientWidth` — a comparison that is only correct at DPR 1.
  */
-test("the p5 canvas fits its container at the narrowest supported width", async ({
+test("the p5 canvas fits its container at the narrowest width covered here", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 320, height: 568 });
@@ -574,7 +593,7 @@ test("the p5 canvas fits its container at the narrowest supported width", async 
     const root = document.documentElement;
     return {
       overflow: root.scrollWidth - root.clientWidth,
-      canvasWidth: canvas?.width ?? 0,
+      canvasWidth: canvas?.getBoundingClientRect().width ?? 0,
       containerWidth: canvas?.parentElement?.clientWidth ?? 0,
     };
   });
