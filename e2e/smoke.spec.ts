@@ -505,6 +505,106 @@ test("the p5 canvas does not push the page wider than the viewport", async ({
 });
 
 /**
+ * The height-led branch subtracts a flat 300 from both dimensions, so a short
+ * window drives them to zero and then past it: at a 186px window height the
+ * width is -1.4. p5 hands that straight to <canvas> and the renderer crashes the
+ * tab outright — reproduced at 186, 185 and 183, while 187 still rendered.
+ * `scaleFactor` divides by the same value, so zero is no safer than negative.
+ *
+ * 800x186 is the boundary case rather than an arbitrary tiny window:
+ * 300 / (1180 / 735) = 186.86 is where the width crosses zero. A crashed tab
+ * makes `evaluate` throw, so a regression fails loudly here rather than subtly.
+ *
+ * The size assertions are deliberately magnitudes, not `> 0`, and they catch a
+ * second regression the crash cannot. Floors of `0` do not render here — they
+ * crash too, because `scaleFactor` divides by the width and hands `Infinity` to
+ * the draw calls — and at the heights where a zero dimension does survive
+ * (800x250, 800x300) the canvas has an empty bounding box, so it is not visible
+ * either. A floor of `1`, though, renders a visible 1x1 canvas that no crash and
+ * no visibility check can see. So `> 0` was unfalsifiable and a magnitude is not.
+ *
+ * What that buys is narrow, and worth stating so nobody reads more into a pass:
+ * it pins the two constants and nothing else. It does not establish that 120x75
+ * is *usable* — see the comment on `minCanvasHeight`, where it is not — and any
+ * larger canvas passes too.
+ *
+ * The margins are exactly zero, which is the point rather than an oversight: at
+ * this viewport the branch computes -1.39 and -114, so both floors apply and the
+ * received values are precisely 120 and 75. Lowering either floor by one pixel
+ * fails here.
+ *
+ * Measured via `getBoundingClientRect`, not the `width`/`height` attributes. p5
+ * calls `pixelDensity(window.devicePixelRatio)`, so those attributes are
+ * backing-store pixels — 2x the floors at DPR 2 — while the floors are logical
+ * dimensions. The Chromium project runs at DPR 1, so the two happen to coincide
+ * today and the distinction is invisible; the rect is the quantity actually meant.
+ */
+test("the p5 canvas survives a window shorter than the reserved height", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 800, height: 186 });
+  await page.goto("/animation");
+  await expect(page.locator("canvas")).toBeVisible({ timeout: 15_000 });
+
+  const size = await page.evaluate(() => {
+    const rect = document.querySelector("canvas")?.getBoundingClientRect();
+    return { width: rect?.width ?? 0, height: rect?.height ?? 0 };
+  });
+
+  expect(size.width).toBeGreaterThanOrEqual(120);
+  expect(size.height).toBeGreaterThanOrEqual(75);
+});
+
+/**
+ * The guard above is directional: it catches a width floor that is too low, and
+ * cannot catch one that is too high. Too high is the more plausible edit — the
+ * floor looks like a "smallest usable tank" knob, so raising it to something
+ * comfortable reads as an improvement — and it reintroduces #57, because the
+ * floor bypasses the `Math.min` that used to make "never wider than the
+ * container" true by construction.
+ *
+ * 320px wide is what makes this checkable, and the existing overflow guard
+ * cannot substitute for it. Measured against a build with the width floor raised
+ * to 320: here the page overflows by 16px (canvas 320 in a 288px container),
+ * while at that guard's 1280x1024 the canvas is 998 in a 998px container and
+ * nothing overflows at all. An assertion that the canvas fits its container
+ * would pass there too, so the *viewport* is the load-bearing part, not the
+ * assertion. Same blind spot as 1280x720 in the guard above -- and 320px is a
+ * real phone width rather than a contrived one.
+ *
+ * 320 is the narrowest width this suite covers, not a support boundary the repo
+ * declares anywhere. It is also not where the floor stops fitting: the container
+ * here is 288px, so any floor up to 288 still passes, and the floor only exceeds
+ * its container below a 152px viewport. This catches the plausible mutation, not
+ * every one.
+ *
+ * `getBoundingClientRect`, again, because `canvas.width` is backing-store pixels
+ * against a CSS-pixel `clientWidth` — a comparison that is only correct at DPR 1.
+ */
+test("the p5 canvas fits its container at the narrowest width covered here", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto("/animation");
+  await expect(page.locator("canvas")).toBeVisible({ timeout: 15_000 });
+
+  const measurements = await page.evaluate(() => {
+    const canvas = document.querySelector("canvas");
+    const root = document.documentElement;
+    return {
+      overflow: root.scrollWidth - root.clientWidth,
+      canvasWidth: canvas?.getBoundingClientRect().width ?? 0,
+      containerWidth: canvas?.parentElement?.clientWidth ?? 0,
+    };
+  });
+
+  expect(measurements.overflow).toBe(0);
+  expect(measurements.canvasWidth).toBeLessThanOrEqual(
+    measurements.containerWidth,
+  );
+});
+
+/**
  * The global CSS rule that neutralises animation and transition durations cannot
  * reach a <canvas>: the fish move because a JS draw loop mutates coordinates, not
  * because a keyframe animation is running. So the only way to know the canvas
