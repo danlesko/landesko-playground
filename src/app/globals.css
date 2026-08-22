@@ -21,6 +21,12 @@
      all four engines. Do not inline this as a literal hex. */
   --accent-visited: #a78bfa; /* violet-400 6.51:1 */
   --brand: #9333ea; /* purple-600 — active nav, ties to the header gradient */
+  /* Darker than --brand, where --accent-hover and --danger-hover are brighter
+     than theirs. Those two are text on --background, so lifting the colour
+     raises contrast; this one is a fill under a white label, where lifting it
+     lowers contrast — the #a855f7 it replaces measured 3.96:1. Also the
+     gradient's left stop. */
+  --brand-hover: #7e22ce; /* purple-700 — 6.98:1 under white, 5.38:1 for --brand */
   --danger: #f87171; /* red-400    6.40:1 */
   --danger-hover: #fca5a5; /* red-300    9.33:1 */
   --focus: #67e8f9; /* cyan-300  10.28:1 on --surface */

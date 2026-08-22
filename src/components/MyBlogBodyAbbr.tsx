@@ -6,6 +6,7 @@ import type { Session } from "next-auth";
 import { Modal, Button } from "@rewind-ui/core";
 import TextLink from "@/components/ui/TextLink";
 import { formErrorClasses } from "@/components/ui/form";
+import { primaryButtonClasses } from "@/components/ui/button";
 
 interface MyBlogBodyAbbrProps {
   session: Session | null;
@@ -109,7 +110,7 @@ const MyBlogBodyAbbr = ({
           <div className="flex justify-end mt-4">
             <Button
               variant="primary"
-              className="mr-2"
+              className={`mr-2 ${primaryButtonClasses}`}
               onClick={() => setOpenModal(false)}
             >
               Cancel

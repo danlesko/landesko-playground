@@ -24,7 +24,10 @@ export default {
           hover: "var(--accent-hover)",
           visited: "var(--accent-visited)",
         },
-        brand: "var(--brand)",
+        brand: {
+          DEFAULT: "var(--brand)",
+          hover: "var(--brand-hover)",
+        },
         danger: {
           DEFAULT: "var(--danger)",
           hover: "var(--danger-hover)",

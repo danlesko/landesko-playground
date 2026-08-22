@@ -8,6 +8,7 @@ import {
   formErrorClasses,
   formLabelClasses,
 } from "@/components/ui/form";
+import { primaryButtonClasses } from "@/components/ui/button";
 
 const INITIAL_STATE: CreateBlogState = {};
 
@@ -79,7 +80,11 @@ const CreateBlogForm = () => {
         label="Make this post private"
       />
 
-      <Button variant="primary" type="submit" className="mt-2 font-bold">
+      <Button
+        variant="primary"
+        type="submit"
+        className={`mt-2 font-bold ${primaryButtonClasses}`}
+      >
         Create Post
       </Button>
     </form>
