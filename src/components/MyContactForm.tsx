@@ -63,6 +63,12 @@ const MyContactForm = () => {
           email: "",
           message: "",
         });
+        // All three toasts below pass `description` and no `title` on purpose.
+        // rewind-ui renders `description` as a <p> but `title` as an <h4>, and
+        // this page's only heading is its <h1>, so adding a title puts an h4
+        // directly under it and skips two levels. Nothing would catch that: the
+        // heading-order suite renders only the two blog pages, and the /contact
+        // e2e asserts the <h1> exists rather than checking heading order.
         toast.add({
           color: "green",
           tone: "solid",
