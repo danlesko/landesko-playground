@@ -34,9 +34,51 @@ const BlogRowSchema: z.ZodType<Blog> = z.object({
   // `infinity`, which the driver parses to the *number* `Infinity` — legal in
   // the column, unreachable through the create action, and previously rendered
   // as "Invalid Date". It now fails here instead.
+  //
+  // It also rejects `null`, which is what the driver returns for a timestamp it
+  // cannot read: its parser only accepts year-first text, so a server whose
+  // `DateStyle` is not the default ISO (`SQL, MDY` renders `01/31/2026 …`) hands
+  // back `null` for every row. Nothing here can cause that, and the live server
+  // is on the default — but it is configuration drift rather than schema drift,
+  // so the parser is not only a guard against migrations. Under the old cast
+  // that same server produced a page of "Invalid Date"; now it fails loudly.
   date: z.date(),
   private: z.boolean(),
 });
+
+/**
+ * What the catches below log in place of a parse failure.
+ *
+ * A `ZodError` cannot be given to `console.error` at all. Measured on this
+ * project's Node 24.12.0: `console.error("…", zodError)` raises
+ * `TypeError: Cannot read properties of undefined (reading 'value')` from
+ * `formatProperty` in `node:internal/util/inspect`, because zod defines `stack`
+ * as an own *accessor* and the inspector reads a descriptor it has already
+ * consumed. That `TypeError` would replace the generic error the catch means to
+ * throw, so a drifted column would reach the reader as an inspector crash with
+ * nothing logged — the opposite of what sharing the catch is for.
+ *
+ * Reducing the error also pins what is allowed into the log, which a comment on
+ * its own could not. Only `code` and `path` are copied, plus `received` for
+ * `invalid_type`, where zod sets it to a type name and not to the value. So no
+ * field value can reach the log even if this schema later grows a literal, an
+ * enum or a custom refinement — each of which *does* carry the offending value
+ * on the issue, and `ZodError.message` serialises the issues array whole.
+ *
+ * Anything that is not a `ZodError` passes through untouched, so a driver error
+ * is still logged as itself, with its stack.
+ */
+function loggable(error: unknown): unknown {
+  if (!(error instanceof z.ZodError)) return error;
+  return {
+    name: error.name,
+    issues: error.issues.map((issue) => ({
+      code: issue.code,
+      path: issue.path,
+      ...(issue.code === "invalid_type" ? { received: issue.received } : {}),
+    })),
+  };
+}
 
 export async function fetchRecentBlogs(session: Session | null) {
   noStore();
@@ -51,12 +93,11 @@ export async function fetchRecentBlogs(session: Session | null) {
       : await sql`SELECT * FROM blogs WHERE blogs.private != TRUE ORDER BY blogs.date DESC LIMIT 10`;
     // Inside the existing `try` on purpose: a failed parse takes the same route
     // as a failed query — logged server-side, reported to the reader as the
-    // generic message. A `ZodError` carries the field path and the type names
-    // only, never the offending value, so nothing from a private post reaches
-    // the log.
+    // generic message. What reaches the log is the reduction in `loggable`, not
+    // the `ZodError`; see the note there for why that is not optional.
     return z.array(BlogRowSchema).parse(blogs.rows);
   } catch (error) {
-    console.error("Failed to fetch blogs:", error);
+    console.error("Failed to fetch blogs:", loggable(error));
     throw new Error("Failed to fetch blogs.");
   }
 }
@@ -76,7 +117,7 @@ export async function getBlog(session: Session | null, id: string) {
     // of the wrong shape still fails. See the note in fetchRecentBlogs.
     return BlogRowSchema.optional().parse(blog.rows[0]);
   } catch (error) {
-    console.error("Failed to fetch blog:", error);
+    console.error("Failed to fetch blog:", loggable(error));
     throw new Error("Failed to fetch blog.");
   }
 }
