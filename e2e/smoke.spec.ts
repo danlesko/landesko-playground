@@ -327,6 +327,76 @@ test("the page exposes one banner and exactly one navigation landmark", async ({
   await expect(mainNav(page)).toHaveCount(1);
 });
 
+// A browser is the only instrument that sees this. The unit suite pins the token
+// values, the class string and every call site, but all three can be right while
+// the utility is never emitted -- narrow the Tailwind content globs and
+// `bg-brand` silently resolves to no background at all. Nothing but a rendered
+// page notices.
+test("the header's auth button keeps its label readable", async ({ page }) => {
+  await page.goto("/");
+  const button = page.getByRole("banner").getByRole("button");
+
+  const { fg, resting, fontSize, fontWeight } = await button.evaluate((el) => {
+    const style = getComputedStyle(el);
+    return {
+      fg: style.color,
+      resting: style.backgroundColor,
+      fontSize: parseFloat(style.fontSize),
+      fontWeight: Number(style.fontWeight),
+    };
+  });
+
+  await button.hover();
+  // The button transitions colour over 150ms, so an immediate read returns the
+  // resting colour still in flight and this reads as "hover changes nothing".
+  await page.waitForTimeout(400);
+  const hovered = await button.evaluate(
+    (el) => getComputedStyle(el).backgroundColor,
+  );
+
+  const channels = (colour: string) =>
+    (colour.match(/\d+(?:\.\d+)?/g) ?? []).slice(0, 3).map(Number);
+
+  const luminance = (colour: string) => {
+    const [r, g, b] = channels(colour).map((value) => {
+      const s = value / 255;
+      return s <= 0.04045 ? s / 12.92 : ((s + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r! + 0.7152 * g! + 0.0722 * b!;
+  };
+
+  const contrast = (a: string, b: string) => {
+    const [hi, lo] = [luminance(a), luminance(b)].sort((x, y) => y - x);
+    return (hi! + 0.05) / (lo! + 0.05);
+  };
+
+  // Derived rather than hardcoded to 4.5: if the button is ever restyled larger
+  // this relaxes to 3:1 the way the guideline does, instead of failing on a rule
+  // that stopped applying.
+  const large = fontSize >= 24 || (fontSize >= 18.66 && fontWeight >= 700);
+  const required = large ? 3 : 4.5;
+
+  // A transparent background would compute to rgba(0, 0, 0, 0) and score a
+  // *higher* ratio against a white label than any real fill, so the missing-CSS
+  // case has to be excluded separately rather than caught by the ratio.
+  for (const [state, background] of [
+    ["resting", resting],
+    ["hovered", hovered],
+  ] as const) {
+    expect(background, `${state} background is not painted`).not.toMatch(
+      /rgba\(0, 0, 0, 0\)|transparent/,
+    );
+    expect(
+      contrast(fg, background),
+      `${state}: ${fg} on ${background} at ${fontSize}px/${fontWeight}`,
+    ).toBeGreaterThanOrEqual(required);
+  }
+
+  // The fill is the button's only hover feedback, so collapsing the two states
+  // onto one colour would leave the pointer unacknowledged.
+  expect(hovered).not.toBe(resting);
+});
+
 test("the sidebar toggle reports a truthful expanded state below `lg`", async ({
   page,
 }) => {

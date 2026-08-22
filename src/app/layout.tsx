@@ -4,6 +4,7 @@ import "./globals.css";
 import Image from "next/image";
 import MySidebar from "@/components/MySidebar";
 import { Button } from "@rewind-ui/core";
+import { primaryButtonClasses } from "@/components/ui/button";
 import { signIn, signOut, auth } from "@/auth";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
@@ -94,7 +95,7 @@ export default async function RootLayout({
                 <Button
                   type="submit"
                   variant="primary"
-                  className="mt-1"
+                  className={`mt-1 ${primaryButtonClasses}`}
                   size="sm"
                 >
                   {signedIn ? "Logout" : "Login"}

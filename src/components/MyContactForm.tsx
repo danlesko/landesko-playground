@@ -11,6 +11,7 @@ import { Email } from "@/lib/definitions";
 import ReCAPTCHA from "react-google-recaptcha";
 import { sendContactEmail } from "@/lib/contact-actions";
 import { formControlClasses, formLabelClasses } from "@/components/ui/form";
+import { primaryButtonClasses } from "@/components/ui/button";
 
 const MyContactForm = () => {
   const toast = useToast();
@@ -155,7 +156,7 @@ const MyContactForm = () => {
         <Button
           variant="primary"
           type="submit"
-          className="mt-1 font-bold"
+          className={`mt-1 font-bold ${primaryButtonClasses}`}
           disabled={isSendingEmail}
           loading={isSendingEmail}
         >
