@@ -43,10 +43,12 @@ export const metadata: Metadata = {
   },
 };
 
-// Two actions on purpose, even though the form below is now shared: collapsing
-// these into one that re-reads `auth()` would make both states post the same
-// request, so signing in and signing out would become indistinguishable in the
-// rendered markup and in a network log.
+// Two actions on purpose, even though the form below is now shared. One action
+// that re-read `auth()` would be a toggle, and a rendered page is stale by the
+// time anyone clicks it: a reader whose session ended between render and submit
+// would press "Login" and be signed out, and one who signed in elsewhere would
+// press "Logout" and be sent to GitHub. Pinning the action at render time is
+// what makes the button do what its label promised.
 async function signInWithGithub() {
   "use server";
   await signIn("github");
