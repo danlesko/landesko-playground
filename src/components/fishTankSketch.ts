@@ -8,8 +8,8 @@ import type { P5CanvasInstance } from "react-p5-wrapper";
  * under `skipLibCheck` the p5 half of `P5CanvasInstance` degrades to `any` and
  * there is no `Color` to import. `unknown` is as precise as this codebase can
  * honestly be, and it is strictly better than the `any` it replaces: these
- * values are only ever forwarded to `p5.fill()`, never read, indexed or
- * mutated, so nothing needs the real type today.
+ * values are only ever aliased and forwarded to `p5.fill()`, never inspected,
+ * indexed or mutated, so nothing needs the real type today.
  *
  * Be aware of *why* `unknown` is accepted at those `fill()` calls: only because
  * `fill` is reached through an `any` receiver. Adding `@types/p5` would make
