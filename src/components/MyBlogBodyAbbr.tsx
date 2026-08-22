@@ -8,7 +8,7 @@ import TextLink from "@/components/ui/TextLink";
 import { formErrorClasses } from "@/components/ui/form";
 
 interface MyBlogBodyAbbrProps {
-  session: Session | null; // Replace 'any' with the appropriate type if available
+  session: Session | null;
   blog: Blog;
   deleteBlogPost: (id: string) => Promise<void>;
 }
@@ -51,12 +51,12 @@ const MyBlogBodyAbbr = ({
   blog,
   deleteBlogPost,
 }: MyBlogBodyAbbrProps) => {
-  const [openModel, setOpenModel] = useState(false);
+  const [openModal, setOpenModal] = useState(false);
   const [deleteError, setDeleteError] = useState("");
 
   const handleDelete = () => {
     setDeleteError("");
-    setOpenModel(false);
+    setOpenModal(false);
     void attemptDelete(deleteBlogPost, blog.id, setDeleteError);
   };
 
@@ -72,7 +72,7 @@ const MyBlogBodyAbbr = ({
               type="button"
               aria-label={`Delete post: ${blog.title}`}
               className="text-danger hover:text-danger-hover rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
-              onClick={() => setOpenModel(true)}
+              onClick={() => setOpenModal(true)}
             >
               <Trash size={24} aria-hidden="true" />
             </button>
@@ -97,9 +97,9 @@ const MyBlogBodyAbbr = ({
         {deleteError}
       </p>
       <Modal
-        open={openModel}
+        open={openModal}
         className="bg-surface"
-        onClose={() => setOpenModel(false)}
+        onClose={() => setOpenModal(false)}
       >
         <div className="p-4">
           <h2 className="text-2xl font-semibold">Delete Blog Post</h2>
@@ -110,7 +110,7 @@ const MyBlogBodyAbbr = ({
             <Button
               variant="primary"
               className="mr-2"
-              onClick={() => setOpenModel(false)}
+              onClick={() => setOpenModal(false)}
             >
               Cancel
             </Button>
