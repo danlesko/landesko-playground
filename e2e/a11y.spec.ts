@@ -195,10 +195,17 @@ const summarise = (results: AxeResult[]): string[] =>
  *
  * A `runOnly` that matches no rules makes axe return zero violations, which
  * would make every assertion below pass while checking nothing -- one typo in
- * WCAG_TAGS is enough. An earlier draft floored `passes.length` at 15, which is
- * far too slack to detect that, and worse, `passes` depends on the markup: this
- * app reports 25 passes on /contact at desktop and 20 on / at mobile, so any
- * floor tight enough to be useful would fail on a legitimate page.
+ * WCAG_TAGS is enough. An earlier draft floored `passes.length` at 15, and the
+ * precise reason that is the wrong instrument is worth stating, because the
+ * obvious version of the complaint is false: a total typo does trip it, since
+ * `["wcag2a-typo"]` measures 0 passes. What it does not trip is the loss of a
+ * single tag, which is the realistic edit. Dropping `wcag21aa` was measured at
+ * 60 rules considered with `passes` at 19-24 -- above 15 on all eight
+ * combinations, so that mutant survived a `passes` floor and dies here.
+ *
+ * Raising the `passes` floor is not the fix either: `passes` is markup-dependent
+ * (24 on /contact at desktop, 19 on / at mobile in that same run), so a floor
+ * tight enough to catch 19 would fail on a legitimate page.
  *
  * Every rule axe considers lands in exactly one of the four buckets, so their
  * total is the size of the selected rule set -- measured 62 on all eight
