@@ -31,6 +31,8 @@ export default {
         danger: {
           DEFAULT: "var(--danger)",
           hover: "var(--danger-hover)",
+          fill: "var(--danger-fill)",
+          "fill-hover": "var(--danger-fill-hover)",
         },
         focus: "var(--focus)",
       },
