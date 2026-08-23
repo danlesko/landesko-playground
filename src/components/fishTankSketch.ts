@@ -251,10 +251,14 @@ export function createFishTankSketch(
 
     /**
      * Which way a fish faces, and so which way it swims: `1` is left-to-right,
-     * `-1` right-to-left. It is the sign of every x in `drawGoldfish`, so it is
-     * a mirror about the fish's own origin and nothing else — the body ellipse
-     * is centred on that origin and the mouth arc spans 0..PI, which is
-     * symmetric about the vertical axis, so both are unchanged by it.
+     * `-1` right-to-left. It multiplies every non-zero x *literal* inside
+     * `drawGoldfish` — not the translate, not a width, not a y — which makes it a
+     * reflection of the fish about its own origin and nothing else.
+     *
+     * Two parts have no signed literal to multiply and are still correct. The
+     * body ellipse is centred on the origin, so it reflects onto itself. The
+     * mouth arc's angular span of 0..PI is symmetric about the vertical axis, so
+     * only its centre needs mirroring, which it gets.
      */
     type Direction = 1 | -1;
 
@@ -324,13 +328,16 @@ export function createFishTankSketch(
     const yPos = 200;
 
     /**
-     * The edge a fish leaves by, and the edge it comes back in at. Both are a
-     * margin *outside* the canvas, expressed so that neither depends on which
+     * The edge a fish's `x` leaves by, and the one it comes back in at. Both are
+     * a margin *outside* the canvas, expressed so that neither depends on which
      * way the fish is going: a left-to-right fish exits past the right-hand
      * edge and re-enters left of zero, and the mirror holds going the other way.
      * That is the whole reason the eight wrap-around `if`s could collapse into
      * one — as written out per variable, the two directions did not look like
      * the same rule.
+     *
+     * Both are in terms of `x`, and so of the fish's own origin, which for a fish
+     * with a `drawnOffset` is not where it appears.
      */
     const farEdge = (direction: Direction, width: number, margin: number) =>
       direction === 1 ? width + margin : -margin;
@@ -345,18 +352,21 @@ export function createFishTankSketch(
       yOffset: number;
       scale: number;
       /**
-       * Added to `x` at the moment of drawing. Only three fish have one, and it
-       * is kept rather than folded into `x` because it also shifts where the
-       * fish wraps: the thresholds below are compared against `x`, not against
-       * the drawn position, so folding it in would move the wrap points.
+       * Added to `x` at the moment of drawing. Four fish have a non-zero one,
+       * and it is kept separate rather than folded into `x` because the three
+       * margins below are compared against `x` and not against the drawn
+       * position: folding it in would move the wrap points. So a fish with an
+       * offset is drawn that far from where its own margins say it is — the
+       * cyan one starts at an `x` of -200 and is drawn at -600.
        */
       drawnOffset: number;
       /** Where this fish parks under reduced motion, as a share of the width. */
       restFraction: number;
-      /** How far off-canvas it starts, and how far it swims before wrapping. */
+      /** How far outside the canvas its `x` begins, on the side it enters from. */
       startMargin: number;
+      /** How far past the far edge its `x` gets before wrapping. */
       exitMargin: number;
-      /** How far off-canvas it reappears after wrapping. */
+      /** How far outside the canvas its `x` is put back after wrapping. */
       entryMargin: number;
       body: readonly [number, number, number];
       fin: readonly [number, number, number];
