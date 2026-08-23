@@ -13,7 +13,21 @@ import { createFishTankSketch } from "@/components/fishTankSketch";
  * whether a fish dodges the cursor, so stubbing it to 0 would silently take that
  * branch on every frame.
  */
-const RECORDED = ["translate", "ellipse", "noLoop", "redraw"] as const;
+const RECORDED = [
+  "translate",
+  "ellipse",
+  "noLoop",
+  "redraw",
+  "vertex",
+  "triangle",
+  "arc",
+] as const;
+
+/**
+ * Which way each fish faces, in draw order: `1` is left-to-right. The last is
+ * the cursor-following fish, which is drawn after the other eight.
+ */
+const FACING = [1, 1, 1, 1, -1, -1, -1, -1, -1] as const;
 
 function createStubP5(windowWidth: number, windowHeight: number) {
   const calls = new Map<string, number[][]>();
@@ -114,6 +128,29 @@ function mount(prefersReducedMotion: boolean, windowWidth = 1400) {
   return stub;
 }
 
+type Stub = ReturnType<typeof mount>;
+
+function runFrames(stub: Stub, frames: number) {
+  for (let i = 0; i < frames; i++) {
+    stub.p5.draw();
+  }
+  return stub.takeCalls("translate");
+}
+
+/**
+ * The furthest right each fish was drawn, keyed by its slot in the draw order.
+ * Per fish rather than overall so that fixing the wrap in one direction and not
+ * the other still shows up.
+ */
+function maxDrawnX(calls: number[][]) {
+  const perFish: number[] = [];
+  calls.forEach((args, index) => {
+    const slot = index % 9;
+    perFish[slot] = Math.max(perFish[slot] ?? -Infinity, args[0] ?? 0);
+  });
+  return perFish;
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
 });
@@ -128,8 +165,119 @@ describe("createFishTankSketch", () => {
     stub.p5.draw();
     const secondFrame = stub.takeCalls("translate");
 
-    // The leading fish advances 3px per frame; that it moves at all is the point.
-    expect(secondFrame[0]?.[0]).toBeCloseTo((firstFrame[0]?.[0] ?? 0) + 3);
+    // Per-frame travel in draw order, signed, and the cursor-following fish last
+    // - it has no speed of its own and the cursor has not moved. Every one of
+    // them, not just the leading fish: the four right-to-left fish are the ones a
+    // direction mix-up leaves motionless, and they are invisible to a check that
+    // only reads the head of the school.
+    const travel = [3, 4, 4, 4.5, -3, -2.5, -4, -1.5, 0];
+
+    expect(secondFrame).toHaveLength(travel.length);
+    travel.forEach((step, slot) => {
+      expect(secondFrame[slot]?.[0]).toBeCloseTo(
+        (firstFrame[slot]?.[0] ?? 0) + step,
+      );
+    });
+  });
+
+  // The two goldfish-drawing functions used to be one per direction, differing
+  // only in the sign of every x. Merging them put that sign in a parameter, and
+  // this is about the two things that can now go wrong: a fish being passed the
+  // wrong direction, and a part of the one function forgetting to apply it. A
+  // fish whose tail alone forgot to mirror is not a fish.
+  //
+  // Signs only. Magnitudes are not pinned here, and deliberately: with one
+  // function there is no second copy to drift from, so a changed literal changes
+  // both directions together and is a change to how the fish looks rather than a
+  // break in the mirror. What is left to check is that the sign reaches every
+  // part, which is why each of the five signed calls is read.
+  //
+  // Every recorded coordinate here is in the fish's own space, because the stub
+  // does not apply p5's transformations - so the signs below are the fish's own
+  // and are unaffected by where in the tank it is.
+  it("faces every signed part of every fish the way it swims", () => {
+    const stub = mount(true);
+
+    // The fish are drawn before the sand and before any bubble, which are the
+    // only other sources of these calls, so each fish's parts are its slot's.
+    const vertices = stub.takeCalls("vertex");
+    const ellipses = stub.takeCalls("ellipse");
+    const triangles = stub.takeCalls("triangle");
+    const arcs = stub.takeCalls("arc");
+    expect(vertices.length).toBeGreaterThan(FACING.length * 3);
+    expect(ellipses.length).toBeGreaterThanOrEqual(FACING.length * 3);
+    expect(triangles).toHaveLength(FACING.length);
+    expect(arcs).toHaveLength(FACING.length);
+
+    FACING.forEach((direction, slot) => {
+      // The tail trails behind, so it is on the far side from the heading.
+      for (const [x] of vertices.slice(slot * 3, slot * 3 + 3)) {
+        expect(Math.sign(x ?? 0)).toBe(-direction);
+      }
+
+      // Body, then eye, then pupil. The body is skipped because it is centred on
+      // the origin and so has no sign to get wrong; the eye and the pupil are
+      // separate calls and are asked about separately, as is the mouth. All
+      // three are on the leading side.
+      expect(Math.sign(ellipses[slot * 3 + 1]?.[0] ?? 0)).toBe(direction);
+      expect(Math.sign(ellipses[slot * 3 + 2]?.[0] ?? 0)).toBe(direction);
+      expect(Math.sign(arcs[slot]?.[0] ?? 0)).toBe(direction);
+
+      // The pelvic fin reaches back, its leading corner forward.
+      const fin = triangles[slot] ?? [];
+      expect(Math.sign(fin[2] ?? 0)).toBe(-direction);
+      expect(Math.sign(fin[4] ?? 0)).toBe(direction);
+    });
+  });
+
+  // Only the leading fish dodges. The obvious way to get that wrong while
+  // keeping every existing assertion green is to apply the dodge to all of them.
+  it("moves only the leading fish out of the cursor's way", () => {
+    const away = -10_000;
+    const frames = 150;
+
+    // Two runs from the same start are identical frame for frame, so the last
+    // frame can be compared directly: the cursor is parked far away for every
+    // frame but the last, and only then moved somewhere that matters.
+    const lastFrameWithCursorAt = (at?: number[]) => {
+      const stub = mount(false, 500);
+      stub.p5.mouseX = away;
+      stub.p5.mouseY = away;
+      runFrames(stub, frames - 1);
+      stub.p5.mouseX = at?.[0] ?? away;
+      stub.p5.mouseY = at?.[1] ?? away;
+      return runFrames(stub, 1);
+    };
+
+    const undisturbed = lastFrameWithCursorAt();
+    expect(undisturbed).toHaveLength(9);
+    const [leadX = 0, leadY = 0] = undisturbed[0] ?? [];
+
+    // Sitting the cursor exactly on the leading fish shoves it 50px along the
+    // x-axis: dist is 0, so the escape angle is 0 and y is untouched.
+    const onLead = lastFrameWithCursorAt([leadX, leadY]);
+    expect(onLead[0]?.[0]).toBeCloseTo(leadX + 50);
+    expect(onLead[0]?.[1]).toBeCloseTo(leadY);
+
+    // Directly below it instead, so the escape is straight up and the two
+    // components are told apart: swapping cos for sin, or dropping either sign,
+    // moves the fish somewhere this does not allow.
+    const fromBelow = lastFrameWithCursorAt([leadX, leadY + 50]);
+    expect(fromBelow[0]?.[0]).toBeCloseTo(leadX);
+    expect(fromBelow[0]?.[1]).toBeCloseTo(leadY - 50);
+
+    // Every other fish ignores the cursor wherever it is put, so it is put on
+    // each of them in turn - one target only would leave the other seven free to
+    // start dodging. Slot 0 is excluded from the comparison rather than from the
+    // targets, because it is allowed to move: it dodges, and the cursor sitting
+    // on another fish may be within its radius too. Slot 8 is excluded because
+    // it *is* the cursor - it is drawn wherever the cursor is.
+    const others = (frame: number[][]) => frame.slice(1, 8);
+    for (let slot = 1; slot < 9; slot++) {
+      expect(others(lastFrameWithCursorAt(undisturbed[slot]))).toEqual(
+        others(undisturbed),
+      );
+    }
   });
 
   it("stops the draw loop when reduced motion is preferred", () => {
@@ -208,6 +356,62 @@ describe("createFishTankSketch", () => {
       expect(x).toBeGreaterThan(0);
       expect(x).toBeLessThan(stub.width);
     }
+  });
+
+  // The wrap-around thresholds used to read a width measured once at startup and
+  // never refreshed. So after the window narrowed, the left-to-right fish kept
+  // swimming most of a screen past the right-hand edge before turning over, and
+  // the right-to-left ones reappeared that far out on the other side.
+  //
+  // Stated as: a tank that was resized settles into behaving like one that was
+  // always the new size. That needs no threshold to be restated here, only that
+  // the two agree. "Settles into" is the honest tense - a fish already past the
+  // new threshold when the window changes is still drawn once where it was, and
+  // wraps on that same frame, so the frames either side of the resize are not
+  // being claimed about. Both runs below are sampled well after that.
+  //
+  // What this does not pin is which width is read, only that it is a live one:
+  // in these window sizes the canvas is `windowWidth - 50`, so reading that
+  // instead would pass here. The sizing itself is covered by the resize tests
+  // above.
+  it("wraps against the current canvas width, not the startup width", () => {
+    // Enough frames for the slowest fish - 1.5px per frame over some 1400px -
+    // to leave where it started and wrap at least once, so that every maximum
+    // below is set by a wrap rather than by a starting position; then a further
+    // full cycle of that same fish to sample over.
+    const settle = 1000;
+    const sample = 850;
+
+    // Both runs are deliberately narrow. Every frame paints one line per pixel
+    // of canvas height and this test draws thousands of them, so the window
+    // sizes are the smallest that still leave the 200px width change - which is
+    // the size of the defect - forty times the tolerance below.
+    const startCursorAway = (stub: Stub) => {
+      stub.p5.mouseX = -10_000;
+      stub.p5.mouseY = -10_000;
+      return stub;
+    };
+
+    const always = startCursorAway(mount(false, 300));
+    runFrames(always, settle);
+    const control = maxDrawnX(runFrames(always, sample));
+
+    const resized = startCursorAway(mount(false, 500));
+    runFrames(resized, 100);
+    resized.p5.windowWidth = 300;
+    resized.p5.windowResized?.(undefined as never);
+    runFrames(resized, settle);
+    const after = maxDrawnX(runFrames(resized, sample));
+
+    expect(resized.width).toBe(always.width);
+    expect(after).toHaveLength(9);
+    // Equality, not a tolerance. Both runs have wrapped at least once by the time
+    // sampling starts, and a wrap puts a fish on an exact edge, so from then on
+    // the two are advancing along the same lattice by the same steps. Each
+    // sampling window is longer than a full cycle of the slowest fish, so every
+    // maximum in it is a wrap threshold rather than wherever the window happened
+    // to end. A tolerance would have let a few-pixel error through.
+    expect(after).toEqual(control);
   });
 
   // The resting position of the leading fish sits within the 100px dodge radius
