@@ -10,6 +10,17 @@ import Image from "next/image";
 // constant is unique on the page.
 const MENU_ID = "sidebar-menu";
 
+// Which pages are in the nav, and in what order. Up here rather than inline in
+// the list below, where it was 170 lines further down and behind three
+// paragraphs about breakpoints and the accessibility tree.
+const NAV_ITEMS = [
+  { href: "/", label: "Home" },
+  { href: "/blog", label: "Blog" },
+  { href: "/animation", label: "Animation" },
+  { href: "/contact", label: "Contact" },
+  { href: "/credits", label: "Credits" },
+] as const;
+
 const MySidebar = () => {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
@@ -176,13 +187,7 @@ const MySidebar = () => {
           isOpen ? "block" : "hidden",
         )}
       >
-        {[
-          { href: "/", label: "Home" },
-          { href: "/blog", label: "Blog" },
-          { href: "/animation", label: "Animation" },
-          { href: "/contact", label: "Contact" },
-          { href: "/credits", label: "Credits" },
-        ].map((item) => {
+        {NAV_ITEMS.map((item) => {
           // Read once and used for both the styling and `aria-current`: the
           // active page was already styled, so the state existed all along and
           // was just never exposed non-visually. Sharing the comparison is what
