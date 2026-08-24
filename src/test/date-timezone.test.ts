@@ -108,7 +108,13 @@ describe("the render sites use the shared options", () => {
     it(`${path} formats with ${constant}`, () => {
       const source = readFileSync(path, "utf8");
 
-      expect(source).toContain(`toLocaleDateString("en-US", ${constant})`);
+      // Matched with a whitespace-tolerant pattern rather than a literal
+      // substring: the call is over 80 characters once it is assigned to
+      // anything, so Prettier wraps its arguments, and a literal would then fail
+      // on formatting while the file still does exactly the right thing.
+      expect(source).toMatch(
+        new RegExp(`toLocaleDateString\\(\\s*"en-US",\\s*${constant},?\\s*\\)`),
+      );
       // No second, inline options object anywhere in the file. `weekday` is the
       // marker: it appears in every variant of these options and nowhere else.
       expect(source).not.toContain("weekday:");

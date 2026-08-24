@@ -1,8 +1,8 @@
 "use client";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Trash } from "@phosphor-icons/react/dist/ssr";
 import type { Blog } from "@/lib/definitions";
-import { BLOG_DATE_TIME_FORMAT } from "@/lib/blogDate";
+import { BLOG_DATE_TIME_FORMAT, formatBlogDateRelative } from "@/lib/blogDate";
 import type { Session } from "next-auth";
 import { Modal, Button } from "@rewind-ui/core";
 import TextLink from "@/components/ui/TextLink";
@@ -59,6 +59,36 @@ const MyBlogBodyAbbr = ({
   const [openModal, setOpenModal] = useState(false);
   const [deleteError, setDeleteError] = useState("");
 
+  // `now` starts null and is only ever set from an effect, which is what makes
+  // the relative date safe here. Two separate hazards, and one fix covers both.
+  //
+  // This component is server-rendered and then hydrated, so a `Date.now()` taken
+  // during render is taken twice, on two machines, milliseconds apart -- and a
+  // post sitting on a bucket boundary formats differently either side of it,
+  // which is a React #418 hydration mismatch. Starting null means the server's
+  // markup and the client's first render are the same string by construction,
+  // not by being close enough in time.
+  //
+  // The second hazard outlives hydration: this page is a candidate for
+  // `unstable_cache` (issue #8), and a relative string baked into cached HTML
+  // keeps claiming "5 minutes ago" for as long as the entry lives. Computed
+  // after mount, it is relative to the reader's visit rather than to whenever
+  // the HTML was produced.
+  //
+  // Read once, with no interval. A minute counter ticking on ten cards buys
+  // very little and the absolute date is one hover away.
+  const [now, setNow] = useState<number | null>(null);
+  useEffect(() => {
+    setNow(Date.now());
+  }, []);
+
+  const absoluteDate = blog.date.toLocaleDateString(
+    "en-US",
+    BLOG_DATE_TIME_FORMAT,
+  );
+  const relativeDate =
+    now === null ? null : formatBlogDateRelative(blog.date, now);
+
   const handleDelete = () => {
     setDeleteError("");
     setOpenModal(false);
@@ -83,9 +113,18 @@ const MyBlogBodyAbbr = ({
             </button>
           )}
         </div>
-        <p className="text-sm font-medium text-muted">
-          {blog.date.toLocaleDateString("en-US", BLOG_DATE_TIME_FORMAT)}
-        </p>
+        {/* `<time>` rather than the `<p>` this was, because the machine-readable
+            instant is now the thing keeping the visible text honest, and
+            `dateTime` is where it goes. `title` puts the full date within reach
+            of a pointer -- a bonus, not the accessible route to it, since a
+            title is hover-only. */}
+        <time
+          dateTime={blog.date.toISOString()}
+          title={absoluteDate}
+          className="block text-sm font-medium text-muted"
+        >
+          {relativeDate ?? absoluteDate}
+        </time>
       </div>
       <p className="line-clamp-1">{blog.content}</p>
       {/* Always in the tree and empty when there is nothing to report: a live
