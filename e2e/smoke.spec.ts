@@ -425,8 +425,10 @@ test("the sidebar toggle reports a truthful expanded state below `lg`", async ({
   // node of its own inside the button. The claim is one fewer node, not a
   // duplicated announcement -- the name is unchanged either way.
   //
-  // `img` with no `<img>` element on the page: the icon is a bare `<svg>`, which
-  // maps to that role once it is not hidden. So the live mutation is dropping
+  // `img` with no `<img>` element inside the toggle: the icon is a bare `<svg>`,
+  // which maps to that role once it is not hidden. The page does have a real
+  // `<img>` -- the header's, from the root layout -- so this stays scoped to the
+  // button rather than counting document-wide. The live mutation is dropping
   // `aria-hidden`, not the `alt`-shaped one the raster icon used to have --
   // mutation-tested, removing `aria-hidden="true"` fails this line and only this
   // line. Adding the `<title>` on its own is caught by nothing here, and there
