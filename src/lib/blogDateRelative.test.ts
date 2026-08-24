@@ -108,7 +108,7 @@ describe("formatBlogDateRelative", () => {
 
   it("is not called during a render at the one call site", () => {
     // Structural, and precise about what it adds: CI can already *render* this
-    // component -- ../components/MyBlogBodyAbbr.test.ts does, through
+    // component -- ../components/BlogBodyAbbr.test.ts does, through
     // `renderToStaticMarkup`, and now asserts the server pass emits the absolute
     // date. What no test in CI can do is mount the effect. Vitest runs under
     // `environment: "node"` with no DOM, and the e2e suite skips both `/blog`
@@ -128,7 +128,7 @@ describe("formatBlogDateRelative", () => {
     // and 2d each rendered the matching relative string, 9d fell back to the
     // absolute date, and no run produced a hydration error. That cannot run in
     // CI, hence this.
-    const source = readFileSync("src/components/MyBlogBodyAbbr.tsx", "utf8");
+    const source = readFileSync("src/components/BlogBodyAbbr.tsx", "utf8");
 
     expect(source).toContain("formatBlogDateRelative");
     expect(source).toMatch(

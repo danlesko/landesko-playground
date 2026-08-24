@@ -60,7 +60,7 @@ describe("blog date formatting and the ambient time zone", () => {
   });
 
   it("renders the list date identically in every zone, to the minute", () => {
-    // MyBlogBodyAbbr is a client component, so it formats twice: once during
+    // BlogBodyAbbr is a client component, so it formats twice: once during
     // SSR in the server's zone, once again on hydration in the visitor's. Any
     // disagreement here is a React #418 hydration text mismatch in production.
     const denver = formatUnder("America/Denver", BLOG_DATE_TIME_FORMAT);
@@ -99,7 +99,7 @@ describe("the render sites use the shared options", () => {
       constant: "BLOG_DATE_FORMAT",
     },
     {
-      path: "src/components/MyBlogBodyAbbr.tsx",
+      path: "src/components/BlogBodyAbbr.tsx",
       constant: "BLOG_DATE_TIME_FORMAT",
     },
   ];

@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Montserrat } from "next/font/google";
 import "./globals.css";
 import Image from "next/image";
-import MySidebar from "@/components/MySidebar";
+import Sidebar from "@/components/Sidebar";
 import { Button } from "@rewind-ui/core";
 import { primaryButtonClasses } from "@/components/ui/button";
 import { signIn, signOut } from "@/auth";
@@ -107,7 +107,7 @@ export default async function RootLayout({
 
           <div className="flex flex-col lg:flex-row flex-1">
             {/* Sidebar/Navbar */}
-            <MySidebar />
+            <Sidebar />
 
             {/* Main Content */}
             <main className="flex-1 bg-background p-4 text-foreground">

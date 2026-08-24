@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import MyProcessingDrawing from "@/components/MyProcessingDrawing";
+import ProcessingDrawing from "@/components/ProcessingDrawing";
 import PageHeading from "@/components/ui/PageHeading";
 
 export const metadata: Metadata = {
@@ -27,7 +27,7 @@ export default function Animation() {
         best attempt to allow it to scale for mobile but there is some
         wonkiness.
       </p>
-      <MyProcessingDrawing />
+      <ProcessingDrawing />
     </>
   );
 }

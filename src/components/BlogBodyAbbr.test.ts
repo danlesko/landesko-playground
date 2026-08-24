@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
 import { signedInSession, sessionWithoutUser } from "@/test/auth-mock";
-import MyBlogBodyAbbr, { attemptDelete } from "@/components/MyBlogBodyAbbr";
+import BlogBodyAbbr, { attemptDelete } from "@/components/BlogBodyAbbr";
 import { BLOG_DATE_TIME_FORMAT } from "@/lib/blogDate";
 import type { Blog } from "@/lib/definitions";
 
@@ -22,7 +22,7 @@ function blog(overrides: Partial<Blog> = {}): Blog {
 
 function render(session: ReturnType<typeof signedInSession> | null, b: Blog) {
   return renderToStaticMarkup(
-    createElement(MyBlogBodyAbbr, {
+    createElement(BlogBodyAbbr, {
       session,
       blog: b,
       deleteBlogPost: vi.fn(),
@@ -38,7 +38,7 @@ function deleteButtonInnerHtml(html: string): string | undefined {
   return /<button[^>]*>([\s\S]*?)<\/button>/.exec(html)?.[1];
 }
 
-describe("MyBlogBodyAbbr delete control", () => {
+describe("BlogBodyAbbr delete control", () => {
   it("renders the delete control as a native button", () => {
     const html = render(signedInSession(), blog());
 
@@ -82,7 +82,7 @@ function messageRegion(html: string): string | undefined {
   return /<p[^>]*aria-live="polite"[^>]*>([\s\S]*?)<\/p>/.exec(html)?.[0];
 }
 
-describe("MyBlogBodyAbbr delete failure message", () => {
+describe("BlogBodyAbbr delete failure message", () => {
   // A region created in the same mutation that gives it text is inconsistently
   // announced, so it has to be observed while still empty. That makes "mounted
   // and empty" the invariant worth pinning: rendering it only on failure would
@@ -118,7 +118,7 @@ describe("MyBlogBodyAbbr delete failure message", () => {
  * a React #418 hydration mismatch waiting for a post to sit near a bucket
  * edge, and there is no DOM in this suite to catch that any other way.
  */
-describe("MyBlogBodyAbbr date", () => {
+describe("BlogBodyAbbr date", () => {
   const timeElement = (html: string): string | undefined =>
     /<time[^>]*>[\s\S]*?<\/time>/.exec(html)?.[0];
 

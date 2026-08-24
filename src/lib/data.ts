@@ -22,7 +22,7 @@ import { Session } from "next-auth";
  *
  * Unknown keys are stripped, which is zod's default and is wanted here rather
  * than merely tolerated. `SELECT *` means a column added to the table would
- * otherwise be handed to `MyBlogBodyAbbr`, a client component, and so be
+ * otherwise be handed to `BlogBodyAbbr`, a client component, and so be
  * serialised into the page for anyone to read. `.strict()` would instead fail
  * every read on an additive migration, which is too much.
  */
