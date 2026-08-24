@@ -59,24 +59,25 @@ const MyBlogBodyAbbr = ({
   const [openModal, setOpenModal] = useState(false);
   const [deleteError, setDeleteError] = useState("");
 
-  // `now` starts null and is only ever set from an effect, which is what makes
-  // the relative date safe here. Two separate hazards, and one fix covers both.
+  // `now` starts null and is only ever set from an effect, and the reason is
+  // hydration. This component is server-rendered and then hydrated, so a
+  // `Date.now()` taken during render is taken twice, on two machines,
+  // milliseconds apart -- and a post sitting on a bucket boundary formats
+  // differently either side of it, which is a React #418 mismatch. Starting
+  // null makes the server's markup and the client's first render the same
+  // string by construction rather than by being close enough in time.
   //
-  // This component is server-rendered and then hydrated, so a `Date.now()` taken
-  // during render is taken twice, on two machines, milliseconds apart -- and a
-  // post sitting on a bucket boundary formats differently either side of it,
-  // which is a React #418 hydration mismatch. Starting null means the server's
-  // markup and the client's first render are the same string by construction,
-  // not by being close enough in time.
-  //
-  // The second hazard outlives hydration: this page is a candidate for
-  // `unstable_cache` (issue #8), and a relative string baked into cached HTML
-  // keeps claiming "5 minutes ago" for as long as the entry lives. Computed
-  // after mount, it is relative to the reader's visit rather than to whenever
-  // the HTML was produced.
+  // Not for caching, which is a distinction worth keeping straight: issue #8
+  // proposes `unstable_cache` around the database read, and that is the Data
+  // Cache -- it stores the function's return value, not rendered output, so
+  // formatting would still run per request and a render-time clock would not go
+  // stale from it. Only route-level or component-output caching could freeze a
+  // relative string into served HTML, and nothing here does that today.
   //
   // Read once, with no interval. A minute counter ticking on ten cards buys
-  // very little and the absolute date is one hover away.
+  // very little and the absolute date is one hover away. The flip side is that
+  // a tab left open keeps whatever label it had, including after a
+  // back/forward-cache restore -- accepted, not overlooked.
   const [now, setNow] = useState<number | null>(null);
   useEffect(() => {
     setNow(Date.now());

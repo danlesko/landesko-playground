@@ -40,7 +40,9 @@ const DAY = 24 * HOUR;
 /**
  * Where relative stops being the more useful rendering. "6 weeks ago" tells a
  * reader less than the date does, and the further back it goes the worse the
- * trade gets, so past a week this returns null and the caller prints the date.
+ * trade gets, so at or past a week this returns null and the caller prints the
+ * date. Inclusive because the comparison below is `>=`: exactly seven days old
+ * is already the absolute date, not "7 days ago".
  */
 const RELATIVE_LIMIT = 7 * DAY;
 
@@ -53,7 +55,9 @@ const RELATIVE_LIMIT = 7 * DAY;
 const RELATIVE_SUB_DAY = new Intl.RelativeTimeFormat("en-US", {
   numeric: "auto",
 });
-// Days deliberately do NOT get `auto`, which would render 1 as "yesterday".
+// Days deliberately do NOT get `auto`, which would render the -1 this passes
+// for a day-old post as "yesterday". (Being exact about the sign, because it
+// decides the word: `format(1, "day")` under `auto` is "tomorrow".)
 // This function measures elapsed time, and "yesterday" is a claim about
 // calendar days -- a post from 25 hours ago read at 00:30 was two calendar days
 // back, and this file exists because that distinction was already got wrong
@@ -64,7 +68,7 @@ const RELATIVE_DAYS = new Intl.RelativeTimeFormat("en-US", {
 
 /**
  * How long ago a post was written, or null when the date itself is the better
- * answer -- older than RELATIVE_LIMIT, or dated in the future.
+ * answer -- RELATIVE_LIMIT old or older, or dated in the future.
  *
  * `now` is a parameter rather than a `Date.now()` in here so that this is a pure
  * function of two instants: every bucket and boundary below is then testable

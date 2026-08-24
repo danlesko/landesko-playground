@@ -107,26 +107,27 @@ describe("formatBlogDateRelative", () => {
   });
 
   it("is not called during a render at the one call site", () => {
-    // Structural, and the reason is worth being explicit about: this assertion
-    // is the ONLY thing in CI that can see the call site at all. Vitest runs
-    // under `environment: "node"` with no DOM, so the effect that supplies `now`
-    // cannot be mounted here; and `/blog` needs a database that CI does not
-    // have, so the e2e suite skips both blog routes. It is the same gap that
-    // makes this component's delete handler untestable except as the extracted
-    // `attemptDelete`.
+    // Structural, and precise about what it adds: CI can already *render* this
+    // component -- ../components/MyBlogBodyAbbr.test.ts does, through
+    // `renderToStaticMarkup`, and now asserts the server pass emits the absolute
+    // date. What no test in CI can do is mount the effect. Vitest runs under
+    // `environment: "node"` with no DOM, and the e2e suite skips both `/blog`
+    // routes because they need a database CI does not have. So the post-mount
+    // half is unobservable, and this is the only thing standing in for it.
     //
-    // What it pins is the property the whole design rests on. `now` has to start
-    // null and be filled in from an effect: `useState(Date.now())` runs during
+    // What it pins is the property that half rests on. `now` has to start null
+    // and be filled in from an effect: `useState(Date.now())` runs during
     // render, which puts the server's clock and the browser's clock either side
-    // of a bucket edge (a React #418 hydration mismatch) and bakes a relative
-    // string into any cached HTML. That regression is invisible -- the page
-    // renders, the date looks right, and it is wrong only near a boundary or
-    // once a cache entry ages.
+    // of a bucket edge and makes a React #418 mismatch out of a post that
+    // happens to be near one. That regression is invisible in the ordinary case
+    // -- the page renders, the date looks right, and it is wrong only near a
+    // boundary.
     //
-    // Verified by hand in a real browser instead, with the client clock pinned
-    // to several offsets from a post's own instant: 30s, 3h and 2d each rendered
-    // the matching relative string, 9d fell back to the absolute date, and no
-    // run produced a hydration error. That cannot run in CI, hence this.
+    // The behaviour itself was verified by hand in a real browser, with the
+    // client clock pinned to several offsets from a post's own instant: 30s, 3h
+    // and 2d each rendered the matching relative string, 9d fell back to the
+    // absolute date, and no run produced a hydration error. That cannot run in
+    // CI, hence this.
     const source = readFileSync("src/components/MyBlogBodyAbbr.tsx", "utf8");
 
     expect(source).toContain("formatBlogDateRelative");
