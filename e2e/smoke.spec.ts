@@ -42,10 +42,11 @@ test("the home hero links to every destination it promises", async ({
 }) => {
   await page.goto("/");
 
-  // Scoped to <main>, so the sidebar's copies of /blog, /animation and /contact
-  // cannot satisfy this. The whole point of the hero box in #10 was that the
-  // home page linked nowhere, and the sidebar already linked everywhere -- a
-  // page-wide locator would have passed before the hero existed.
+  // Scoped to <main>, so this is an assertion about the hero rather than about
+  // the sidebar -- which already linked to /blog, /animation and /contact before
+  // the hero existed, and would otherwise be supplying most of the answer. The
+  // sidebar <nav> is a sibling of <main> in layout.tsx, which is what makes the
+  // scoping work.
   const links = page.getByRole("main").locator("a[href]");
 
   const hrefs = await links.evaluateAll((els) =>
@@ -61,14 +62,25 @@ test("the home hero links to every destination it promises", async ({
     "https://www.linkedin.com/in/danlesko/",
   ]);
 
-  // Visible text, not the accessible name. Every one of these is a plain anchor
-  // whose name comes from its text anyway, but `title` and `aria-label` are name
-  // fallbacks -- so a name-based check would pass over a link rendered with no
-  // text at all, which is exactly the regression worth catching here.
-  const texts = await links.evaluateAll((els) =>
-    els.map((el) => (el as HTMLElement).innerText.trim()),
-  );
-  expect(texts.filter((t) => t.length > 0)).toHaveLength(hrefs.length);
+  // Rendered text, deliberately not the accessible name. Every one of these is a
+  // plain anchor whose name comes from its own text, but `title` and `aria-label`
+  // are name fallbacks -- so a name-based check stays green over a link that
+  // renders no text at all, which is the regression worth catching here.
+  //
+  // Two assertions because neither is sufficient. `innerText` is not proof of
+  // visibility: it is empty for `display:none`, but stays populated for text
+  // hidden by `opacity:0`, `font-size:0`, clipping, or off-screen positioning.
+  // Playwright's `toBeVisible` closes part of that gap -- it requires a non-empty
+  // bounding box and no `visibility:hidden` -- and the pair together catch a link
+  // with no text and a link with no box. Neither catches text painted in the
+  // background colour; that is a contrast question, not this test's job.
+  const count = await links.count();
+  expect(count).toBe(hrefs.length);
+  for (let i = 0; i < count; i++) {
+    const link = links.nth(i);
+    await expect(link).toBeVisible();
+    expect((await link.innerText()).trim()).not.toBe("");
+  }
 });
 
 /**
@@ -81,16 +93,32 @@ test("the home hero links to every destination it promises", async ({
  *
  * It works by evaluating the declared expression itself rather than restating the
  * arithmetic: the attribute's own `calc()` is applied to a probe element and the
- * result compared to the image's real width. A test that hardcoded 282 would keep
- * passing when the sidebar changed, which is the failure it exists to catch.
+ * result compared to the image's real width. To be exact about what that buys,
+ * because the first version of this comment overstated it -- a test that hardcoded
+ * `(100vw - 282px) / 2` as the expected value would *also* fail when the sidebar
+ * changed, since the rendered width moves and the constant does not. What it would
+ * additionally do is fail when someone changes the sidebar and updates `sizes`
+ * correctly, i.e. exactly when the code is right. Reading the attribute tests the
+ * relationship instead of a frozen constant, so it never needs editing and so
+ * never earns the reputation that gets a test deleted.
+ *
+ * Sensitivity is worth stating too, since it is not 1:1. The 282px is split
+ * between two columns, so a sidebar change of N pixels moves this image by only
+ * N/2 -- which is why the tolerance below is a fraction of a pixel and not the
+ * pixel of slack it started as.
  */
 test("the home hero image declares the width it actually renders", async ({
   page,
 }) => {
   await page.goto("/");
 
-  // Both branches of the attribute: the `min-width: 1024px` one and the fallback.
-  for (const width of [1280, 390]) {
+  // Both branches of the attribute, and two widths inside the `min-width: 1024px`
+  // one. The second desktop width is not redundant: a sidebar width introduced at
+  // a breakpoint above the only viewport tested would leave this green, so one
+  // sample per branch is not enough to claim the branch holds. Both are even
+  // numbers, which keeps the exact-match below honest -- the column is half of
+  // `100vw - 282px`, so an odd viewport lands on a half pixel.
+  for (const width of [1280, 1600, 390]) {
     await page.setViewportSize({ width, height: 900 });
 
     const measured = await page.evaluate(() => {
@@ -131,18 +159,34 @@ test("the home hero image declares the width it actually renders", async ({
         declared,
         declaredPx,
         actualPx: img.getBoundingClientRect().width,
+        // `100vw` counts the classic scrollbar gutter; the content box does not.
+        // Asserted rather than tolerated -- see below.
+        gutterPx: window.innerWidth - document.documentElement.clientWidth,
       };
     });
 
-    // A pixel of slack, for one honest reason: `100vw` includes the classic
-    // scrollbar gutter while the content box does not, so on a platform that
-    // renders one these differ by its width. Headless Chromium uses overlay
-    // scrollbars and measures exact. The tolerance is far tighter than any
-    // regression this guards -- a stray `gap-8` costs 16px per column, measured.
+    // The one assumption behind an exact comparison, made explicit instead of
+    // being absorbed into slack. Where a classic scrollbar is painted, `100vw`
+    // exceeds the layout viewport by its width and the declared expression
+    // overstates the column by half that -- so the honest thing is to fail loudly
+    // if this ever runs somewhere with one, rather than to widen the bound and
+    // quietly lose the sensitivity everywhere else. Headless Chromium uses overlay
+    // scrollbars, locally and in CI.
+    expect(
+      measured.gutterPx,
+      `at ${width}px wide this browser paints a ${measured.gutterPx}px scrollbar gutter, so 100vw is not the layout viewport and the exact comparison below no longer holds`,
+    ).toBe(0);
+
+    // Exact, to a layout unit. Chromium lays out in 1/64px, so an otherwise exact
+    // match can differ in the last unit; 0.02 is just above that and nothing else.
+    // The previous 1px bound was too loose to be worth much: because the sidebar's
+    // 282px is halved across two columns, a 250px -> 252px sidebar and a stray
+    // `lg:gap-0.5` both move this image by exactly 1px and both slipped through.
+    // A `lg:gap-8` costs 16px per column, and is caught either way.
     expect(
       Math.abs(measured.actualPx - measured.declaredPx),
       `at ${width}px wide, sizes declares ${measured.declared} = ${measured.declaredPx}px but the image renders ${measured.actualPx}px`,
-    ).toBeLessThanOrEqual(1);
+    ).toBeLessThan(0.02);
   }
 });
 
