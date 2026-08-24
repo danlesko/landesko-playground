@@ -5,7 +5,7 @@ import TextLink from "@/components/ui/TextLink";
 // there is no closer boundary, hence the link to the post list as well as home.
 export default function NotFound() {
   return (
-    <div className="inline-block" style={{ width: "100%" }}>
+    <div>
       <PageHeading>Page Not Found</PageHeading>
       <div className="mt-4 p-4 rounded-lg lg:min-w-[600px] lg:w-1/2 min-h-32 border border-border">
         <p>
