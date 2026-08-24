@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { Trash } from "@phosphor-icons/react/dist/ssr";
 import type { Blog } from "@/lib/definitions";
+import { BLOG_DATE_TIME_FORMAT } from "@/lib/blogDate";
 import type { Session } from "next-auth";
 import { Modal, Button } from "@rewind-ui/core";
 import TextLink from "@/components/ui/TextLink";
@@ -83,22 +84,7 @@ const MyBlogBodyAbbr = ({
           )}
         </div>
         <p className="text-sm font-medium text-muted">
-          {blog.date.toLocaleDateString("en-US", {
-            // Load-bearing twice over here, and this is the acute case. As on the
-            // detail page, a `timestamptz` needs a named zone to become a day.
-            // But this is a client component, so without it the server formats
-            // in the deploy's zone and the browser re-formats in the *visitor's*
-            // — measured as a React #418 hydration text mismatch from any zone
-            // other than the server's, at hour granularity since the time is
-            // shown. Naming the zone makes both sides render the same string.
-            timeZone: "America/Denver",
-            weekday: "long",
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
+          {blog.date.toLocaleDateString("en-US", BLOG_DATE_TIME_FORMAT)}
         </p>
       </div>
       <p className="line-clamp-1">{blog.content}</p>

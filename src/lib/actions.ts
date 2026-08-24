@@ -73,16 +73,18 @@ export async function createBlog(
   }
   const { title, content, privateBlog } = parsed.data;
 
-  // `NOW()` rather than a value built here. The column is `timestamptz`, so it
-  // stores an instant, and the only zone-free way to name "now" is to let the
-  // database do it. What this replaced formatted the current time as Denver
-  // wall-clock text (`"8/21/2026, 14:03:22"`) and inserted that into what was
-  // then a naive column, which recorded a reading with no record of the zone it
-  // was read in — so the stored value was six or seven hours from the instant it
-  // meant, and nothing said which.
+  // No `date` column. It has a database default, which is the only way to get a
+  // correct value without the caller knowing the column's type: `NOW()` written
+  // here would be right against `timestamptz` and silently wrong against the
+  // naive column it replaced, because a naive column coerces it through the
+  // session zone (GMT on this instance) rather than Denver.
+  //
+  // What this replaced formatted the current time as Denver wall-clock text
+  // (`"8/21/2026, 14:03:22"`) and inserted that string, so the row recorded a
+  // clock reading with no record of the zone it was read in.
   await sql`
-    INSERT INTO blogs (title, content, date, private)
-    VALUES (${title}, ${content}, NOW(), ${privateBlog})
+    INSERT INTO blogs (title, content, private)
+    VALUES (${title}, ${content}, ${privateBlog})
     `;
 
   revalidatePath("/blog");

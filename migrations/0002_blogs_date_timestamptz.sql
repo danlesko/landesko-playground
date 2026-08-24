@@ -1,15 +1,34 @@
 -- ============================================================================
--- NOT EXECUTED. This file has never been run against any database.
+-- NOT EXECUTED. Neither statement in this file has been run against any
+-- database. It exists so the owner has something concrete to approve.
 --
--- It exists so the owner has something concrete to approve rather than an
--- abstract request. Read the preconditions before running it: this migration
--- rewrites production data irreversibly-in-practice, and it is NOT safe to
--- deploy on its own.
+-- Read the ordering section first. The two statements below are steps 1 and 3
+-- of three, and step 2 is a code deploy. Running them out of order, or running
+-- both at once, silently corrupts any post written in between.
 -- ============================================================================
 --
--- Purpose: convert blogs.date from TIMESTAMP WITHOUT TIME ZONE to TIMESTAMPTZ
--- while correctly recovering the instant each existing value was meant to
--- denote.
+-- Purpose: convert blogs.date from TIMESTAMP WITHOUT TIME ZONE to TIMESTAMPTZ,
+-- recovering the instant each existing value was meant to denote, and move
+-- responsibility for the value from the application to the column.
+--
+-- ---------------------------------------------------------------------------
+-- Measured facts this file depends on
+-- ---------------------------------------------------------------------------
+-- Read from the live database, aggregates only:
+--
+--   column      timestamp without time zone, precision 6, NOT NULL, no default
+--   session     TimeZone GMT, DateStyle ISO, MDY
+--   rows        6 total, 2 at 00:00:00, span 2025-2026
+--   ambiguous   0 rows fall in a DST fall-back hour or spring-forward gap
+--
+-- And the coercions, measured with literal SELECTs that read no table:
+--
+--   NOW()::timestamp                              -> 17:47  (GMT wall-clock)
+--   (NOW() AT TIME ZONE 'America/Denver')::text    -> 11:47  (Denver wall-clock)
+--   '22:30'::timestamp::timestamptz                -> 22:30+00
+--   '22:30'::timestamp AT TIME ZONE 'America/...'  -> 04:30+00
+--
+-- The first two lines are the whole reason this is a three-step migration.
 --
 -- ---------------------------------------------------------------------------
 -- Why the obvious one-liner is wrong
@@ -18,128 +37,120 @@
 --
 --   ALTER TABLE blogs ALTER COLUMN date TYPE TIMESTAMPTZ;
 --
--- casts using the *session* TimeZone. The Neon server's TimeZone is GMT, so
--- every stored value -- all of which are Denver wall-clock times written by
--- src/lib/actions.ts -- would be reinterpreted as if it had been UTC. That
--- does not fix the existing defect, it freezes it into the data permanently
--- and destroys the information needed to undo it. The USING clause below is
--- the entire point of this file.
+-- casts using the *session* TimeZone, which is GMT here. Every stored value is
+-- Denver wall-clock, so each would be reinterpreted as if it had been UTC and
+-- land 6-7 hours from the instant it meant. That conversion is mechanically
+-- reversible -- `date AT TIME ZONE 'GMT'` inverts it exactly -- so it does not
+-- destroy anything; it just produces the wrong answer, and does so without a
+-- warning. The USING clause in step 3 is what makes it the right answer.
 --
 -- ---------------------------------------------------------------------------
--- PRECONDITION 1: src/lib/actions.ts must change in the same deploy
+-- ORDERING -- the part that matters
 -- ---------------------------------------------------------------------------
--- createBlog currently inserts a locale-formatted string:
+-- The schema change and the code change cannot be atomic: one is a DDL
+-- statement and the other is a deploy. So the question is what a post written
+-- between them records, and the answer has to be "the right thing" for every
+-- pairing, because a wrong answer here is silent and permanent.
 --
---   new Date().toLocaleString("en-US", { timeZone: "America/Denver",
---                                        hourCycle: "h23" })   -- "8/21/2026, 14:03:22"
+--   STEP 1  (this file, below)   SET DEFAULT (now() AT TIME ZONE 'America/Denver')
 --
--- Against the current naive column that parses (the server's DateStyle is
--- MDY, which is the order en-US emits) and stores Denver wall-clock. Against a
--- TIMESTAMPTZ column the same string is cast using the session TimeZone, i.e.
--- GMT, so every NEW row would be wrong by the Denver offset. Running this
--- migration without changing that call site introduces a fresh corruption
--- rather than ending the old one.
+--     A naive default for the naive column, giving Denver wall-clock -- the
+--     same convention every existing row already follows, and the convention
+--     step 3's USING clause assumes. Safe under the OLD code, which names
+--     `date` explicitly and so never reaches the default. Safe under the NEW
+--     code, which omits it.
 --
--- Not fixed here, because picking the replacement is a design decision: pass a
--- real instant (`new Date().toISOString()`), or drop `date` from the INSERT and
--- give the column a `DEFAULT now()`. Either works; this file deliberately
--- changes no column default.
+--   STEP 2  deploy the application code
 --
--- ---------------------------------------------------------------------------
--- PRECONDITION 2: what the USING clause assumes about existing rows
--- ---------------------------------------------------------------------------
--- It assumes every existing naive value is Denver wall-clock. That holds for
--- any row written through createBlog. It does NOT necessarily hold for:
+--     createBlog stops naming `date` at all, so the default supplies it. Both
+--     render sites pin `timeZone: 'America/Denver'`.
 --
---   * Rows written by the original seed route, whose values came from a
---     seed-data list into what was then a DATE column, so they carry
---     00:00:00. For those, "midnight in Denver" is a choice this migration
---     imposes, not a fact it recovers -- the original values denoted a
---     calendar day with no time of day at all.
---   * Any row inserted by hand from a machine in another zone. Such a row is
---     shifted by the difference between Denver and whatever zone was actually
---     meant, and it is not detectable afterwards, because the intended zone
---     was never recorded anywhere. That is the underlying disease; this
---     migration cannot cure rows that already have it.
+--     This step has the one unavoidable window, and it is display-only: until
+--     step 3 runs, a naive value is still parsed in the process's zone (UTC on
+--     Vercel) and now formatted in Denver, so dates read 6-7 hours early and an
+--     early-morning post may show the previous day. No stored value is affected
+--     and step 3 corrects the display. Minutes of exposure on a 6-row blog.
 --
--- I have NOT measured how many rows are at 00:00:00 -- database access was
--- denied before I could, so treat the seed-row question as open. Run the
--- verification block at the bottom first.
+--   STEP 3  (this file, below)   ALTER TYPE ... USING ..., then SET DEFAULT now()
 --
--- ---------------------------------------------------------------------------
--- PRECONDITION 3: DST-ambiguous values cannot be resolved
--- ---------------------------------------------------------------------------
--- `naive AT TIME ZONE 'America/Denver'` is ambiguous for local times inside the
--- autumn fall-back hour (two real instants map to one wall-clock reading) and
--- undefined for times inside the spring-forward gap (no instant maps to it).
--- Postgres resolves both silently, with no warning and no error. Which of the
--- two candidates it picks is not something this migration should be trusted to
--- get right, so any affected row may land an hour off, unrecoverably -- again
--- because the original offset was never stored. The verification block flags
--- such rows so a human can decide rather than discovering it later.
+--     One transaction, so the type and its default can never disagree.
+--
+-- What NOT to do, and why:
+--
+--   * Do not put `NOW()` in the INSERT and deploy before step 3. NOW() is a
+--     timestamptz; a naive column coerces it through the session zone, storing
+--     GMT wall-clock (17:47 above, not 11:47). Step 3 would then read that as
+--     Denver and shift it a further 6-7 hours. Permanent, silent, and it
+--     survives the rollback.
+--   * Do not run step 3 before step 2. The old code sends a Denver wall-clock
+--     *string*, which a timestamptz column parses using the session zone, GMT.
+--     Same corruption, opposite direction.
+--   * Do not collapse steps 1 and 3. Between them the column must be naive with
+--     a naive default, or a post written in the deploy window has no correct
+--     value available to it.
+--
+-- If a post IS written during step 2's window, nothing is wrong with it. If one
+-- is written between step 2 and step 1, the INSERT fails outright with a
+-- not-null violation -- loud, and recoverable by resubmitting.
 --
 -- ---------------------------------------------------------------------------
--- PRECONDITION 4: both render sites must pass an explicit timeZone
+-- What the USING clause assumes about existing rows
 -- ---------------------------------------------------------------------------
--- This one is measured, offline, and it is the reason the migration is not the
--- tidy-up it looks like.
+-- That every existing naive value is Denver wall-clock. True for anything
+-- written through createBlog. Two caveats, both measured:
 --
--- `@vercel/postgres` sends `Neon-Raw-Text-Output: true` and parses client-side:
--- processQueryResult maps every column through `getTypeParser(dataTypeID)`, and
--- no `types` override is passed. OIDs 1082, 1114 and 1184 all resolve to the
--- same text parser, and it returns a JS `Date`. So:
+--   * 2 of the 6 rows sit at 00:00:00. They came from the seed list into what
+--     was then a DATE column, so they denote a calendar day with no time of day
+--     at all. "Midnight in Denver" is a choice imposed on them rather than a
+--     fact recovered -- benign, because it displays as the same calendar day,
+--     which is what a date-only post means.
+--   * A row inserted by hand from a machine in another zone would be shifted by
+--     the difference, undetectably, because the intended zone was never
+--     recorded. That is the underlying disease. This migration cannot cure rows
+--     that already have it, and there is no evidence any row does.
 --
---   * `Blog.date: string` in src/lib/definitions.ts is ALREADY a runtime lie --
---     the value is a Date today. The migration does not create that; it is
---     independently wrong and independently fixable. `new Date(aDate)` is a
---     no-op, which is why nothing ever broke.
---   * For a naive column (1114) the parser resolves the string in the *Node
---     process's* zone. Denver locally, UTC on Vercel -- two different instants
---     from the same stored row.
---
--- Neither render site passes a `timeZone`, so both format in the ambient zone:
---   src/app/blog/[id]/page.tsx     (server component)
---   src/components/MyBlogBodyAbbr.tsx  ("use client", also shows hour+minute)
---
--- Today those two errors CANCEL: the value is read in the ambient zone and
--- formatted in the same ambient zone, so the stored Denver wall-clock is
--- displayed verbatim, correctly, in both dev and production. That accident is
--- what has kept this invisible.
---
--- The ALTER breaks the cancellation. The value becomes a correct instant while
--- formatting still uses the ambient zone, so on Vercel (UTC) every post written
--- after ~18:00 Denver displays the FOLLOWING day. Measured for a post written
--- 2026-08-21 22:30 Denver, formatted under TZ=UTC:
---
---   before:  2026-08-21T22:30:00Z  ->  "Friday, August 21, 2026"
---   after:   2026-08-22T04:30:00Z  ->  "Saturday, August 22, 2026"
---
--- So both call sites must pass `timeZone: "America/Denver"` in the same deploy,
--- or this migration ships a visible off-by-one-day regression.
---
--- Separately and already broken: MyBlogBodyAbbr is a client component, so SSR
--- formats in the server's zone and hydration re-formats in the *visitor's*
--- zone. Those disagree today for any visitor outside UTC, at hour granularity
--- since it renders hour and minute. An explicit timeZone fixes that too, and
--- that fix is worth making whether or not this migration ever runs.
+-- DST ambiguity would be the third caveat -- `naive AT TIME ZONE` is ambiguous
+-- inside the autumn fall-back hour and undefined inside the spring-forward gap,
+-- and Postgres resolves both silently. MEASURED AT ZERO ROWS, so it does not
+-- apply. Note that a round-trip test does not detect this: an ambiguous autumn
+-- value round-trips cleanly through both directions. The query at the bottom
+-- tests local linearity instead.
 --
 -- ---------------------------------------------------------------------------
 -- Locking and reversal
 -- ---------------------------------------------------------------------------
 -- ALTER COLUMN ... TYPE with a USING clause rewrites the table under an ACCESS
--- EXCLUSIVE lock. On the current row count that is effectively instant; the
--- note matters only if this is run against a much larger table later.
+-- EXCLUSIVE lock. Instant at 6 rows; the note matters only if this is ever run
+-- against a much larger table.
 --
--- The type change is mechanically reversible -- AT TIME ZONE inverts itself
--- depending on the input type, so the rollback is:
+-- Step 3 reverses exactly for every row that satisfied the assumption above:
 --
+--   BEGIN;
+--   ALTER TABLE blogs ALTER COLUMN date DROP DEFAULT;
 --   ALTER TABLE blogs
 --     ALTER COLUMN date TYPE TIMESTAMP WITHOUT TIME ZONE
 --     USING date AT TIME ZONE 'America/Denver';
+--   ALTER TABLE blogs
+--     ALTER COLUMN date SET DEFAULT (now() AT TIME ZONE 'America/Denver');
+--   COMMIT;
 --
--- But it is NOT information-preserving for rows caught by Precondition 2 or 3:
--- a wrongly-guessed instant round-trips back to the same naive value it started
--- as, so a rollback hides the damage instead of revealing it. Take a backup.
+-- For a row that did NOT satisfy it, the rollback is worse than useless: a
+-- wrongly-guessed instant round-trips back to the identical naive value it
+-- started as, so the rollback hides the damage rather than revealing it. Take a
+-- backup before step 3 regardless of how small the table is.
+
+
+-- ###########################################################################
+-- STEP 1 -- run before deploying the code. Safe under old and new code alike.
+-- ###########################################################################
+
+ALTER TABLE blogs
+  ALTER COLUMN date SET DEFAULT (now() AT TIME ZONE 'America/Denver');
+
+
+-- ###########################################################################
+-- STEP 3 -- run only AFTER the code deploy is live. Take a backup first.
+-- ###########################################################################
 
 BEGIN;
 
@@ -147,27 +158,30 @@ ALTER TABLE blogs
   ALTER COLUMN date TYPE TIMESTAMPTZ
   USING date AT TIME ZONE 'America/Denver';
 
+-- In the same transaction as the type change, so the column and its default can
+-- never briefly disagree about what a value means.
+ALTER TABLE blogs
+  ALTER COLUMN date SET DEFAULT now();
+
 COMMIT;
 
+
 -- ---------------------------------------------------------------------------
--- Verification -- run these BEFORE the migration above, under the owner's own
--- authorization. They are SELECTs and change nothing. Deliberately left
--- commented out so this file cannot be executed as a whole without a decision.
+-- Verification. These are SELECTs and change nothing. Already run; the results
+-- are recorded above. Left commented out so this file cannot be executed whole
+-- without a decision.
 -- ---------------------------------------------------------------------------
 --
--- How many rows carry no real time of day (probable seed rows, Precondition 2):
+-- Rows carrying no real time of day (probable seed rows) -- measured 2 of 6:
 --
 --   SELECT count(*) FILTER (WHERE date::time = '00:00:00') AS midnight_rows,
 --          count(*)                                       AS total_rows
 --   FROM blogs;
 --
--- Rows whose naive value is ambiguous or nonexistent in America/Denver
--- (Precondition 3). Note a round-trip test does NOT work here: an ambiguous
--- autumn value round-trips cleanly through both AT TIME ZONE directions and
--- would pass. This tests local linearity instead -- away from a transition,
--- shifting the naive input by an hour must shift the resulting instant by
--- exactly an hour, and that breaks in the neighbourhood of an offset change in
--- either direction:
+-- Rows whose naive value is ambiguous or nonexistent in America/Denver --
+-- measured 0. Away from a transition, shifting the naive input by an hour must
+-- shift the resulting instant by exactly an hour; that breaks in the
+-- neighbourhood of an offset change in either direction:
 --
 --   SELECT id, date
 --   FROM blogs
@@ -177,7 +191,13 @@ COMMIT;
 --           - ((date - interval '1 hour') AT TIME ZONE 'America/Denver')
 --           <> interval '1 hour';
 --
--- Span of stored values, to sanity-check that nothing sits far from when the
--- posts were actually written:
+-- Span of stored values, to check nothing sits far from when the posts were
+-- written -- measured 2025-2026:
 --
 --   SELECT min(date) AS earliest, max(date) AS latest FROM blogs;
+--
+-- After step 3, that the default is an instant and not a wall-clock reading:
+--
+--   SELECT column_default, data_type
+--   FROM information_schema.columns
+--   WHERE table_name = 'blogs' AND column_name = 'date';

@@ -133,7 +133,7 @@ describe("createBlog when signed in", () => {
 
     const call = onlySqlCall();
     expect(normalizeSql(call.text)).toContain(
-      "INSERT INTO blogs (title, content, date, private)",
+      "INSERT INTO blogs (title, content, private)",
     );
     expect(call.values.slice(0, 2)).toEqual(["A title", "Some content"]);
     expect(revalidatePath).toHaveBeenCalledWith("/blog");
@@ -251,17 +251,17 @@ describe("createBlog when signed in", () => {
     expect(sqlCalls()).toHaveLength(0);
   });
 
-  it("lets the database stamp the date, and never sends a time of its own", async () => {
+  it("never mentions the date, and sends no time of its own", async () => {
     // This replaces a test that pinned the exact string "3/14/2026, 22:30:00"
     // and so encoded the defect as the specification: the action used to format
     // the current time as Denver wall-clock text and insert *that*, which
     // recorded a clock reading with no note of the zone it was read in.
     //
-    // The claim now is the absence of a value, which is why the clock is faked
-    // to something distinctive and then looked for. A regression that went back
-    // to sending a client-side timestamp puts 2026 into the parameter list, and
-    // any format it might choose - ISO, en-US, epoch millis - contains either
-    // the year or the epoch number.
+    // The claim now is an absence, which is why the clock is faked to something
+    // distinctive and then looked for. A regression that went back to sending a
+    // timestamp puts 2026 into the parameter list, and any format it might
+    // choose - ISO, en-US, epoch millis - contains either the year or the epoch
+    // number.
     vi.useFakeTimers({
       toFake: ["Date"],
       now: new Date("2026-03-15T04:30:00Z"),
@@ -274,12 +274,17 @@ describe("createBlog when signed in", () => {
 
     const call = onlySqlCall();
 
-    // `NOW()` is inline SQL, so the date arrives as part of the statement rather
-    // than as a bound parameter. Asserting the *length* is the point: checking
-    // only that no element looks like a date would pass just as happily if a
-    // fourth parameter appeared carrying one in a shape this test did not guess.
+    // Asserting the *count* is the point of the first two. Checking only that
+    // no parameter looks like a date would pass just as happily over a fourth
+    // one carrying it in a shape this test did not guess, and checking only
+    // that the text omits `date` would pass over `NOW()` sent positionally.
     expect(call.values).toHaveLength(3);
-    expect(call.text).toMatch(/VALUES\s*\(\$1,\s*\$2,\s*NOW\(\),\s*\$3\)/);
+    expect(normalizeSql(call.text)).toContain(
+      "INSERT INTO blogs (title, content, private) VALUES ($1, $2, $3)",
+    );
+    // `NOW()` here would be wrong, not merely redundant: against the naive
+    // column this replaced it coerces through the session zone, not Denver.
+    expect(call.text).not.toMatch(/NOW\(\)|CURRENT_TIMESTAMP/i);
 
     const serialised = JSON.stringify(call.values);
     expect(serialised).not.toContain("2026");
