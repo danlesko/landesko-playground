@@ -410,17 +410,28 @@ test("the sidebar toggle reports a truthful expanded state below `lg`", async ({
 
   // Two claims, pinned separately: the computed name is exactly "Menu", and it
   // comes from `aria-label`. Neither implies the other -- an `aria-labelledby`
-  // would outrank the label and change the name, while `alt` is a name fallback,
-  // so the name alone was already "Menu" before `aria-label` existed.
+  // would outrank the label and change the name, while the icon can still carry
+  // a name of its own, so the name being right does not mean the label is what
+  // made it right. Phosphor's `alt` prop renders an SVG `<title>`, which is a
+  // name fallback exactly as the old raster icon's `alt` attribute was:
+  // measured with the label stripped and the icon un-hidden, that `<title>`
+  // alone puts the name at "Menu", and with no `<title>` it measures empty.
   await expect(toggle).toHaveAccessibleName("Menu");
   await expect(toggle).toHaveAttribute("aria-label", "Menu");
 
-  // Neither line above can carry the decorative-icon claim:
-  // `aria-label` outranks descendant content, so reinstating the icon's alt text
-  // would leave the computed name "Menu" and that assertion green while the
-  // image went back to being a node of its own inside the button. Mutation-
-  // tested: restoring `alt="Menu"` fails this line and only this line. The claim
-  // is one fewer node, not a duplicated announcement -- the name is unchanged.
+  // Neither line above can carry the decorative-icon claim: `aria-label`
+  // outranks descendant content, so un-hiding the icon leaves the computed name
+  // "Menu" and both assertions above green while the icon goes back to being a
+  // node of its own inside the button. The claim is one fewer node, not a
+  // duplicated announcement -- the name is unchanged either way.
+  //
+  // `img` with no `<img>` element on the page: the icon is a bare `<svg>`, which
+  // maps to that role once it is not hidden. So the live mutation is dropping
+  // `aria-hidden`, not the `alt`-shaped one the raster icon used to have --
+  // mutation-tested, removing `aria-hidden="true"` fails this line and only this
+  // line. Adding the `<title>` on its own is caught by nothing here, and there
+  // is nothing to catch: while the SVG stays hidden it is out of the tree
+  // whether it has a title or not.
   await expect(toggle.getByRole("img")).toHaveCount(0);
 
   // Resolved through the attribute rather than by hardcoding the id, so this

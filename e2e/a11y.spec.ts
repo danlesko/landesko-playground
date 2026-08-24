@@ -32,9 +32,9 @@ const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
  * Playwright's project is Desktop Chrome at 1280px, which is at or above the
  * `lg` breakpoint everywhere in this app -- so a desktop-only pass never sees
  * anything gated on `lg:hidden`. `MySidebar`'s toggle is exactly that: its
- * `aria-label="Menu"` is the only accessible name it has, over an `<Image>` with
- * an empty alt, and axe skips hidden elements, so deleting that label left a
- * desktop-only version of this suite completely green.
+ * `aria-label="Menu"` is the only accessible name it has, over an `aria-hidden`
+ * icon that contributes none, and axe skips hidden elements, so deleting that
+ * label left a desktop-only version of this suite completely green.
  *
  * 400px is also the width the header title's 2.55:1 is measured at, so the
  * motivating number in this file's own comments was taken at a viewport the
