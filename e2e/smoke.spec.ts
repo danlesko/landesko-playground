@@ -91,8 +91,10 @@ test("the home hero links to every destination it promises", async ({
  * fixed 250px from `lg` up and `<main>` adds 32px of padding, so the hero's image
  * column is `calc((100vw - 282px) / 2)` -- and if the page structure or the sidebar
  * width changes without that attribute being updated, the browser is left choosing
- * a candidate against a width the image no longer has, and *nothing looks broken*
- * either way. That silence is why this is a test and not a comment.
+ * a candidate against a width the image no longer has -- and nothing about the
+ * layout changes to announce it. Declare too large and the cost is bytes nobody
+ * notices; too small and the photo goes soft, which is the kind of thing that gets
+ * lived with rather than filed. That quiet is why this is a test and not a comment.
  *
  * What it pins is that mismatch, and only that. Whether any particular mismatch is
  * big enough to change which file the browser actually downloads depends on the
