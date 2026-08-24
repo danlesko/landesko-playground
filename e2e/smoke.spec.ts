@@ -62,10 +62,11 @@ test("the home hero links to every destination it promises", async ({
     "https://www.linkedin.com/in/danlesko/",
   ]);
 
-  // Deliberately not the accessible name: `aria-label` overrides an element's
-  // text content and `title` substitutes for it, so a name-based check can be
-  // satisfied by an anchor that renders nothing. These two catch an anchor with
-  // no rendered text and an anchor with no box.
+  // Deliberately not the accessible name: in the name computation `aria-label`
+  // replaces what an element's own text would contribute, and `title` stands in
+  // when nothing else does -- so a name-based check can be satisfied by an anchor
+  // that renders nothing. These two catch an anchor whose `innerText` is empty
+  // and an anchor with no box.
   //
   // Neither alone would do, and `innerText` is the weaker of the two for a reason
   // worth writing down: on an element that is not being rendered it returns
@@ -88,10 +89,15 @@ test("the home hero links to every destination it promises", async ({
 /**
  * The `sizes` contract that #10 warned about in as many words: the sidebar is a
  * fixed 250px from `lg` up and `<main>` adds 32px of padding, so the hero's image
- * column is `calc((100vw - 282px) / 2)` -- and if the page structure or the
- * sidebar width changes without that attribute being updated, the browser picks a
- * badly-sized candidate and *nothing looks broken*. That silence is why this is a
- * test and not a comment.
+ * column is `calc((100vw - 282px) / 2)` -- and if the page structure or the sidebar
+ * width changes without that attribute being updated, the browser is left choosing
+ * a candidate against a width the image no longer has, and *nothing looks broken*
+ * either way. That silence is why this is a test and not a comment.
+ *
+ * What it pins is that mismatch, and only that. Whether any particular mismatch is
+ * big enough to change which file the browser actually downloads depends on the
+ * gaps between the candidate widths, so the mismatch is the thing worth failing on
+ * rather than a claim about the chosen resource.
  *
  * It works by evaluating the declared expression itself rather than restating the
  * arithmetic: the attribute's own `calc()` is applied to a probe element and the
