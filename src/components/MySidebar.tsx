@@ -3,7 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import Link from "next/link";
-import Image from "next/image";
+import { List } from "@phosphor-icons/react/dist/ssr";
 
 // Referenced by both the toggle's `aria-controls` and the list's `id`, so the
 // two cannot drift apart. MySidebar is rendered once, in the root layout, so a
@@ -145,11 +145,12 @@ const MySidebar = () => {
         // "in the DOM" from "in the tree", plus a visibility check.
         aria-expanded={isOpen}
         aria-controls={MENU_ID}
-        // The name was coming from the icon's `alt`. Stating it here keeps the
-        // button named if the icon is ever swapped out (#10 wants a Phosphor
-        // one). The icon then goes decorative -- not to prevent a doubled name,
-        // since `aria-label` already replaces descendant content in the name
-        // computation, but so the image stops being a node of its own.
+        // The name used to come from the icon's `alt`, which is why it is stated
+        // here: the icon has now been swapped for a Phosphor glyph, and an
+        // `aria-hidden` SVG has no `alt` to carry a name in. The icon is
+        // decorative not to prevent a doubled name -- `aria-label` already
+        // replaces descendant content in the name computation -- but so it stops
+        // being a node of its own.
         aria-label="Menu"
         // Positioned so it paints above the scrim. Without this the toggle would
         // sit under it and the one control guaranteed to close the panel would be
@@ -159,7 +160,7 @@ const MySidebar = () => {
         className="relative z-10 lg:hidden p-2 text-white bg-brand rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
         onClick={toggleMenu}
       >
-        <Image src="/menu.png" alt="" width="24" height="24" />
+        <List size={24} aria-hidden="true" />
       </button>
       <ul
         ref={menuRef}
