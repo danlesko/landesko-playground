@@ -1,7 +1,7 @@
 import { getSession } from "@/lib/session";
 import PageHeading from "@/components/ui/PageHeading";
 import TextLink from "@/components/ui/TextLink";
-import MyBlogBodyAbbr from "@/components/MyBlogBodyAbbr";
+import BlogBodyAbbr from "@/components/BlogBodyAbbr";
 import { deleteBlogPost } from "@/lib/actions";
 import { fetchRecentBlogs } from "@/lib/data";
 
@@ -43,7 +43,7 @@ export default async function BlogList() {
         <p className="mt-4 text-muted">No posts to show yet.</p>
       ) : (
         blogs.map((blog) => (
-          <MyBlogBodyAbbr
+          <BlogBodyAbbr
             key={blog.id}
             blog={blog}
             session={session}

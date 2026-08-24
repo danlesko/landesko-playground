@@ -19,7 +19,7 @@ vi.mock("@/lib/data", () => ({ fetchRecentBlogs: vi.fn() }));
 vi.mock("@/lib/actions", () => ({ deleteBlogPost: vi.fn() }));
 
 import { fetchRecentBlogs } from "@/lib/data";
-import MyBlogBodyAbbr from "@/components/MyBlogBodyAbbr";
+import BlogBodyAbbr from "@/components/BlogBodyAbbr";
 // ./BlogList and not ./page: `page.tsx` is a synchronous shell that only
 // declares the Suspense boundary, so calling it renders no rows and every
 // assertion below would pass or fail for reasons unrelated to the list.
@@ -60,7 +60,7 @@ function textOf(node: ReactNode): string {
 }
 
 // `textOf` cannot see row content at all: every post renders inside
-// `MyBlogBodyAbbr`, and descending into components is exactly what it refuses to
+// `BlogBodyAbbr`, and descending into components is exactly what it refuses to
 // do. So "no posts message absent" is satisfied by rendering *nothing*, and the
 // negative assertion below needs a positive counterpart that counts the rows as
 // elements instead of as text. Walks the same nodes -- intrinsics, fragments and
@@ -93,7 +93,7 @@ describe("blog list page", () => {
     vi.mocked(fetchRecentBlogs).mockResolvedValue([]);
 
     const tree = await BlogList();
-    expect(countElements(tree, MyBlogBodyAbbr)).toBe(0);
+    expect(countElements(tree, BlogBodyAbbr)).toBe(0);
     expect(textOf(tree)).toContain(EMPTY_MESSAGE);
   });
 
@@ -104,7 +104,7 @@ describe("blog list page", () => {
     // The row count is the load-bearing half. `not.toContain` alone is
     // satisfied by an empty render, so on its own it passed even when this
     // called a shell that rendered no list at all.
-    expect(countElements(tree, MyBlogBodyAbbr)).toBe(1);
+    expect(countElements(tree, BlogBodyAbbr)).toBe(1);
     expect(textOf(tree)).not.toContain(EMPTY_MESSAGE);
   });
 
@@ -113,7 +113,7 @@ describe("blog list page", () => {
     vi.mocked(fetchRecentBlogs).mockResolvedValue([]);
 
     const tree = await BlogList();
-    expect(countElements(tree, MyBlogBodyAbbr)).toBe(0);
+    expect(countElements(tree, BlogBodyAbbr)).toBe(0);
     expect(textOf(tree)).toContain(EMPTY_MESSAGE);
   });
 
@@ -162,7 +162,7 @@ describe("the /blog shell", () => {
   it("renders no rows itself, which is why the other suites import BlogList", () => {
     vi.mocked(fetchRecentBlogs).mockResolvedValue([row]);
 
-    expect(countElements(Blog(), MyBlogBodyAbbr)).toBe(0);
+    expect(countElements(Blog(), BlogBodyAbbr)).toBe(0);
     expect(vi.mocked(fetchRecentBlogs)).not.toHaveBeenCalled();
   });
 

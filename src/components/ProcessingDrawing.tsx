@@ -35,7 +35,7 @@ const getReducedMotion = () => window.matchMedia(REDUCED_MOTION_QUERY).matches;
 // canvas exists until after the real value is known.
 const getReducedMotionOnServer = () => false;
 
-const MyProcessingDrawing = () => {
+const ProcessingDrawing = () => {
   const wrapperRef = React.useRef<HTMLDivElement>(null);
   const prefersReducedMotion = React.useSyncExternalStore(
     subscribeToReducedMotion,
@@ -55,4 +55,4 @@ const MyProcessingDrawing = () => {
   );
 };
 
-export default MyProcessingDrawing;
+export default ProcessingDrawing;

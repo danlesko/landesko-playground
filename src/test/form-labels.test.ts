@@ -5,7 +5,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 vi.mock("@/lib/actions", () => ({ createBlog: vi.fn() }));
 vi.mock("@/lib/contact-actions", () => ({ sendContactEmail: vi.fn() }));
 
-import MyContactForm from "@/components/MyContactForm";
+import ContactForm from "@/components/ContactForm";
 import CreateBlogPage from "@/app/blog/create/page";
 
 /**
@@ -60,7 +60,7 @@ const describeForm = (markup: string) => {
 
 const FORMS = {
   "contact form": {
-    markup: () => renderToStaticMarkup(createElement(MyContactForm)),
+    markup: () => renderToStaticMarkup(createElement(ContactForm)),
     // The properties `sendContactEmail` reads, and the labels a user should see.
     expected: { name: "Name", email: "Email", message: "Message" },
   },

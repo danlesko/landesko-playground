@@ -13,7 +13,7 @@ import { sendContactEmail } from "@/lib/contact-actions";
 import { formControlClasses, formLabelClasses } from "@/components/ui/form";
 import { primaryButtonClasses } from "@/components/ui/button";
 
-const MyContactForm = () => {
+const ContactForm = () => {
   const toast = useToast();
   const recaptcha = useRef<ReCAPTCHA | null>(null);
   // Per-instance, so two of these on one page cannot emit colliding ids and
@@ -168,4 +168,4 @@ const MyContactForm = () => {
   );
 };
 
-export default MyContactForm;
+export default ContactForm;

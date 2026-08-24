@@ -313,7 +313,7 @@ test("the p5 sketch mounts a canvas", async ({ page }) => {
 /**
  * `/contact` needs special handling, and the reason is worth writing down.
  *
- * MyContactForm renders `react-google-recaptcha` with
+ * ContactForm renders `react-google-recaptcha` with
  * `sitekey={process.env.NEXT_PUBLIC_REACT_APP_SITE_KEY_RECAPTCHA || ""}`. With
  * no key set, Google's api.js throws `Missing required parameters: sitekey`
  * during hydration and React unmounts the whole route: the body collapses to
@@ -364,7 +364,7 @@ test.describe("/contact", () => {
     // Blocking Google is what makes this deterministic. api.js never loads, so
     // it never throws on the empty sitekey, the route hydrates intact, and
     // `recaptcha.current?.getValue()` returns undefined -- which is the branch
-    // MyContactForm handles with an alert.
+    // ContactForm handles with an alert.
     await page.route("**://*.google.com/**", (route) => route.abort());
     await page.route("**://*.gstatic.com/**", (route) => route.abort());
 

@@ -12,7 +12,7 @@ import {
   primaryButtonClasses,
 } from "@/components/ui/button";
 
-interface MyBlogBodyAbbrProps {
+interface BlogBodyAbbrProps {
   session: Session | null;
   blog: Blog;
   deleteBlogPost: (id: string) => Promise<void>;
@@ -51,11 +51,7 @@ export const attemptDelete = async (
   }
 };
 
-const MyBlogBodyAbbr = ({
-  session,
-  blog,
-  deleteBlogPost,
-}: MyBlogBodyAbbrProps) => {
+const BlogBodyAbbr = ({ session, blog, deleteBlogPost }: BlogBodyAbbrProps) => {
   const [openModal, setOpenModal] = useState(false);
   const [deleteError, setDeleteError] = useState("");
 
@@ -166,4 +162,4 @@ const MyBlogBodyAbbr = ({
   );
 };
 
-export default MyBlogBodyAbbr;
+export default BlogBodyAbbr;

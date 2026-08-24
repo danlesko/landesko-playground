@@ -6,7 +6,7 @@ import Link from "next/link";
 import { List } from "@phosphor-icons/react/dist/ssr";
 
 // Referenced by both the toggle's `aria-controls` and the list's `id`, so the
-// two cannot drift apart. MySidebar is rendered once, in the root layout, so a
+// two cannot drift apart. Sidebar is rendered once, in the root layout, so a
 // constant is unique on the page.
 const MENU_ID = "sidebar-menu";
 
@@ -21,7 +21,7 @@ const NAV_ITEMS = [
   { href: "/credits", label: "Credits" },
 ] as const;
 
-const MySidebar = () => {
+const Sidebar = () => {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -224,4 +224,4 @@ const MySidebar = () => {
   );
 };
 
-export default MySidebar;
+export default Sidebar;

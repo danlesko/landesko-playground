@@ -1,4 +1,4 @@
-import MyContactForm from "@/components/MyContactForm";
+import ContactForm from "@/components/ContactForm";
 import type { Metadata } from "next";
 import PageHeading from "@/components/ui/PageHeading";
 import { textLinkClasses } from "@/components/ui/TextLink";
@@ -19,7 +19,7 @@ export default function Contact() {
         </a>
       </p>
       <p className="text-lg mt-2">Or through the web here:</p>
-      <MyContactForm />
+      <ContactForm />
     </>
   );
 }

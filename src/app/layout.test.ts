@@ -19,13 +19,13 @@ vi.mock("@/auth", async () => {
   return { auth: authMock, ...authApi };
 });
 
-// Everything the header control does not depend on. MySidebar is a client
+// Everything the header control does not depend on. Sidebar is a client
 // component that reads a router context this renderer has no provider for, and
 // next/font/google fetches at import time.
 vi.mock("next/font/google", () => ({
   Montserrat: () => ({ className: "mont" }),
 }));
-vi.mock("@/components/MySidebar", () => ({ default: () => null }));
+vi.mock("@/components/Sidebar", () => ({ default: () => null }));
 vi.mock("@vercel/analytics/next", () => ({ Analytics: () => null }));
 vi.mock("@vercel/speed-insights/next", () => ({ SpeedInsights: () => null }));
 

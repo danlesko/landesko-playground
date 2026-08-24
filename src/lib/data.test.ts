@@ -473,7 +473,7 @@ describe("blog row validation", () => {
     expect(inspect(logged, { depth: null })).not.toContain(CONTENT);
   });
 
-  // Not tidiness: these rows are handed to `MyBlogBodyAbbr`, a client
+  // Not tidiness: these rows are handed to `BlogBodyAbbr`, a client
   // component, so anything left on them is serialised into the page. A column
   // added to the table must not ride along.
   it("strips a column the type does not declare instead of passing it on", async () => {
