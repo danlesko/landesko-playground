@@ -37,11 +37,174 @@ for (const { path, heading } of PUBLIC_ROUTES) {
   });
 }
 
+test("the home hero links to every destination it promises", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  // Scoped to <main>, which on this page contains the hero and nothing else --
+  // so "inside main" and "inside the hero" coincide here, and the sidebar's own
+  // copies of /blog, /animation and /contact cannot supply the answer. The
+  // sidebar <nav> is a sibling of <main> in layout.tsx, which is what makes the
+  // scoping work at all.
+  const links = page.getByRole("main").locator("a[href]");
+
+  const hrefs = await links.evaluateAll((els) =>
+    els.map((el) => el.getAttribute("href")).sort(),
+  );
+  // An exact set rather than a subset: it fails on a dropped destination and on
+  // a duplicate, and it fails loudly if a link is added without a decision.
+  expect(hrefs).toEqual([
+    "/animation",
+    "/blog",
+    "/contact",
+    "https://github.com/danlesko",
+    "https://www.linkedin.com/in/danlesko/",
+  ]);
+
+  // Deliberately not the accessible name: in the name computation `aria-label`
+  // replaces what an element's own text would contribute, and `title` stands in
+  // when nothing else does -- so a name-based check can be satisfied by an anchor
+  // that renders nothing. These two catch an anchor whose `innerText` is empty
+  // and an anchor with no box.
+  //
+  // Neither alone would do, and `innerText` is the weaker of the two for a reason
+  // worth writing down: on an element that is not being rendered it returns
+  // `textContent` rather than the empty string, so it stays populated under
+  // `display:none`. `toBeVisible` is what actually covers that, along with
+  // `visibility:hidden` and a zero-area box.
+  //
+  // What the pair does NOT establish is that a sighted reader can see the text:
+  // `opacity:0`, clipping, occlusion, off-screen placement and text painted in
+  // the background colour all survive both. Nothing here claims otherwise.
+  const count = await links.count();
+  expect(count).toBe(hrefs.length);
+  for (let i = 0; i < count; i++) {
+    const link = links.nth(i);
+    await expect(link).toBeVisible();
+    expect((await link.innerText()).trim()).not.toBe("");
+  }
+});
+
+/**
+ * The `sizes` contract that #10 warned about in as many words: the sidebar is a
+ * fixed 250px from `lg` up and `<main>` adds 32px of padding, so the hero's image
+ * column is `calc((100vw - 282px) / 2)` -- and if the page structure or the sidebar
+ * width changes without that attribute being updated, the browser is left choosing
+ * a candidate against a width the image no longer has -- and nothing about the
+ * layout changes to announce it. Declare too large and the cost is bytes nobody
+ * notices; too small and the photo goes soft, which is the kind of thing that gets
+ * lived with rather than filed. That quiet is why this is a test and not a comment.
+ *
+ * What it pins is that mismatch, and only that. Whether any particular mismatch is
+ * big enough to change which file the browser actually downloads depends on the
+ * gaps between the candidate widths, so the mismatch is the thing worth failing on
+ * rather than a claim about the chosen resource.
+ *
+ * It works by evaluating the declared expression itself rather than restating the
+ * arithmetic: the attribute's own `calc()` is applied to a probe element and the
+ * result compared to the image's real width. To be exact about what that buys,
+ * because the first version of this comment overstated it -- a test that hardcoded
+ * `(100vw - 282px) / 2` as the expected value would *also* fail when the sidebar
+ * changed, since the rendered width moves and the constant does not. What it would
+ * additionally do is fail when someone changes the sidebar and updates `sizes`
+ * correctly, i.e. exactly when the code is right. Reading the attribute tests the
+ * relationship rather than a frozen constant, which is the difference between a
+ * test that survives a legitimate change and one that gets muted for crying wolf.
+ *
+ * Sensitivity is worth stating, since it is not 1:1. The 282px is split between
+ * two columns, so a sidebar change of N pixels moves this image by only N/2 --
+ * which is why the tolerance below is a fraction of a pixel and not the pixel of
+ * slack it started as, which passed a 250px -> 252px sidebar.
+ *
+ * And the limit, since sampling is not proof: this checks the widths listed below.
+ * A sidebar width introduced at a breakpoint above the largest of them, or active
+ * only between two of them, still passes. Widening that is a matter of adding
+ * widths, not of the test being wrong.
+ */
+test("the home hero image declares the width it actually renders", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  // Both branches of the attribute, three widths inside the `min-width: 1024px`
+  // one. The extra desktop widths are not redundant: a sidebar width introduced at
+  // a breakpoint above the only viewport tested would leave this green, so one
+  // sample per branch is not enough to claim the branch holds. 1281 is deliberately
+  // odd -- the column is half of `100vw - 282px`, so it lands on a half pixel and
+  // covers the fractional-track case that even widths never reach.
+  for (const width of [1280, 1281, 1600, 390]) {
+    await page.setViewportSize({ width, height: 900 });
+
+    const measured = await page.evaluate(() => {
+      const img = document.querySelector<HTMLImageElement>(
+        'img[alt="Lan Playing Pool"]',
+      );
+      if (!img) throw new Error("hero image not found");
+      const sizes = img.getAttribute("sizes");
+      if (!sizes) throw new Error("hero image has no sizes attribute");
+
+      // Pick the branch that applies right now. Entries are `<media condition>
+      // <size>` with a bare `<size>` last; no comma appears inside either half
+      // of this attribute, so splitting on commas is sufficient here.
+      let declared: string | null = null;
+      for (const entry of sizes.split(",").map((s) => s.trim())) {
+        if (!entry.startsWith("(")) {
+          declared = entry;
+          break;
+        }
+        const close = entry.indexOf(")");
+        if (window.matchMedia(entry.slice(0, close + 1)).matches) {
+          declared = entry.slice(close + 1).trim();
+          break;
+        }
+      }
+      if (!declared) throw new Error(`no sizes branch matched: ${sizes}`);
+
+      // Let the browser resolve the declared expression instead of recomputing
+      // it. `vw` units ignore the ancestor box, so an absolutely-positioned
+      // probe measures the same length the image selection used.
+      const probe = document.createElement("div");
+      probe.style.cssText = `position:absolute;top:0;left:0;height:1px;visibility:hidden;width:${declared}`;
+      document.body.append(probe);
+      const declaredPx = probe.getBoundingClientRect().width;
+      probe.remove();
+
+      return {
+        declared,
+        declaredPx,
+        actualPx: img.getBoundingClientRect().width,
+      };
+    });
+
+    // Effectively exact. 0.02 is a hair above Chromium's 1/64px layout unit, and
+    // that is all it is -- not a proof that two independently computed geometries
+    // can only ever disagree by one unit. It is small enough to be worth having
+    // and it holds at every width sampled here, measured, locally and in CI.
+    //
+    // The 1px bound this replaces was not worth much: the sidebar's 282px is
+    // halved across two columns, so a 250px -> 252px sidebar and a stray
+    // `lg:gap-0.5` each move the image by exactly 1px and both slipped through.
+    // Both now fail. A `lg:gap-8` costs 16px per column and was caught either way.
+    //
+    // A classic scrollbar would break this, since `100vw` counts the gutter while
+    // the content box does not -- by half the gutter on the two-column branch and
+    // by all of it on the mobile one. It needs no separate assertion: it shows up
+    // here as a plain mismatch, with the message below naming both numbers.
+    expect(
+      Math.abs(measured.actualPx - measured.declaredPx),
+      `at ${width}px wide, sizes declares ${measured.declared} = ${measured.declaredPx}px but the image renders ${measured.actualPx}px`,
+    ).toBeLessThan(0.02);
+  }
+});
+
 test("/credits attributes all four outbound resources", async ({ page }) => {
   await page.goto("/credits");
 
   // Scoped to <main> so the sidebar's links cannot pad the count. Nothing else
-  // in the app renders an absolute href, so this is exactly the credits list.
+  // on *this* page renders an absolute href, so this is exactly the credits
+  // list -- the home hero renders two, which is why the scope is per-page and
+  // not app-wide.
   const outbound = page.getByRole("main").locator('a[href^="https://"]');
 
   // The count is load-bearing on its own: it fails if an entry is dropped, and
