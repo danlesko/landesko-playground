@@ -35,7 +35,7 @@ export default function GlobalError({
             layout gone this is the document's only heading, so its level must
             not be changeable by an edit in another file. */}
         <h1 className="text-4xl font-bold text-danger">Something Went Wrong</h1>
-        <div className="mt-4 p-4 shadow-md rounded-lg lg:min-w-[600px] lg:w-1/2 min-h-32 border border-border overflow-auto">
+        <div className="mt-4 p-4 rounded-lg lg:min-w-[600px] lg:w-1/2 min-h-32 border border-border overflow-auto">
           <p>
             This site could not be loaded. If the problem is temporary, trying
             again may help.
