@@ -1,4 +1,5 @@
 import { execFileSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import { BLOG_DATE_FORMAT, BLOG_DATE_TIME_FORMAT } from "@/lib/blogDate";
@@ -78,4 +79,40 @@ describe("blog date formatting and the ambient time zone", () => {
     expect(served).not.toBe(formatUnder("America/Denver", unpinned));
     expect(served).not.toBe(formatUnder("Asia/Tokyo", unpinned));
   });
+});
+
+/**
+ * The tests above prove the shared options are correct. They cannot prove the
+ * components use them: this suite runs under `environment: "node"` with no DOM,
+ * and the two `/blog` routes need a database that CI does not have -- which is
+ * why the e2e suite skips them. So the link between option object and rendered
+ * output is asserted structurally, over the source text.
+ *
+ * Crude on purpose. Without it, inlining a format object back into either
+ * component leaves every test above green, since they would still be exercising
+ * a shared constant nothing renders.
+ */
+describe("the render sites use the shared options", () => {
+  const sites = [
+    {
+      path: "src/app/blog/[id]/page.tsx",
+      constant: "BLOG_DATE_FORMAT",
+    },
+    {
+      path: "src/components/MyBlogBodyAbbr.tsx",
+      constant: "BLOG_DATE_TIME_FORMAT",
+    },
+  ];
+
+  for (const { path, constant } of sites) {
+    it(`${path} formats with ${constant}`, () => {
+      const source = readFileSync(path, "utf8");
+
+      expect(source).toContain(`toLocaleDateString("en-US", ${constant})`);
+      // No second, inline options object anywhere in the file. `weekday` is the
+      // marker: it appears in every variant of these options and nowhere else.
+      expect(source).not.toContain("weekday:");
+      expect(source).not.toContain("timeZone:");
+    });
+  }
 });

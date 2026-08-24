@@ -1,0 +1,196 @@
+-- ============================================================================
+-- NOT EXECUTED. Step 3 of 3, and the dangerous one. This file rewrites every
+-- row in the table and there is a code version against which running it
+-- corrupts new writes silently.
+--
+-- Do not run it until the GATE below is satisfied. Take a backup first.
+-- ============================================================================
+--
+-- Purpose: convert blogs.date from TIMESTAMP WITHOUT TIME ZONE to TIMESTAMPTZ,
+-- recovering the instant each existing value was meant to denote, and move the
+-- default to a real instant now that the column can hold one.
+--
+-- ---------------------------------------------------------------------------
+-- The three steps, and why they are three
+-- ---------------------------------------------------------------------------
+-- A DDL statement and a deploy cannot be made atomic, so the question that
+-- decides the design is what a post written *between* them records. A wrong
+-- answer is silent and permanent, so no step may leave a pairing that stores a
+-- plausible-but-wrong value.
+--
+--   STEP 1  migrations/0002_blogs_date_default_denver.sql
+--           A naive Denver default. Safe under old code (never reaches a
+--           default) and new code (relies on it). Run any time.
+--
+--   STEP 2  Deploy the application. createBlog stops naming `date`; both render
+--           sites pin `timeZone: 'America/Denver'`.
+--
+--   STEP 3  This file.
+--
+-- Every pairing of code and schema across that sequence stores a correct value.
+-- The pairing that does not is new code against the pre-step-1 schema, and it
+-- fails outright on the not-null constraint -- loud, and fixed by resubmitting.
+--
+-- What NOT to do:
+--
+--   * Do not put `NOW()` in the INSERT and deploy before this file runs. NOW()
+--     is a timestamptz; the naive column coerces it through the session zone,
+--     storing GMT wall-clock (measured 17:47 where Denver's 11:47 was meant).
+--     The USING clause below would then read that 17:47 as Denver and shift it
+--     a further 6-7 hours.
+--   * Do not run this file before the deploy. See the GATE.
+--   * Do not concatenate this file with 0002 and run both. That is why they are
+--     separate files: run consecutively there is no deploy between them, which
+--     is exactly the arrangement the split exists to prevent.
+--
+-- ---------------------------------------------------------------------------
+-- GATE -- satisfy all four before running this file
+-- ---------------------------------------------------------------------------
+-- The hazard is narrow and specific: OLD code writing into the NEW column. Old
+-- code sends a Denver wall-clock *string*, which a timestamptz column parses
+-- using the session zone, GMT, landing it 6-7 hours off. Permanently, silently,
+-- and the rollback below cannot tell such a row from a good one.
+--
+--   1. Step 1 has run and the deploy of step 2 is live in production.
+--   2. No old instance is still serving. Vercel drains on promotion, but an
+--      in-flight server action that began before this statement can still
+--      insert after it. On a single-author blog the reliable way to close that
+--      is not to submit a post while running this.
+--   3. A backup exists. See the reversal note.
+--   4. Accept that the deploy CANNOT be rolled back afterwards without first
+--      running the reversal below. A one-click Vercel rollback puts old code
+--      back in front of the new column, which is the corrupting pairing. If a
+--      rollback is ever needed: reverse this file first, then roll back.
+--
+-- If a post does get written by old code against the new column, it is
+-- identifiable -- it will be off by exactly the Denver offset, in a known
+-- direction, and the table is small enough to correct by hand.
+--
+-- ---------------------------------------------------------------------------
+-- Why the obvious one-liner is wrong
+-- ---------------------------------------------------------------------------
+-- A bare
+--
+--   ALTER TABLE blogs ALTER COLUMN date TYPE TIMESTAMPTZ;
+--
+-- casts using the *session* TimeZone, GMT here. Every stored value is Denver
+-- wall-clock, so each would be reinterpreted as if it had been UTC and land
+-- 6-7 hours from the instant it meant. That conversion is exactly reversible --
+-- `date AT TIME ZONE 'GMT'` inverts it -- so it destroys nothing; it just
+-- produces the wrong answer, without a warning. The USING clause is what makes
+-- it the right one.
+--
+-- ---------------------------------------------------------------------------
+-- Measured facts this file depends on
+-- ---------------------------------------------------------------------------
+-- From the live database, aggregates only:
+--
+--   column      timestamp without time zone, precision 6, NOT NULL, no default
+--   session     TimeZone GMT, DateStyle ISO, MDY
+--   rows        6 total, 2 at 00:00:00, span 2025-2026
+--   ambiguous   0 rows fall in a DST fall-back hour or spring-forward gap
+--
+-- And the coercions, from literal SELECTs that read no table:
+--
+--   NOW()::timestamp                              -> 17:47  (GMT wall-clock)
+--   (NOW() AT TIME ZONE 'America/Denver')::text    -> 11:47  (Denver wall-clock)
+--   '22:30'::timestamp::timestamptz                -> 22:30+00
+--   '22:30'::timestamp AT TIME ZONE 'America/...'  -> 04:30+00
+--
+-- ---------------------------------------------------------------------------
+-- What the USING clause assumes about existing rows
+-- ---------------------------------------------------------------------------
+-- That every existing naive value is Denver wall-clock. True for anything
+-- written through createBlog. Two caveats, both measured:
+--
+--   * 2 of the 6 rows sit at 00:00:00. They came from the seed list into what
+--     was then a DATE column, so they denote a calendar day with no time of day
+--     at all. "Midnight in Denver" is a choice imposed on them rather than a
+--     fact recovered -- benign, because it displays as the same calendar day,
+--     which is what a date-only post means.
+--   * A row inserted by hand from a machine in another zone would be shifted by
+--     the difference, undetectably, because the intended zone was never
+--     recorded. That is the underlying disease. This migration cannot cure rows
+--     that already have it, and there is no evidence any row does.
+--
+-- DST ambiguity would be a third caveat -- `naive AT TIME ZONE` is ambiguous
+-- inside the autumn fall-back hour and undefined inside the spring-forward gap,
+-- and Postgres resolves both silently. MEASURED AT ZERO ROWS, so it does not
+-- apply. A round-trip test does not detect this, incidentally: an ambiguous
+-- autumn value round-trips cleanly through both directions. The query at the
+-- bottom tests local linearity instead.
+--
+-- ---------------------------------------------------------------------------
+-- Locking and reversal
+-- ---------------------------------------------------------------------------
+-- ALTER COLUMN ... TYPE with a USING clause rewrites the table under an ACCESS
+-- EXCLUSIVE lock. Instant at 6 rows; the note matters only if this is ever run
+-- against a much larger table.
+--
+-- Reverses exactly for every row that satisfied the assumption above:
+--
+--   BEGIN;
+--   ALTER TABLE blogs ALTER COLUMN date DROP DEFAULT;
+--   ALTER TABLE blogs
+--     ALTER COLUMN date TYPE TIMESTAMP WITHOUT TIME ZONE
+--     USING date AT TIME ZONE 'America/Denver';
+--   ALTER TABLE blogs
+--     ALTER COLUMN date SET DEFAULT (now() AT TIME ZONE 'America/Denver');
+--   COMMIT;
+--
+-- For a row that did NOT satisfy it, the rollback is worse than useless: a
+-- wrongly-guessed instant round-trips back to the identical naive value it
+-- started as, so the rollback hides the damage rather than revealing it. That is
+-- why the gate asks for a backup regardless of how small the table is.
+
+
+BEGIN;
+
+ALTER TABLE blogs
+  ALTER COLUMN date TYPE TIMESTAMPTZ
+  USING date AT TIME ZONE 'America/Denver';
+
+-- In the same transaction as the type change, so the column and its default can
+-- never briefly disagree about what a value means.
+ALTER TABLE blogs
+  ALTER COLUMN date SET DEFAULT now();
+
+COMMIT;
+
+
+-- ---------------------------------------------------------------------------
+-- Verification. These are SELECTs and change nothing. Already run; the results
+-- are recorded above. Left commented out so this file cannot be executed whole
+-- without a decision.
+-- ---------------------------------------------------------------------------
+--
+-- Rows carrying no real time of day (probable seed rows) -- measured 2 of 6:
+--
+--   SELECT count(*) FILTER (WHERE date::time = '00:00:00') AS midnight_rows,
+--          count(*)                                       AS total_rows
+--   FROM blogs;
+--
+-- Rows whose naive value is ambiguous or nonexistent in America/Denver --
+-- measured 0. Away from a transition, shifting the naive input by an hour must
+-- shift the resulting instant by exactly an hour; that breaks in the
+-- neighbourhood of an offset change in either direction:
+--
+--   SELECT id, date
+--   FROM blogs
+--   WHERE ((date + interval '1 hour') AT TIME ZONE 'America/Denver')
+--           - (date AT TIME ZONE 'America/Denver') <> interval '1 hour'
+--      OR (date AT TIME ZONE 'America/Denver')
+--           - ((date - interval '1 hour') AT TIME ZONE 'America/Denver')
+--           <> interval '1 hour';
+--
+-- Span of stored values, to check nothing sits far from when the posts were
+-- written -- measured 2025-2026:
+--
+--   SELECT min(date) AS earliest, max(date) AS latest FROM blogs;
+--
+-- Afterwards, that the type changed and the default is an instant rather than a
+-- wall-clock reading:
+--
+--   SELECT data_type, column_default
+--   FROM information_schema.columns
+--   WHERE table_name = 'blogs' AND column_name = 'date';
