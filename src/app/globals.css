@@ -12,7 +12,14 @@
   --foreground: #d4d4d8; /* zinc-300  11.99:1 */
   --surface: #27272a; /* zinc-800  — sidebar, inputs, modals */
   --muted: #a1a1aa; /* zinc-400   6.91:1, 5.81:1 on --surface */
-  --border: #ffffff; /* card hairline, unchanged from the literal it replaces */
+  /* The card hairline. White measured 17.72:1 — brighter than --foreground's
+     11.99:1, so the outline was the highest-contrast thing on the page and read
+     as glare rather than as an edge. This is the only affordance separating a
+     card from the page: the cards have no fill, and the `shadow-md` that used to
+     sit alongside rendered a 1.02:1 difference, i.e. nothing. So it wants to be
+     subtle but not absent, which is why this is zinc-600 and not the zinc-700
+     one step down (1.70:1, faint enough to lose at a glance on a dim display). */
+  --border: #52525b; /* zinc-600   2.29:1 */
   --accent: #22d3ee; /* cyan-400   9.80:1 */
   --accent-hover: #67e8f9; /* cyan-300  12.22:1 — brighter than rest, not dimmer */
   /* Safe to read through var() from `visited:` utilities despite the :visited

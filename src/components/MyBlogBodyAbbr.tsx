@@ -66,7 +66,7 @@ const MyBlogBodyAbbr = ({
   };
 
   return (
-    <div className="mt-4 p-4 shadow-md rounded-lg lg:min-w-[600px] lg:w-1/2 h-32 border border-border overflow-auto">
+    <div className="mt-4 p-4 rounded-lg lg:min-w-[600px] lg:w-1/2 h-32 border border-border overflow-auto">
       <div className="flow-root">
         <div className="flex justify-between items-center">
           <h2 className="text-xl font-semibold">
