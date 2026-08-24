@@ -18,14 +18,17 @@ const NewBlogSchema = z.object({
   content: z
     .string({ invalid_type_error: "Content is required" })
     .min(1, "Content is required"),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   privateBlog: z.union([
     z.string().transform((data) => data === "on"),
     z.literal(null).transform(() => false),
   ]),
 });
 
-const CreateBlog = NewBlogSchema.omit({ id: true, date: true });
+// `date` is not a field here. The database supplies it with `NOW()`, so there is
+// no submitted value to validate. It used to be declared above as a
+// `/^\d{4}-\d{2}-\d{2}$/` string and then omitted here, which validated nothing
+// and described a format the column never held.
+const CreateBlog = NewBlogSchema.omit({ id: true });
 
 const DeleteBlogSchema = z.object({ id: z.string().uuid() });
 
@@ -70,14 +73,16 @@ export async function createBlog(
   }
   const { title, content, privateBlog } = parsed.data;
 
-  // Developer lives in Denver, CO
-  const date = new Date().toLocaleString("en-US", {
-    timeZone: "America/Denver",
-    hourCycle: "h23",
-  });
+  // `NOW()` rather than a value built here. The column is `timestamptz`, so it
+  // stores an instant, and the only zone-free way to name "now" is to let the
+  // database do it. What this replaced formatted the current time as Denver
+  // wall-clock text (`"8/21/2026, 14:03:22"`) and inserted that into what was
+  // then a naive column, which recorded a reading with no record of the zone it
+  // was read in — so the stored value was six or seven hours from the instant it
+  // meant, and nothing said which.
   await sql`
     INSERT INTO blogs (title, content, date, private)
-    VALUES (${title}, ${content}, ${date}, ${privateBlog})
+    VALUES (${title}, ${content}, NOW(), ${privateBlog})
     `;
 
   revalidatePath("/blog");

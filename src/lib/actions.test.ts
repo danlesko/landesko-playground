@@ -251,11 +251,17 @@ describe("createBlog when signed in", () => {
     expect(sqlCalls()).toHaveLength(0);
   });
 
-  it("stamps the post with the date in America/Denver, not the server's zone", async () => {
-    // 04:30 UTC is still the previous day in Denver. Pinning the exact string
-    // documents the current format, which is en-US "M/D/YYYY, HH:mm:ss" and
-    // notably *not* the `YYYY-MM-DD` that NewBlogSchema's `date` field
-    // declares. See the PR description.
+  it("lets the database stamp the date, and never sends a time of its own", async () => {
+    // This replaces a test that pinned the exact string "3/14/2026, 22:30:00"
+    // and so encoded the defect as the specification: the action used to format
+    // the current time as Denver wall-clock text and insert *that*, which
+    // recorded a clock reading with no note of the zone it was read in.
+    //
+    // The claim now is the absence of a value, which is why the clock is faked
+    // to something distinctive and then looked for. A regression that went back
+    // to sending a client-side timestamp puts 2026 into the parameter list, and
+    // any format it might choose - ISO, en-US, epoch millis - contains either
+    // the year or the epoch number.
     vi.useFakeTimers({
       toFake: ["Date"],
       now: new Date("2026-03-15T04:30:00Z"),
@@ -266,7 +272,20 @@ describe("createBlog when signed in", () => {
       vi.useRealTimers();
     }
 
-    expect(onlySqlCall().values.at(2)).toBe("3/14/2026, 22:30:00");
+    const call = onlySqlCall();
+
+    // `NOW()` is inline SQL, so the date arrives as part of the statement rather
+    // than as a bound parameter. Asserting the *length* is the point: checking
+    // only that no element looks like a date would pass just as happily if a
+    // fourth parameter appeared carrying one in a shape this test did not guess.
+    expect(call.values).toHaveLength(3);
+    expect(call.text).toMatch(/VALUES\s*\(\$1,\s*\$2,\s*NOW\(\),\s*\$3\)/);
+
+    const serialised = JSON.stringify(call.values);
+    expect(serialised).not.toContain("2026");
+    expect(serialised).not.toContain(
+      String(Date.parse("2026-03-15T04:30:00Z")),
+    );
   });
 });
 

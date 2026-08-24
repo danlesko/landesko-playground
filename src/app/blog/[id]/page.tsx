@@ -52,7 +52,13 @@ export default async function Blog(props: { params: Promise<{ id: string }> }) {
       >
         <div className="flow-root">
           <p className="text-sm font-medium text-muted">
-            {new Date(blog.date).toLocaleDateString("en-US", {
+            {blog.date.toLocaleDateString("en-US", {
+              // The column is `timestamptz`, so this is a real instant and the
+              // zone has to be named to turn it back into a day. Omitting it
+              // formats in the deploy's zone, which is UTC on Vercel and Denver
+              // locally, so an evening post printed a different day depending on
+              // where it rendered. Denver is the zone the posts are written in.
+              timeZone: "America/Denver",
               weekday: "long",
               year: "numeric",
               month: "long",
