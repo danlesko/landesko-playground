@@ -2,6 +2,7 @@
 import { useState } from "react";
 import { Trash } from "@phosphor-icons/react/dist/ssr";
 import type { Blog } from "@/lib/definitions";
+import { BLOG_DATE_TIME_FORMAT } from "@/lib/blogDate";
 import type { Session } from "next-auth";
 import { Modal, Button } from "@rewind-ui/core";
 import TextLink from "@/components/ui/TextLink";
@@ -83,14 +84,7 @@ const MyBlogBodyAbbr = ({
           )}
         </div>
         <p className="text-sm font-medium text-muted">
-          {new Date(blog.date).toLocaleDateString("en-US", {
-            weekday: "long",
-            year: "numeric",
-            month: "long",
-            day: "numeric",
-            hour: "2-digit",
-            minute: "2-digit",
-          })}
+          {blog.date.toLocaleDateString("en-US", BLOG_DATE_TIME_FORMAT)}
         </p>
       </div>
       <p className="line-clamp-1">{blog.content}</p>

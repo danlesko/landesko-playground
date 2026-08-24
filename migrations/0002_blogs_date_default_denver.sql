@@ -1,0 +1,33 @@
+-- ============================================================================
+-- NOT EXECUTED. Step 1 of 3. Read 0003 before running this.
+-- ============================================================================
+--
+-- Gives blogs.date a default so the application can stop supplying one. The
+-- column is still TIMESTAMP WITHOUT TIME ZONE at this point, so the default has
+-- to be naive too, and it has to be Denver wall-clock -- the convention every
+-- existing row already follows and the one 0003's USING clause assumes.
+--
+-- `now()` on its own would be wrong here: it is a timestamptz, and a naive
+-- column coerces it through the session TimeZone, which is GMT on this
+-- instance. Measured: `NOW()::timestamp` gives 17:47 where Denver's 11:47 was
+-- meant. `AT TIME ZONE 'America/Denver'` is what converts it to the local
+-- reading the column expects.
+--
+-- This statement is safe under both versions of the application:
+--
+--   old code  names `date` explicitly in its INSERT, so it never reaches a
+--             default. Unaffected.
+--   new code  omits `date`, so this is what supplies it. Correct.
+--
+-- Which is why it is a separate file, and why it is the FIRST step: it is the
+-- only one of the three that cannot break anything, so it can be run well
+-- ahead of the deploy rather than in a hurry beside it.
+--
+-- Reversal, if the deploy is abandoned:
+--
+--   ALTER TABLE blogs ALTER COLUMN date DROP DEFAULT;
+--
+-- Safe to run once the old code is no longer live; harmless before then.
+
+ALTER TABLE blogs
+  ALTER COLUMN date SET DEFAULT (now() AT TIME ZONE 'America/Denver');

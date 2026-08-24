@@ -1,4 +1,5 @@
 import { notFound } from "next/navigation";
+import { BLOG_DATE_FORMAT } from "@/lib/blogDate";
 import BackLink from "@/components/ui/BackLink";
 import PageHeading from "@/components/ui/PageHeading";
 import { getSession, loadBlog } from "./loaders";
@@ -52,12 +53,7 @@ export default async function Blog(props: { params: Promise<{ id: string }> }) {
       >
         <div className="flow-root">
           <p className="text-sm font-medium text-muted">
-            {new Date(blog.date).toLocaleDateString("en-US", {
-              weekday: "long",
-              year: "numeric",
-              month: "long",
-              day: "numeric",
-            })}
+            {blog.date.toLocaleDateString("en-US", BLOG_DATE_FORMAT)}
           </p>
         </div>
         <div className="clear-both" />

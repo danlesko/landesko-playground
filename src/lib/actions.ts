@@ -18,14 +18,17 @@ const NewBlogSchema = z.object({
   content: z
     .string({ invalid_type_error: "Content is required" })
     .min(1, "Content is required"),
-  date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
   privateBlog: z.union([
     z.string().transform((data) => data === "on"),
     z.literal(null).transform(() => false),
   ]),
 });
 
-const CreateBlog = NewBlogSchema.omit({ id: true, date: true });
+// `date` is not a field here. The database supplies it with `NOW()`, so there is
+// no submitted value to validate. It used to be declared above as a
+// `/^\d{4}-\d{2}-\d{2}$/` string and then omitted here, which validated nothing
+// and described a format the column never held.
+const CreateBlog = NewBlogSchema.omit({ id: true });
 
 const DeleteBlogSchema = z.object({ id: z.string().uuid() });
 
@@ -70,14 +73,18 @@ export async function createBlog(
   }
   const { title, content, privateBlog } = parsed.data;
 
-  // Developer lives in Denver, CO
-  const date = new Date().toLocaleString("en-US", {
-    timeZone: "America/Denver",
-    hourCycle: "h23",
-  });
+  // No `date` column. It has a database default, which is the only way to get a
+  // correct value without the caller knowing the column's type: `NOW()` written
+  // here would be right against `timestamptz` and silently wrong against the
+  // naive column it replaced, because a naive column coerces it through the
+  // session zone (GMT on this instance) rather than Denver.
+  //
+  // What this replaced formatted the current time as Denver wall-clock text
+  // (`"8/21/2026, 14:03:22"`) and inserted that string, so the row recorded a
+  // clock reading with no record of the zone it was read in.
   await sql`
-    INSERT INTO blogs (title, content, date, private)
-    VALUES (${title}, ${content}, ${date}, ${privateBlog})
+    INSERT INTO blogs (title, content, private)
+    VALUES (${title}, ${content}, ${privateBlog})
     `;
 
   revalidatePath("/blog");
