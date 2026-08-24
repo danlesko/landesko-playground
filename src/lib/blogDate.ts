@@ -45,9 +45,11 @@ const DAY = 24 * HOUR;
 const RELATIVE_LIMIT = 7 * DAY;
 
 // Two formatters because `numeric` has to differ by unit, and it only differs
-// at two values: 0 and 1. `auto` is what turns 0 seconds into "now" instead of
-// "in 0 seconds", and the minute and hour buckets below can never hold 0, so
-// they are unaffected by the choice.
+// at two values: 0 and 1. `auto` turns 0 seconds into "now" rather than "0
+// seconds ago" -- and note it is "0 seconds ago", not "in 0 seconds", because
+// the negation below produces negative zero and `Intl` reads the sign of a
+// zero. The minute and hour buckets can never hold 0 (each is entered only
+// once a whole unit has elapsed), so the choice is invisible there.
 const RELATIVE_SUB_DAY = new Intl.RelativeTimeFormat("en-US", {
   numeric: "auto",
 });

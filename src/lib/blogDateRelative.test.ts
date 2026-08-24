@@ -35,9 +35,12 @@ const HOUR = 60 * MINUTE;
 const DAY = 24 * HOUR;
 
 describe("formatBlogDateRelative", () => {
-  it("says 'now' at zero rather than 'in 0 seconds'", () => {
-    // The reason the sub-day formatter is `numeric: "auto"`. `always` renders 0
-    // as "in 0 seconds", i.e. the future, for a post that has just been written.
+  it("says 'now' at zero rather than '0 seconds ago'", () => {
+    // The reason the sub-day formatter is `numeric: "auto"`. Worth being exact
+    // about what the alternative is: `always` gives "0 seconds ago" here, not
+    // "in 0 seconds", because negating a floored 0 yields negative zero and
+    // `Intl` reads the sign of a zero. So this is a readability call, not a
+    // correctness one -- both renderings are true.
     expect(formatBlogDateRelative(ago(0), NOW)).toBe("now");
   });
 
@@ -135,7 +138,17 @@ describe("formatBlogDateRelative", () => {
     // that call site explains the hazard by naming `Date.now()` -- over the raw
     // text this counts two and fails while the code is correct, which is how it
     // was first written.
-    expect(stripComments(source).match(/Date\.now\(\)/g)).toHaveLength(1);
+    const code = stripComments(source);
+    expect(code.match(/Date\.now\(\)/g)).toHaveLength(1);
+
+    // And no clock read spelled some other way, which is the mutation the count
+    // above misses: `new Date().getTime()` during render satisfies every
+    // assertion so far and reintroduces the whole problem. A denylist cannot be
+    // exhaustive -- `performance.timeOrigin`, an imported helper, a `Date`
+    // subclass -- so this covers the two spellings someone would plausibly
+    // reach for rather than pretending to close the category.
+    expect(code).not.toMatch(/new Date\(\s*\)/);
+    expect(code).not.toContain("performance.now(");
     // And the initial value is null rather than a clock read, which is what
     // makes the server's markup and the first client render the same string.
     expect(source).toContain("useState<number | null>(null)");
