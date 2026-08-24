@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 
 import { signedInSession, sessionWithoutUser } from "@/test/auth-mock";
 import MyBlogBodyAbbr, { attemptDelete } from "@/components/MyBlogBodyAbbr";
+import { BLOG_DATE_TIME_FORMAT } from "@/lib/blogDate";
 import type { Blog } from "@/lib/definitions";
 
 const ID = "11111111-1111-4111-8111-111111111111";
@@ -103,6 +104,72 @@ describe("MyBlogBodyAbbr delete failure message", () => {
 
     expect(html).toContain('aria-live="polite"');
     expect(html).not.toContain('aria-live="assertive"');
+  });
+});
+
+/**
+ * The date, on the server pass only -- which turns out to be the half that
+ * matters. `renderToStaticMarkup` runs no effects, so `now` is still null here,
+ * exactly as it is in the real SSR pass and in the client's first render.
+ *
+ * That makes the load-bearing property directly observable: a post written
+ * seconds ago must still render its ABSOLUTE date in server markup. Read the
+ * clock during render instead and this markup says "5 seconds ago" -- which is
+ * a React #418 hydration mismatch waiting for a post to sit near a bucket
+ * edge, and there is no DOM in this suite to catch that any other way.
+ */
+describe("MyBlogBodyAbbr date", () => {
+  const timeElement = (html: string): string | undefined =>
+    /<time[^>]*>[\s\S]*?<\/time>/.exec(html)?.[0];
+
+  const absolute = (d: Date) =>
+    d.toLocaleDateString("en-US", BLOG_DATE_TIME_FORMAT);
+
+  it("renders the date in a <time> carrying the exact instant", () => {
+    // The machine-readable instant is what keeps an approximate visible string
+    // honest, so the element and the attribute are the point, not decoration.
+    const date = new Date("2026-01-01T05:30:00.000Z");
+    const element = timeElement(render(null, blog({ date })));
+
+    expect(element).toBeDefined();
+    // Matched case-insensitively because React serialises this as `dateTime`,
+    // with a capital T, in server markup. Not a defect and not ours to fix: HTML
+    // attribute names are case-insensitive, so the parsed DOM still answers to
+    // `getAttribute("datetime")` -- confirmed in a browser. A lowercase literal
+    // here fails over correct output, which is how this was first written.
+    expect(element).toMatch(
+      new RegExp(`datetime="${date.toISOString()}"`, "i"),
+    );
+  });
+
+  it("shows the absolute date on the server pass for an old post", () => {
+    const date = new Date("2026-01-01T05:30:00.000Z");
+
+    expect(timeElement(render(null, blog({ date })))).toContain(absolute(date));
+  });
+
+  // The regression guard. A seconds-old post is the input that tells a
+  // render-time clock apart from an effect-supplied one: seed `now` from the
+  // clock and this markup reads "5 seconds ago" instead of a date.
+  //
+  // Mutation-tested, and one result is worth writing down because it is not
+  // obvious. This catches both mutations that change where `now` comes from --
+  // collapsing to `useState(Date.now())`, and keeping the effect while seeding
+  // state from the clock. It does NOT catch a render-time clock read passed
+  // straight to the formatter, e.g. `formatBlogDateRelative(blog.date, new
+  // Date().getTime())`, because that lives inside the `now === null` guard and
+  // so never evaluates on a server pass. That one is caught only by the
+  // denylist in ../lib/blogDateRelative.test.ts, which is why both tests exist
+  // rather than this one superseding the structural one.
+  it("shows the absolute date on the server pass even for a post seconds old", () => {
+    const date = new Date(Date.now() - 5 * 1000);
+    const element = timeElement(render(null, blog({ date })));
+
+    expect(element).toContain(absolute(date));
+    // Both spellings the sub-day buckets can produce, since "now" is what a
+    // zero-second post renders and "seconds ago" is what any other does.
+    expect(element).not.toContain("seconds ago");
+    expect(element).not.toMatch(/>\s*now\s*</);
   });
 });
 
