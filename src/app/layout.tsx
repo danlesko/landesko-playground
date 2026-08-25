@@ -90,7 +90,13 @@ export default async function RootLayout({
                   width="40"
                   height="40"
                 />
-                <span className="pl-1 text-xl">Landesko's Playground</span>
+                {/* `text-white`, not the header's inherited `text-zinc-200`,
+                    which measured 2.52:1 where the title's right edge reaches
+                    the gradient's cyan end -- under the 3:1 its size requires
+                    (#105). */}
+                <span className="pl-1 text-xl text-white">
+                  Landesko's Playground
+                </span>
               </span>
               <form action={signedIn ? signOutOfSession : signInWithGithub}>
                 <Button
