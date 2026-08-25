@@ -36,9 +36,9 @@ const WCAG_TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
  * icon that contributes none, and axe skips hidden elements, so deleting that
  * label left a desktop-only version of this suite completely green.
  *
- * 400px is also the width the header title's 2.55:1 is measured at, so the
- * motivating number in this file's own comments was taken at a viewport the
- * first draft never visited.
+ * 400px is also the width the header title's contrast failure was measured at,
+ * so the motivating number in this file's own comments was taken at a viewport
+ * the first draft never visited.
  */
 const VIEWPORTS = [
   { name: "desktop", width: 1280, height: 720 },
@@ -252,9 +252,10 @@ for (const viewport of VIEWPORTS) {
       // misleading here. The site title sits on the header's gradient, and axe
       // cannot compute a contrast ratio against a gradient at all -- so the title
       // has never been a violation and never will be, however unreadable it gets.
-      // It measures 2.55:1 at the 400px viewport above, under the 3:1 that its
-      // size requires; that is tracked in issue #10 and is a colour decision,
-      // not a bug to fix here.
+      // It measured 2.52:1 at the 400px viewport above, under the 3:1 its size
+      // requires, for as long as this list was green -- that was #105, fixed by
+      // the `text-white` on the title. Nothing automated here would catch it
+      // coming back; a gradient contrast ratio has to be looked at.
       //
       // So this asserts the *known* unevaluable set rather than ignoring the
       // bucket. Anything newly unevaluable fails, which is the only way an
