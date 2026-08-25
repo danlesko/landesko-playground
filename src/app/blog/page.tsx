@@ -15,7 +15,7 @@ export const metadata: Metadata = {
 // so the list keeps streaming and the detail route keeps its status.
 export default function Blog() {
   return (
-    <div className="inline-block" style={{ width: "100%" }}>
+    <div>
       <Suspense fallback={<BlogListSkeleton />}>
         <BlogList />
       </Suspense>

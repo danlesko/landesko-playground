@@ -44,7 +44,7 @@ export default async function Blog(props: { params: Promise<{ id: string }> }) {
   }
 
   return (
-    <div className="inline-block" style={{ width: "100%" }}>
+    <div>
       <PageHeading>{blog.title}</PageHeading>
       <BackLink />
       <div

@@ -13,7 +13,7 @@ export default function Error({
   const { retrying, retry } = useErrorRetry(reset);
 
   return (
-    <div className="inline-block" style={{ width: "100%" }}>
+    <div>
       <PageHeading>
         <span className="text-danger">Error Fetching Blog</span>
       </PageHeading>
