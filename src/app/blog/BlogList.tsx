@@ -5,6 +5,7 @@ import BlogBodyAbbr from "@/components/BlogBodyAbbr";
 import { deleteBlogPost } from "@/lib/actions";
 import { fetchRecentBlogs } from "@/lib/data";
 import { cardClasses } from "@/components/ui/card";
+import { contentColumnClasses } from "@/components/ui/layout";
 
 // Ten to match the LIMIT in fetchRecentBlogs.
 export const BlogListSkeleton = () => (
@@ -29,7 +30,9 @@ export default async function BlogList() {
 
   return (
     <>
-      <div className="flex justify-between items-center lg:max-w-[50%]">
+      <div
+        className={`flex justify-between items-center ${contentColumnClasses}`}
+      >
         <PageHeading>Blog Posts</PageHeading>
         {session?.user && (
           <TextLink href="/blog/create" className="font-bold">
