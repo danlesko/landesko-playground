@@ -10,8 +10,24 @@ import {
 import { Email } from "@/lib/definitions";
 import ReCAPTCHA from "react-google-recaptcha";
 import { sendContactEmail } from "@/lib/contact-actions";
-import { formControlClasses, formLabelClasses } from "@/components/ui/form";
+import {
+  formControlClasses,
+  formErrorClasses,
+  formLabelClasses,
+} from "@/components/ui/form";
 import { primaryButtonClasses } from "@/components/ui/button";
+
+// Read once, at module scope, because `NEXT_PUBLIC_*` is substituted by the
+// compiler rather than looked up at runtime: this is a build-time constant in
+// the client bundle, so setting the variable requires a rebuild to take effect.
+//
+// The empty-string fallback this replaced was the whole defect. Google's api.js
+// rejects an empty sitekey by throwing during hydration, and the throw escapes
+// the component, so React unmounted the tree and Next replaced the entire
+// /contact route with its client-side exception screen. The form
+// server-rendered correctly and then destroyed itself, which is why curl and
+// any SSR-only check saw a healthy page.
+const recaptchaSiteKey = process.env.NEXT_PUBLIC_REACT_APP_SITE_KEY_RECAPTCHA;
 
 const ContactForm = () => {
   const toast = useToast();
@@ -39,6 +55,12 @@ const ContactForm = () => {
 
   const handleSubmit: FormEventHandler<HTMLFormElement> = async (e) => {
     e.preventDefault();
+
+    // The submit control is already disabled in this state, which also
+    // suppresses implicit submission via Enter. Checked here anyway so the
+    // "never send unverified" invariant is local to this function instead of
+    // resting on that second-order browser behaviour.
+    if (!recaptchaSiteKey) return;
 
     const captchaValue = recaptcha.current?.getValue();
     if (!captchaValue) {
@@ -148,17 +170,33 @@ const ContactForm = () => {
           value={userInput.message}
           onChange={handleChange}
         />
-        <ReCAPTCHA
-          theme="dark"
-          ref={recaptcha}
-          sitekey={process.env.NEXT_PUBLIC_REACT_APP_SITE_KEY_RECAPTCHA || ""}
-        />
+        {recaptchaSiteKey ? (
+          <ReCAPTCHA theme="dark" ref={recaptcha} sitekey={recaptchaSiteKey} />
+        ) : (
+          // Naming the variable is the point: the reader of this notice is a
+          // contributor or a preview deployment that is missing it, and the
+          // alternative was a bare exception screen. It is a public key's
+          // *name*, never a value.
+          //
+          // No `aria-live` here, unlike the message elements in
+          // CreateBlogForm. Those announce a change; this is decided before
+          // first paint and never changes, so a live region would have nothing
+          // to announce and would only add a region that is always populated.
+          <p id={`${fieldId}-recaptcha-missing`} className={formErrorClasses}>
+            This form is unavailable because
+            NEXT_PUBLIC_REACT_APP_SITE_KEY_RECAPTCHA is not set, so the
+            reCAPTCHA challenge cannot load. Email the address above instead.
+          </p>
+        )}
         <Button
           variant="primary"
           type="submit"
           className={`mt-1 font-bold ${primaryButtonClasses}`}
-          disabled={isSendingEmail}
+          disabled={isSendingEmail || !recaptchaSiteKey}
           loading={isSendingEmail}
+          aria-describedby={
+            recaptchaSiteKey ? undefined : `${fieldId}-recaptcha-missing`
+          }
         >
           Send Message
         </Button>
