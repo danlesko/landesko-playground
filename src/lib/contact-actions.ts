@@ -39,18 +39,46 @@ export async function sendContactEmail(
     return { ok: false, error: "reCAPTCHA validation failed." };
   }
 
-  const serviceId = process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID;
-  const templateId = process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID;
-  const publicKey = process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY;
+  // Unprefixed first, falling back to the `NEXT_PUBLIC_` names. Only the server
+  // reads these three, so the prefix was never doing anything except marking them
+  // as publishable - #14 calls it "an active trap", because the moment a client
+  // component reads one they ship to every visitor. There is a guard for that in
+  // src/test/server-env-visibility.test.ts, but not needing the prefix at all is
+  // better than guarding it.
+  //
+  // The fallback is what makes this shippable on its own. The rename otherwise
+  // has to be a coordinated two-step - add the new names in Vercel for
+  // Production, Preview AND Development, only then deploy the code, or the form
+  // breaks in between - and that ordering is the reason #14 sat still. Reading
+  // both means the deploy can land now and the dashboard change can happen
+  // whenever, in either order, with no window where the form is down.
+  //
+  // It is a deliberate temporary shim with a defined end: once the unprefixed
+  // names exist everywhere and the `NEXT_PUBLIC_` ones are deleted, the `??`
+  // arms come out. The guard test's list is what will fail and say so.
+  const serviceId =
+    process.env.EMAILJS_SERVICE_ID ??
+    process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID;
+  const templateId =
+    process.env.EMAILJS_TEMPLATE_ID ??
+    process.env.NEXT_PUBLIC_EMAILJS_TEMPLATE_ID;
+  const publicKey =
+    process.env.EMAILJS_PUBLIC_KEY ??
+    process.env.NEXT_PUBLIC_EMAILJS_PUBLIC_KEY;
   const privateKey = process.env.EMAILJS_PRIVATE_KEY;
 
   if (!serviceId || !templateId || !publicKey || !privateKey) {
-    // Log the names of the absent variables, never their values.
+    // The names of the absent variables, never their values. Each entry names
+    // both spellings, because reporting only the unprefixed one would send a
+    // reader looking for a variable that may not be the one they configured.
     const missing = (
       [
-        ["NEXT_PUBLIC_EMAILJS_SERVICE_ID", serviceId],
-        ["NEXT_PUBLIC_EMAILJS_TEMPLATE_ID", templateId],
-        ["NEXT_PUBLIC_EMAILJS_PUBLIC_KEY", publicKey],
+        ["EMAILJS_SERVICE_ID (or NEXT_PUBLIC_EMAILJS_SERVICE_ID)", serviceId],
+        [
+          "EMAILJS_TEMPLATE_ID (or NEXT_PUBLIC_EMAILJS_TEMPLATE_ID)",
+          templateId,
+        ],
+        ["EMAILJS_PUBLIC_KEY (or NEXT_PUBLIC_EMAILJS_PUBLIC_KEY)", publicKey],
         ["EMAILJS_PRIVATE_KEY", privateKey],
       ] as const
     )
