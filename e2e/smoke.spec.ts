@@ -241,10 +241,38 @@ test("/credits attributes all four outbound resources", async ({ page }) => {
 test("the home page LCP image loads eagerly at a declared size", async ({
   page,
 }) => {
+  // Recorded so a failed optimiser response is reported as itself. Without this
+  // the only symptom is `naturalWidth` being 0, which says the image did not
+  // decode but not why -- see the note below on #78.
+  const optimiserStatus = new Map<string, number>();
+  page.on("response", (response) => {
+    if (response.url().includes("/_next/image")) {
+      optimiserStatus.set(response.url(), response.status());
+    }
+  });
+
   await page.goto("/");
   const image = page.getByRole("img", { name: "Lan Playing Pool" });
 
   await expect(image).toBeVisible();
+
+  // Before the decode checks, so a failed request is reported as a failed
+  // request. Ordering is the whole point of these two lines: with them after
+  // `naturalWidth`, a 500 from the optimiser still presents as
+  // "0 is not greater than 0" and these never run.
+  //
+  // The length guard is what stops this going vacuous -- a listener that matched
+  // nothing would otherwise satisfy any claim about its contents. Verified by
+  // fulfilling the optimiser with a 500: the failure names the URL and the status.
+  const optimiserResponses = [...optimiserStatus.entries()];
+  expect(
+    optimiserResponses.length,
+    "no /_next/image responses were observed at all",
+  ).toBeGreaterThan(0);
+  expect(
+    optimiserResponses.filter(([, status]) => status !== 200),
+    "the image optimiser did not answer 200",
+  ).toEqual([]);
 
   // Every other assertion in this test passes against a `src` that 404s: the
   // element stays visible, Next still generates srcset/preload/sizes from the
@@ -257,6 +285,24 @@ test("the home page LCP image loads eagerly at a declared size", async ({
   expect(
     await image.evaluate((el) => (el as HTMLImageElement).naturalWidth),
   ).toBeGreaterThan(0);
+
+  // #78 filed this test as flaky under full-suite load and guessed the race was
+  // on `complete`, it being the only assertion with an unbounded external
+  // dependency. That mechanism is refuted: `page.goto` defaults to
+  // `waitUntil: "load"`, and playwright.config.ts sets no navigation timeout, so
+  // goto does not return until this image's fetch has settled. Measured
+  // immediately after goto with no polling, `complete` is already true and
+  // `naturalWidth` is already 499 -- in isolation and inside the full suite
+  // alike, goto itself taking 75-121ms against a 5s assertion budget. Injecting
+  // an 8s delay on the optimiser made goto take 8s and the test still PASSED; it
+  // did not time out. So a slow image cannot fail the two assertions above --
+  // it makes *goto* slow, and the failure would be reported there, bounded by
+  // the 30s test timeout.
+  //
+  // What remains plausible is a request that fails rather than one that is slow,
+  // which the status assertions above now name. Deliberately not a raised timeout
+  // and not a retry: the issue argues against the first, and `retries: 0` is a
+  // policy of this suite.
 
   // `priority` is the whole point of this image: it is the LCP element. Next 15
   // does *not* implement that as fetchpriority on the <img> -- it emits a
