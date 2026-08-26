@@ -313,26 +313,30 @@ test("the p5 sketch mounts a canvas", async ({ page }) => {
 /**
  * `/contact` needs special handling, and the reason is worth writing down.
  *
- * ContactForm renders `react-google-recaptcha` with
- * `sitekey={process.env.NEXT_PUBLIC_REACT_APP_SITE_KEY_RECAPTCHA || ""}`. With
- * no key set, Google's api.js throws `Missing required parameters: sitekey`
- * during hydration and React unmounts the whole route: the body collapses to
- * "Application error: a client-side exception has occurred" and the input count
- * drops from 3 to 0. Production sets the key, so only environments without one
- * are affected -- but CI is such an environment and has to stay one, because no
- * real key belongs in this repo.
+ * CI has no reCAPTCHA site key and has to stay that way, because no real key
+ * belongs in this repo. That used to make the route unusable here: ContactForm
+ * passed `sitekey={... || ""}`, Google's api.js threw `Missing required
+ * parameters: sitekey` during hydration, and React unmounted the whole route --
+ * measured, the field count dropped from 3 to 0. This suite passed anyway, by
+ * aborting every google.com request so api.js never loaded and never threw. The
+ * workaround was sound for the assertion it guarded, but it meant nothing here
+ * observed the defect, and the same interception let the whole `<ReCAPTCHA>`
+ * element be deleted with the suite still green.
  *
- * Rejected: passing a fake key. The throw happens *because* api.js loaded, so a
- * fake key makes the suite depend on google.com being reachable, and an online
- * runner and an offline runner would then disagree about whether this page
- * works. Also rejected: asserting with JS enabled and no interception, which is
- * a race rather than a test -- the heading is briefly present before the crash,
- * which is why an earlier draft of this file appeared to pass while clicking
- * through a page that was in the middle of dying.
+ * #51 fixed the cause: with no key the widget is not constructed at all, and an
+ * inline notice replaces it with submit disabled. So the interception is gone
+ * from the test below, and its absence is now itself an assertion -- **zero**
+ * requests to Google is what proves no widget was built. That is only checkable
+ * because nothing is being blocked.
  *
- * Taken instead: block the third party explicitly, which is deterministic in
- * both directions, and cover the route twice -- once for what the server sends
- * and once for whether it actually comes alive in the browser.
+ * Still rejected: passing a fake key. The old throw happened *because* api.js
+ * loaded, so a fake key would make an online runner and an offline runner
+ * disagree about whether this page works. The key-present path is covered by
+ * the skipped end-to-end test at the bottom of this file and by
+ * ContactForm.test.ts, which stubs the widget to read the props it is handed.
+ *
+ * The route is still covered twice: once for what the server sends, and once
+ * for whether it comes alive in the browser and stays alive.
  */
 test.describe("/contact", () => {
   // `javaScriptEnabled` is a browser-context option, so it needs its own block
@@ -343,8 +347,8 @@ test.describe("/contact", () => {
     test("sends the heading and the three fields the server action reads", async ({
       page,
     }) => {
-      // Purely about the server's output, so it stays meaningful even when the
-      // client bundle is broken -- which, without a site key, it is.
+      // Purely about the server's output, so it stays meaningful independently
+      // of whatever the client bundle does with it.
       await page.goto("/contact");
 
       await expect(
@@ -358,46 +362,65 @@ test.describe("/contact", () => {
     });
   });
 
-  test("hydrates: the form's own reCAPTCHA guard runs on submit", async ({
-    page,
-  }) => {
-    // Blocking Google is what makes this deterministic. api.js never loads, so
-    // it never throws on the empty sitekey, the route hydrates intact, and
-    // `recaptcha.current?.getValue()` returns undefined -- which is the branch
-    // ContactForm handles with an alert.
-    await page.route("**://*.google.com/**", (route) => route.abort());
-    await page.route("**://*.gstatic.com/**", (route) => route.abort());
+  test("hydrates and stays alive with no reCAPTCHA key", async ({ page }) => {
+    // Nothing is intercepted. Every request to Google is recorded instead, and
+    // the assertion is that there were none.
+    const googleRequests: string[] = [];
+    page.on("request", (request) => {
+      if (/(google\.com|gstatic\.com)/.test(request.url())) {
+        googleRequests.push(request.url());
+      }
+    });
 
     await page.goto("/contact");
 
-    // Filling these proves the controlled inputs are wired: `value` is bound to
-    // React state, so without a working `onChange` the fields stay empty and
-    // the browser's own `required` validation blocks submit before the handler
-    // is ever reached.
-    await page.locator('input[name="name"]').fill("Smoke Test");
-    await page.locator('input[name="email"]').fill("smoke@example.com");
-    await page
-      .locator('textarea[name="message"]')
-      .fill("Hello from Playwright");
-    await expect(page.locator('input[name="name"]')).toHaveValue("Smoke Test");
+    // Proves hydration ran, which none of the assertions below can: the notice,
+    // the disabled attribute and the fields are all in the server's HTML, so
+    // they are identical whether or not the client bundle ever executed. React
+    // stamps `__react*` keys onto the DOM nodes it adopts, so their presence is
+    // the direct signal, independent of the captcha. This is what the old alert
+    // assertion was really buying, and it has to be replaced rather than
+    // dropped -- submit is now disabled, so `handleSubmit` cannot be reached.
+    await expect
+      .poll(() =>
+        page
+          .locator('textarea[name="message"]')
+          .evaluate((el) =>
+            Object.keys(el).some((key) => key.startsWith("__react")),
+          ),
+      )
+      .toBe(true);
 
-    // Dismissed from inside the listener rather than after an awaited click.
-    // Registering any dialog listener disables Playwright's auto-dismiss, and a
-    // native alert blocks the page, so `await click()` would never resolve and
-    // the test would fail on a 30s timeout instead of on its assertion.
-    let alerted = "";
-    page.once("dialog", async (dialog) => {
-      alerted = dialog.message();
-      await dialog.dismiss();
-    });
+    // These two are the deterministic guard, and they are first on purpose:
+    // both are in the server's HTML, so they hold from the first paint and
+    // cannot race the unmount. Verified against a build of the old code -- this
+    // is the pair that fails there.
+    await expect(
+      page.getByText("NEXT_PUBLIC_REACT_APP_SITE_KEY_RECAPTCHA"),
+    ).toBeVisible();
+    await expect(
+      page.getByRole("button", { name: "Send Message" }),
+    ).toBeDisabled();
 
-    await page.getByRole("button", { name: "Send Message" }).click();
+    // The widget was never constructed, so its script was never fetched. Read
+    // after the network settles, or the list is empty merely because nothing has
+    // had a chance to load yet. With no interception in this test, an empty list
+    // is a measurement rather than a consequence of a route handler.
+    await page.waitForLoadState("networkidle");
+    expect(googleRequests).toEqual([]);
 
-    // Reaching this alert is the assertion. It can only fire from inside
-    // `handleSubmit`, so it proves the route hydrated, React bound onSubmit, and
-    // the client-side captcha guard still refuses to submit unverified -- none
-    // of which the server-rendered HTML above can tell us.
-    await expect.poll(() => alerted).toBe("Please verify the reCAPTCHA!");
+    // The symptom #51 described: these dropped to 0 as React unmounted the
+    // route. Deliberately last, and deliberately not the load-bearing
+    // assertion -- against the old build they pass, because the crash follows
+    // api.js and the fields are briefly still there. That race is what the
+    // original version of this file's comment warned about. They are kept
+    // because they name the user-visible outcome, not because they catch it.
+    await expect(page.locator('input[name="name"]')).toBeVisible();
+    await expect(page.locator('input[name="email"]')).toBeVisible();
+    await expect(page.locator('textarea[name="message"]')).toBeVisible();
+    await expect(
+      page.getByRole("heading", { name: "Contact", level: 1 }),
+    ).toBeVisible();
   });
 });
 
@@ -462,9 +485,12 @@ test("the sidebar client-side navigates between routes", async ({ page }) => {
     ).toBe(true);
   }
 
-  // Present and correctly pointed, but not clicked: the destination tears itself
-  // down without a reCAPTCHA key (see the /contact block above), so asserting on
-  // the page it lands on would be timing-dependent.
+  // Present and correctly pointed, but not clicked. The original reason -- the
+  // destination tore itself down without a reCAPTCHA key -- no longer holds
+  // since #51, so following this link is now a reasonable thing to add. Left out
+  // of this change because /contact's absence from the shared route list above
+  // is load-bearing for several other tests in this file, and rewiring that is
+  // not a captcha fix.
   await expect(
     sidebar.getByRole("link").and(page.locator('a[href="/contact"]')),
   ).toHaveAccessibleName(/\S/);
