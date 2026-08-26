@@ -1285,6 +1285,74 @@ test("the p5 canvas fits its container at the narrowest width covered here", asy
 });
 
 /**
+ * #80: on a short landscape viewport the tank collapsed to a sliver and drew its
+ * fish below the bottom edge. Measured on the pre-fix build at this exact
+ * viewport: a 302x75 canvas, a delivered ratio of 4.027 against a 1.605 design
+ * space, and **none** of the eight countable fish rendering a single pixel.
+ *
+ * The ratio is the assertion that would have caught it, and it is the one worth
+ * keeping: every fish Y is a base-space coordinate divided by a *width* ratio, so
+ * a canvas that is too short for its width puts the lower fish outside it. Fish
+ * presence is asserted too, since the ratio alone would not notice them being
+ * moved.
+ *
+ * `reduce` is emulated so the fish are placed by the resting layout and held,
+ * which makes this deterministic rather than a race against the swim-in.
+ */
+test("the tank keeps its proportions and its fish on a short landscape viewport", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  await page.setViewportSize({ width: 667, height: 375 });
+  await page.goto("/animation");
+  await expect(page.locator("canvas")).toBeVisible({ timeout: 15_000 });
+  await canvasOf(page);
+
+  const FISH_BODY_COLOURS = [
+    [128, 0, 128],
+    [0, 255, 255],
+    [255, 0, 0],
+    [0, 128, 128],
+    [255, 102, 102],
+    [255, 128, 128],
+    [0, 153, 153],
+    [255, 153, 51],
+  ];
+
+  const measured = await page.evaluate((colours) => {
+    const canvas = document.querySelector("canvas");
+    const context = canvas?.getContext("2d");
+    if (!canvas || !context) return null;
+
+    const { data } = context.getImageData(0, 0, canvas.width, canvas.height);
+    return {
+      ratio: canvas.width / canvas.height,
+      bodyPixels: colours.map(([r, g, b]) => {
+        let n = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          if (data[i] === r && data[i + 1] === g && data[i + 2] === b) n++;
+        }
+        return n;
+      }),
+    };
+  }, FISH_BODY_COLOURS);
+
+  // 1180/735. Tolerance covers the integer rounding p5 applies to the two
+  // dimensions; the defect this guards was off by 2.5x, not by a rounding error.
+  expect(measured!.ratio).toBeCloseTo(1180 / 735, 1);
+
+  // Deliberately not the 50-pixel threshold the still-frame test uses. Fish scale
+  // with the canvas, and at 302px wide the smallest body is ~11 pixels, so 50
+  // would fail against a correct render. The claim here is "drawn at all", and
+  // the fills are exact so antialiasing does not contribute matches.
+  for (const [index, pixels] of measured!.bodyPixels.entries()) {
+    expect(pixels, `fish ${index} is not on the canvas`).toBeGreaterThanOrEqual(
+      3,
+    );
+  }
+});
+
+/**
  * The global CSS rule that neutralises animation and transition durations cannot
  * reach a <canvas>: the fish move because a JS draw loop mutates coordinates, not
  * because a keyframe animation is running. So the only way to know the canvas
