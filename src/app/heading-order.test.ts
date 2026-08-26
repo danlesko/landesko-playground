@@ -86,9 +86,9 @@ describe.each([
   // The only route besides /blog carrying more than a lone h1, so the only
   // other one where a level can be skipped. It needs none of the mocking
   // above — no data, session or env — and the `beforeEach` resets are inert for
-  // it. `ProcessingDrawing` is a client component whose p5 wrapper is a
-  // `dynamic(..., { ssr: false })` import, so it contributes no markup and no
-  // headings here; the two this asserts are the page's own.
+  // it. `ProcessingDrawing` does render its own wrapping `<div>`, but its p5
+  // wrapper is a `dynamic(..., { ssr: false })` import, so it contributes no
+  // *heading* markup here; the two this asserts are the page's own.
   {
     route: "/animation",
     render: async () => Animation(),
@@ -114,7 +114,12 @@ describe.each([
     expect(firstSkip(levels)).toBeUndefined();
   });
 
-  it("still has no skip for a signed-in viewer, who gets extra controls", async () => {
+  // The name no longer promises extra controls, because it stopped being true
+  // for every fixture when /animation joined: the blog routes gain owner-only
+  // controls when signed in, /animation renders identically either way. Kept
+  // for /animation rather than skipped, so the day it does grow a
+  // session-dependent heading it is already covered.
+  it("still has no skip for a signed-in viewer", async () => {
     auth.mockResolvedValue(signedInSession());
     const levels = headingLevels(
       renderToStaticMarkup((await render()) as ReactElement),
