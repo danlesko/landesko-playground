@@ -5,7 +5,7 @@ import TextLink, { textLinkClasses } from "@/components/ui/TextLink";
 export default async function Home() {
   return (
     // Two columns from `lg` up, and deliberately with no `gap`. A grid gap is
-    // taken out of the tracks, so `gap-8` would make each column
+    // taken out of the tracks, so a gap utility would make each column
     // `calc((100vw - 282px - 2rem) / 2)` -- 16px narrower than the `sizes` below
     // declares. The gutter is `lg:pr-8` on the text column instead, which leaves
     // the image track at exactly half the content box and the contract intact.

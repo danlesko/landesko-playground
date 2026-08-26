@@ -20,15 +20,14 @@
 // is overridable and the other silently is not invites exactly the mistake this
 // comment would have to warn about.
 //
-// The width pair is the interesting part to have in one place. The used width is
-// `max(600px, half of the enclosing column)` -- `lg:min-w-[600px]` floors what
-// `lg:w-1/2` asks for -- so the panel stops being 600px wide only once that
-// column passes 1200px. That is the contradiction #6 item 4 is still open about.
-// Nothing about it changes here.
+// Width is no longer decided here. It comes from `contentColumnClasses`, which
+// the two forms, the create skeleton and the blog list's heading row share, so
+// the column has one measure rather than four opinions. The min-width floor and
+// half-width pair this used to carry, and the contradiction between them, are
+// gone -- see ./layout.ts for what replaced them and why.
 //
-// It is now one line for these eight, which is not the whole of item 4: the two
-// create/contact forms and the create skeleton carry the same width pair without
-// being cards, so a full answer still touches four places. Those three are
-// item 3's `PageShell` question, not this one.
-export const cardClasses =
-  "mt-4 p-4 rounded-lg border border-border lg:min-w-[600px] lg:w-1/2";
+// Neither old class is named literally anywhere here on purpose: Tailwind reads
+// comment prose as class candidates, so quoting one keeps emitting its rule.
+import { contentColumnClasses } from "@/components/ui/layout";
+
+export const cardClasses = `mt-4 p-4 rounded-lg border border-border ${contentColumnClasses}`;

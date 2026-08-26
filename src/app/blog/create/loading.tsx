@@ -1,9 +1,10 @@
 import BackLink from "@/components/ui/BackLink";
 import PageHeading from "@/components/ui/PageHeading";
+import { contentColumnClasses } from "@/components/ui/layout";
 
 const loadingSkeleton = () => {
   return (
-    <div className="animate-pulse mt-2 lg:min-w-[600px] lg:w-1/2">
+    <div className={`animate-pulse mt-2 ${contentColumnClasses}`}>
       <div className="h-10 bg-muted rounded mb-2"></div>
       <div className="h-[500px] bg-muted rounded mb-2"></div>
       <div className="h-10 bg-muted rounded"></div>
