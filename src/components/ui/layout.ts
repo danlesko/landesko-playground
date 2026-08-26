@@ -8,6 +8,11 @@
 // 32px of padding -- and only then began to track the viewport, with nothing
 // capping it after that. Measured against the old rule:
 //
+// Widths below are for the ordinary routes, which sit beside the 250px sidebar.
+// `global-error.tsx` renders its own document with no sidebar, so its parent is
+// the full body width and these numbers do not describe it -- the cap still
+// applies, it just starts from a wider parent.
+//
 //   viewport   parent   old      new
 //   1024        742     600      672
 //   1280        998     600      672
@@ -21,14 +26,24 @@
 // 371px column at 1024px, narrower than a phone. A cap is the only option that
 // is right at both ends.
 //
-// 2xl rather than 3xl on purpose: it is the closest constant to the 600-627px the
-// column actually had on the common desktop sizes, so this removes the
-// contradiction without also reshaping the page. 3xl (768px) is the defensible
-// alternative if the column now reads as too narrow on a large screen.
+// 672px is not the *closest* constant to the old 600-627px -- `xl` at 576px is
+// nearer. It is chosen so the column is never NARROWER than it was on the sizes
+// where it was stable: 600 to 672 at 1024-1440, 627 to 672 at 1536, and only
+// above that does the cap bite, which is the runaway it exists to stop. `xl`
+// would have shrunk every desktop. 3xl (768px) is the alternative if this now
+// reads too narrow.
 //
 // Not applied to the p5 canvas on /animation. That measures the box it sits in,
 // and its wide branch can already ask for more width than that box has -- 855px
-// at 1280x720 -- so capping the parent at 672px would put the canvas outside its
-// wrapper and trip the overflow guard. The canvas needs its own decision, not
-// this one.
-export const contentColumnClasses = "max-w-2xl";
+// at 1280x720 -- so capping the parent would put the canvas outside its wrapper.
+// Note the existing overflow guards would NOT catch that: they run at 320px and
+// at 1280x1024, and neither lands where a 672px cap and an 855px request meet.
+// So the canvas needs its own decision, and it would not fail loudly first.
+//
+// `lg:`-prefixed, matching every rule it replaces. Those were all `lg:`-only, so
+// below 1024px the column was unconstrained and filled its parent. An unprefixed
+// cap would have quietly narrowed the 705-1023px band -- 736px to 672px on a
+// 768px tablet -- which is a change nobody asked for and which the measurements
+// above do not cover. Keeping the prefix makes the claim exact: nothing below
+// `lg` moves.
+export const contentColumnClasses = "lg:max-w-2xl";
