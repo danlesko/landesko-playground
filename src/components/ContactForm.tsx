@@ -56,12 +56,12 @@ const ContactForm = () => {
   const handleSubmit: FormEventHandler<HTMLFormElement> = async (e) => {
     e.preventDefault();
 
-    // The submit control is already disabled in this state, which also
-    // suppresses implicit submission via Enter. Checked here anyway so the
-    // "never send unverified" invariant is local to this function instead of
-    // resting on that second-order browser behaviour.
-    if (!recaptchaSiteKey) return;
-
+    // No missing-key branch here on purpose. The submit control is disabled in
+    // that state, which also suppresses implicit submission via Enter, and if
+    // it were ever reached the line below already fails safe: with no widget
+    // mounted `getValue()` is undefined, so this returns without sending. The
+    // token is verified server-side in `sendContactEmail` regardless, which is
+    // where the actual boundary is.
     const captchaValue = recaptcha.current?.getValue();
     if (!captchaValue) {
       alert("Please verify the reCAPTCHA!");
@@ -90,8 +90,10 @@ const ContactForm = () => {
         // rewind-ui renders `description` as a <p> but `title` as an <h4>, and
         // this page's only heading is its <h1>, so adding a title puts an h4
         // directly under it and skips two levels. Nothing would catch that: the
-        // heading-order suite renders only the two blog pages, and the /contact
-        // e2e asserts the <h1> exists rather than checking heading order.
+        // heading-order suite does not render this page, and the /contact e2e
+        // asserts the <h1> exists rather than checking heading order. Phrased as
+        // "not this page" rather than by listing the routes it does cover, so it
+        // stays true as that list grows.
         toast.add({
           color: "green",
           tone: "solid",
