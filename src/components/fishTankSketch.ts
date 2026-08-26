@@ -133,8 +133,12 @@ export function createFishTankSketch(
     // which crashes the tab. Zero is measurably no safer: `scaleFactor` below
     // divides by the width, so a zero floor hands `Infinity` to every draw call
     // and the tab still dies at 800x186. Floored on both branches for symmetry.
-    // Nothing moves at 320px wide and 375px tall or above: 375px tall hits
-    // minCanvasHeight exactly.
+    // The two floors now bite at essentially the same point, which they did not
+    // before. Height is derived from the floored width, so `minCanvasHeight`
+    // can only apply once the width is already at `minCanvasWidth`:
+    // `120 / aspectRatio` is 74.75, just under the 75 floor. A 375px-tall window
+    // used to land exactly on `minCanvasHeight`; it now yields 302x188 and
+    // neither floor is involved.
     //
     // minCanvasWidth must stay below the narrowest width
     // `measureAvailableWidth` can report, because the Math.max below can now
@@ -152,33 +156,64 @@ export function createFishTankSketch(
     // is 998 and so is the canvas.
     //
     // These stop the crash; they do not make the result look right, and it would
-    // be wrong to read them as a "smallest usable tank". Fish Y centres and sizes
-    // scale from the width alone, so wherever only the height floor bites — window
-    // heights from roughly 262 to 375 — the canvas gets wider while staying 75px
-    // tall and the lower fish sit below it. Seaweed blades stay 120-200px on a
-    // 75px canvas for the same reason. That band used to be a crash (height goes
-    // non-positive under 300), so this is strictly better, but it is degraded
-    // rather than good.
+    // be wrong to read them as a "smallest usable tank". Seaweed blades are still
+    // 120-200px on a 75px canvas, because their heights come from `scaleFactor`
+    // and not from the canvas height.
+    //
+    // The band this comment used to describe — window heights from roughly 262 to
+    // 375, where only the height floor bit, the canvas grew wider while staying
+    // 75px tall, and the lower fish sat below it — no longer exists. Deriving
+    // height from width removed it: the canvas cannot be disproportionately short
+    // any more, at any viewport, so the fish stay inside it right down to the
+    // floor. What is left at 120x75 is a tank too small to read, not one that
+    // clips its contents.
     const minCanvasWidth = 120;
     const minCanvasHeight = 75;
 
+    // Width first, then height derived from it, so both branches deliver the
+    // design ratio by construction rather than by coincidence. Each used to
+    // compute the two dimensions independently and neither was aspect-preserving:
+    //
+    //   wide  - subtracted 300 from *both* sides. Two equal subtractions from the
+    //           two sides of a ratio are not proportional, so the delivered ratio
+    //           was `aspectRatio + 181.6/(windowHeight - 300)`: 2.04:1 at
+    //           1280x720 against a 1.605:1 design space, diverging hyperbolically
+    //           as the height approached 300.
+    //   tall  - derived height from the *full* viewport width while taking width
+    //           from the reduced one, so the delivered ratio was
+    //           `aspectRatio * canvasWidth/windowWidth`. It erred the other way,
+    //           leaving unused water rather than clipping.
+    //
+    // The squeeze is what #80 was filed about, and it was present at *every* wide
+    // viewport including the desktop design one -- short landscape is only where
+    // it became visible enough to notice.
+    //
+    // Nothing about the fish changes to fix it, which is worth stating because
+    // #80 proposed it as a second piece of work. Every fish Y is a base-space
+    // coordinate divided by `scaleFactor`, and `scaleFactor` is a *width* ratio;
+    // base space is itself `aspectRatio`-shaped, so once the delivered ratio is
+    // right, `(yPos + yOffset) / scaleFactor` is already a fixed share of canvas
+    // height -- between 12% and 71% for the eight of them, from
+    // `(200 - 110)/735` to `(200 + 320)/735`. A too-short canvas was the entire
+    // reason the lower fish were drawn underneath it.
     const updateCanvasDimensions = () => {
-      if (p5.windowWidth / p5.windowHeight > aspectRatio) {
-        return {
-          canvasWidth: Math.max(
-            minCanvasWidth,
-            p5.windowHeight * aspectRatio - 300,
-          ),
-          canvasHeight: Math.max(minCanvasHeight, p5.windowHeight - 300),
-        };
-      }
+      const requestedWidth =
+        p5.windowWidth / p5.windowHeight > aspectRatio
+          ? // Wide: viewport height binds, and 300px is reserved for the heading
+            // and copy above the canvas. Keeping that reserve on the *width*
+            // expression is what makes the canvas 113px taller than it used to
+            // be at any wide viewport (`300 - 300/aspectRatio`, independent of
+            // viewport height). /animation already scrolls at 1280x720, so the
+            // reserve was not keeping anything in view.
+            p5.windowHeight * aspectRatio - 300
+          : // Tall: the container's width binds.
+            Math.min(p5.windowWidth - 50, measureAvailableWidth());
+
+      const canvasWidth = Math.max(minCanvasWidth, requestedWidth);
 
       return {
-        canvasWidth: Math.max(
-          minCanvasWidth,
-          Math.min(p5.windowWidth - 50, measureAvailableWidth()),
-        ),
-        canvasHeight: Math.max(minCanvasHeight, p5.windowWidth / aspectRatio),
+        canvasWidth,
+        canvasHeight: Math.max(minCanvasHeight, canvasWidth / aspectRatio),
       };
     };
 
