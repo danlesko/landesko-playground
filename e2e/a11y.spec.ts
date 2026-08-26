@@ -101,21 +101,28 @@ const ROUTES: {
     // middle of dying; since #51 it no longer dies, so this is now just the
     // narrower wait, which is still the better one to keep.
     ready: (page) => expect(page.locator('input[name="name"]')).toBeVisible(),
-    // The message textarea, which axe declines with "partially obscured by
-    // another element". Nothing obscures it: measured at both viewports, zero
-    // elements in the document intersect its box, hit-testing all four corners
-    // and its centre returns the textarea itself on top, and every ancestor
-    // fully contains it. It also carries its own opaque background, so its
-    // contrast is computable in principle -- axe simply declines to.
+    // The message textarea used to be listed here too: axe declined it with
+    // "partially obscured by another element", and that was investigated and
+    // found to be axe declining rather than anything wrong in the markup.
     //
-    // Listed rather than fixed because there is nothing to fix in the markup.
-    // The mechanism is deliberately not asserted here: `overflow: auto` on the
-    // textarea is the obvious suspect and it was not tested, so do not write it
-    // down as the cause.
-    unevaluable: [
-      GRADIENT_TITLE,
-      { rule: "color-contrast", tag: "textarea", gradient: false },
-    ],
+    // It is gone as of #51, and the reason is worth being precise about, because
+    // "the list got shorter" reads like a fix and this is not one. Nothing about
+    // the textarea changed. With no site key the form's controls are now
+    // `disabled`, and axe's `color-contrast` matcher bails on a disabled node
+    // before evaluating it -- `colorContrastMatches` in axe-core does
+    // `if (isDisabled(virtualNode) || isInert(virtualNode)) return false`, read
+    // from the installed source rather than inferred from the set changing. So
+    // the node left the incomplete bucket because it stopped being checked, not
+    // because it became checkable.
+    //
+    // The consequence to know about: this list is now dependent on whether a
+    // site key is configured. CI never has one, so the set below is what CI
+    // sees. A local run *with* a key leaves the fields enabled and the
+    // `{ color-contrast, textarea }` entry comes back, and this assertion fails
+    // on the set having grown. That is the assertion working as designed, not a
+    // regression -- restore the entry if this file ever runs against a keyed
+    // environment.
+    unevaluable: [GRADIENT_TITLE],
   },
 ];
 

@@ -399,6 +399,13 @@ test.describe("/contact", () => {
       page.getByRole("button", { name: "Send Message" }),
     ).toBeDisabled();
 
+    // The fields too, not just submit: a form that lets you type three fields
+    // and then refuses to send them is worse than one that says up front it is
+    // shut. Also all in the server's HTML, so equally race-free.
+    await expect(page.locator('input[name="name"]')).toBeDisabled();
+    await expect(page.locator('input[name="email"]')).toBeDisabled();
+    await expect(page.locator('textarea[name="message"]')).toBeDisabled();
+
     // The widget was never constructed, so its script was never fetched. Read
     // after the network settles, or the list is empty merely because nothing has
     // had a chance to load yet. With no interception in this test, an empty list
@@ -418,12 +425,14 @@ test.describe("/contact", () => {
     // It doubles as the assertion that even a programmatic submit cannot send
     // unverified: with no widget mounted `getValue()` is undefined, which is the
     // branch that alerts instead of calling the server action.
-    await page.locator('input[name="name"]').fill("Smoke Test");
-    await page.locator('input[name="email"]').fill("smoke@example.com");
-    await page
-      .locator('textarea[name="message"]')
-      .fill("Hello from Playwright");
-
+    //
+    // The fields are deliberately not filled first, and cannot be -- they are
+    // disabled, so `fill()` would wait for them to become editable and time out.
+    // Nothing is lost: disabled controls are barred from constraint validation,
+    // so their `required` attributes cannot block `requestSubmit()` either. An
+    // earlier draft of this test filled them, from before the fields were
+    // disabled too.
+    //
     // Dismissed from inside the listener rather than after an awaited call.
     // Registering any dialog listener disables Playwright's auto-dismiss, and a
     // native alert blocks the page, so awaiting the submit would never resolve

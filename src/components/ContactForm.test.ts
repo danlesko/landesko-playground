@@ -44,6 +44,19 @@ function submitButtonTag(html: string): string {
   return tag;
 }
 
+/** A named field's own tag. Throws rather than returning undefined, so a
+ *  renamed or dropped field fails as "no such field" instead of passing
+ *  vacuously the way an absent-element check would. */
+function fieldTag(html: string, name: string): string {
+  const tag = new RegExp(`<(?:input|textarea)[^>]*name="${name}"[^>]*>`).exec(
+    html,
+  )?.[0];
+  if (!tag) throw new Error(`no field named ${name} in the rendered form`);
+  return tag;
+}
+
+const FIELD_NAMES = ["name", "email", "message"] as const;
+
 beforeEach(() => {
   recaptcha.calls.length = 0;
 });
@@ -61,11 +74,17 @@ describe("ContactForm with the reCAPTCHA site key configured", () => {
     expect(recaptcha.calls[0]!.sitekey).toBe("a-test-site-key");
   });
 
-  it("leaves submit operable and adds no misconfiguration notice", async () => {
+  it("leaves the whole form operable and adds no misconfiguration notice", async () => {
     const html = await render("a-test-site-key");
 
     expect(submitButtonTag(html)).not.toContain('disabled=""');
     expect(html).not.toContain(SITE_KEY_VAR);
+
+    // The other half of the disabling behaviour. Without this the suite would
+    // accept a form that is dead in every environment.
+    for (const field of FIELD_NAMES) {
+      expect(fieldTag(html, field), field).not.toContain('disabled=""');
+    }
   });
 });
 
@@ -92,6 +111,14 @@ describe.each([
     const html = await render(value);
 
     expect(submitButtonTag(html)).toContain('disabled=""');
+  });
+
+  it("disables the fields too, rather than inviting input that cannot be sent", async () => {
+    const html = await render(value);
+
+    for (const field of FIELD_NAMES) {
+      expect(fieldTag(html, field), field).toContain('disabled=""');
+    }
   });
 
   it("says which variable is missing, and keeps the rest of the form", async () => {

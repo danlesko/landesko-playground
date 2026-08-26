@@ -50,6 +50,18 @@ const ContactForm = () => {
 
   const [isSendingEmail, setIsSendingEmail] = useState<boolean>(false);
 
+  // One value rather than the same condition repeated on four controls, because
+  // the failure mode of repeating it is that one control disagrees with the rest
+  // and stays live. Two reasons to be inoperable: a send is in flight, or there
+  // is no site key and never will be in this environment.
+  //
+  // Not a `<fieldset disabled>`, which would be the tidier markup: `fieldset`
+  // carries `min-inline-size: min-content` in the UA stylesheet, and Tailwind's
+  // preflight resets its margin, padding and border but not that. On a form
+  // already carrying `lg:min-w-[600px]` that risks a horizontal overflow at
+  // narrow widths, which is a thing this repo has an e2e test about.
+  const formInoperable = isSendingEmail || !recaptchaSiteKey;
+
   const handleChange = (
     e: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
   ) => {
@@ -168,7 +180,7 @@ const ContactForm = () => {
         <Input
           required
           id={`${fieldId}-name`}
-          disabled={isSendingEmail}
+          disabled={formInoperable}
           value={userInput.name}
           type="text"
           name="name"
@@ -182,7 +194,7 @@ const ContactForm = () => {
         <Input
           required
           id={`${fieldId}-email`}
-          disabled={isSendingEmail}
+          disabled={formInoperable}
           value={userInput.email}
           type="email"
           name="email"
@@ -196,7 +208,7 @@ const ContactForm = () => {
         <Textarea
           required
           id={`${fieldId}-message`}
-          disabled={isSendingEmail}
+          disabled={formInoperable}
           className={`${formControlClasses} mt-1`}
           tone="solid"
           color="purple"
@@ -212,7 +224,7 @@ const ContactForm = () => {
           variant="primary"
           type="submit"
           className={`mt-1 font-bold ${primaryButtonClasses}`}
-          disabled={isSendingEmail || !recaptchaSiteKey}
+          disabled={formInoperable}
           loading={isSendingEmail}
         >
           Send Message
