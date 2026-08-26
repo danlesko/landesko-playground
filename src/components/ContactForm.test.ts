@@ -69,15 +69,18 @@ describe("ContactForm with the reCAPTCHA site key configured", () => {
   });
 });
 
-// Rendering the widget with `sitekey=""` is what broke the route: Google's
+// Rendering the widget with a blank sitekey is what broke the route: Google's
 // api.js throws "Missing required parameters: sitekey" during hydration, the
 // throw escapes the component, and React unmounts the whole tree — so /contact
-// became Next's client-side exception screen rather than a form with a broken
-// captcha. Both cases below are the same defect; the empty string is the one the
-// old `|| ""` fallback manufactured out of an unset variable.
+// was replaced by an error screen rather than showing a form with a broken
+// captcha. All three cases below are the same defect. The empty string is the
+// value the old `|| ""` fallback manufactured out of an unset variable; the
+// whitespace case is the one a `KEY= ` typo produces, and it is truthy, so it
+// would reach Google unless the key is trimmed.
 describe.each([
   { label: "unset", value: undefined },
   { label: "set to an empty string", value: "" },
+  { label: "set to whitespace", value: "   " },
 ])("ContactForm with the site key $label", ({ value }) => {
   it("never constructs the widget", async () => {
     await render(value);
@@ -95,7 +98,7 @@ describe.each([
     const html = await render(value);
 
     // The variable's name, never a value. This is the difference between a
-    // legible misconfiguration and a bare exception screen.
+    // legible misconfiguration and a dead route.
     expect(html).toContain(SITE_KEY_VAR);
 
     // The page is still usable as a page: the fields survive, which is exactly
@@ -105,14 +108,24 @@ describe.each([
     expect(html).toContain('name="message"');
   });
 
-  it("points the disabled control at the notice explaining it", async () => {
+  it("describes the form with the notice, and places it before the fields", async () => {
     const html = await render(value);
 
-    const describedBy = /aria-describedby="([^"]+)"/.exec(
-      submitButtonTag(html),
-    )?.[1];
+    const formTag = /<form[^>]*>/.exec(html)?.[0] ?? "";
+    const describedBy = /aria-describedby="([^"]+)"/.exec(formTag)?.[1];
 
     expect(describedBy).toBeDefined();
     expect(html).toContain(`id="${describedBy}"`);
+
+    // Ahead of the first field, so a reader meets it before spending the
+    // effort of filling the form in.
+    expect(html.indexOf(`id="${describedBy}"`)).toBeLessThan(
+      html.indexOf('name="name"'),
+    );
+
+    // Explicitly *not* on the submit button, which is where this started. A
+    // disabled button is not focusable, so assistive tech rarely reaches a
+    // description hanging off it — the notice concerns the whole form anyway.
+    expect(submitButtonTag(html)).not.toContain("aria-describedby");
   });
 });

@@ -51,12 +51,18 @@ const VIEWPORTS = [
  * that arrives after it. Without the wait, axe scans that route before the thing
  * the route exists for is in the DOM -- silently, as a pass.
  *
- * `/contact` needs Google blocked to be scannable at all. With no site key,
- * Google's api.js throws during hydration and React unmounts the whole route,
- * so an unblocked scan would grade the accessibility of "Application error".
- * ./smoke.spec.ts blocks the same two origins for the same reason. /blog is
- * still absent: it needs a database, and without one it renders its error
- * boundary.
+ * `/contact` blocks Google, but no longer for the original reason. That reason
+ * was that with no site key api.js threw during hydration and React unmounted
+ * the route, so an unblocked scan graded the accessibility of an error screen.
+ * #51 removed that: with no key the widget is never constructed, so nothing is
+ * requested and the block is inert here. It is kept for the *other* direction --
+ * a run that does have a key would load Google's iframe, whose accessibility is
+ * not ours to grade and would vary with their markup. ./smoke.spec.ts no longer
+ * blocks these origins, deliberately: it asserts that nothing is requested,
+ * which only means something when nothing is intercepted.
+ *
+ * /blog is still absent: it needs a database, and without one it renders its
+ * error boundary.
  */
 // The site title, on every page. It is a `<span>` inside the header, not the
 // `<h1>` -- worth stating, because "the title" reads like a heading and the
@@ -90,9 +96,10 @@ const ROUTES: {
   {
     path: "/contact",
     blockThirdParty: true,
-    // The controlled inputs, not the heading: the heading is server-rendered and
-    // is briefly present even on the route that is in the middle of dying, which
-    // is the race ./smoke.spec.ts documents.
+    // The controlled inputs, not the heading. The original reason was that the
+    // heading is server-rendered and stayed briefly present on a route in the
+    // middle of dying; since #51 it no longer dies, so this is now just the
+    // narrower wait, which is still the better one to keep.
     ready: (page) => expect(page.locator('input[name="name"]')).toBeVisible(),
     // The message textarea, which axe declines with "partially obscured by
     // another element". Nothing obscures it: measured at both viewports, zero
