@@ -16,6 +16,7 @@ import {
   formLabelClasses,
 } from "@/components/ui/form";
 import { primaryButtonClasses } from "@/components/ui/button";
+import { contentColumnClasses } from "@/components/ui/layout";
 
 // Read once, at module scope, because `NEXT_PUBLIC_*` is substituted by the
 // compiler rather than looked up at runtime: this is a build-time constant in
@@ -57,9 +58,11 @@ const ContactForm = () => {
   //
   // Not a `<fieldset disabled>`, which would be the tidier markup: `fieldset`
   // carries `min-inline-size: min-content` in the UA stylesheet, and Tailwind's
-  // preflight resets its margin, padding and border but not that. On a form
-  // already carrying `lg:min-w-[600px]` that risks a horizontal overflow at
-  // narrow widths, which is a thing this repo has an e2e test about.
+  // preflight resets its margin, padding and border but not that, so it can
+  // refuse to shrink and push the page wider at narrow widths -- which is a thing
+  // this repo has an e2e test about. The form no longer carries a width floor of
+  // its own, but `min-content` is the fieldset's floor, so the hazard is the
+  // element's, not the form's.
   const formInoperable = isSendingEmail || !recaptchaSiteKey;
 
   const handleChange = (
@@ -147,7 +150,7 @@ const ContactForm = () => {
   return (
     <>
       <form
-        className="text-lg mt-2 lg:min-w-[600px] lg:w-1/2 h-1/2"
+        className={`text-lg mt-2 ${contentColumnClasses} h-1/2`}
         onSubmit={handleSubmit}
         aria-describedby={
           recaptchaSiteKey ? undefined : `${fieldId}-recaptcha-missing`
