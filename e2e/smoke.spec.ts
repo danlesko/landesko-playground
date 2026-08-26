@@ -241,10 +241,67 @@ test("/credits attributes all four outbound resources", async ({ page }) => {
 test("the home page LCP image loads eagerly at a declared size", async ({
   page,
 }) => {
+  // Recorded so an observed non-200, or a request that never answered at all, is
+  // reported as itself. Without it the only symptom is `naturalWidth` being 0,
+  // which says the image did not decode but not why -- see the note below on #78.
+  //
+  // Both outcomes are tracked, because they are different failures and a response
+  // map alone cannot tell "answered badly" from "never answered".
+  const optimiserStatus = new Map<string, number>();
+  const optimiserFailed = new Map<string, string>();
+  page.on("response", (response) => {
+    if (response.url().includes("/_next/image")) {
+      optimiserStatus.set(response.url(), response.status());
+    }
+  });
+  page.on("requestfailed", (request) => {
+    if (request.url().includes("/_next/image")) {
+      optimiserFailed.set(
+        request.url(),
+        request.failure()?.errorText ?? "unknown failure",
+      );
+    }
+  });
+
   await page.goto("/");
   const image = page.getByRole("img", { name: "Lan Playing Pool" });
 
   await expect(image).toBeVisible();
+
+  // Keyed to the candidate this element actually settled on, not to "some
+  // optimiser response was fine". The home page requests two optimised images --
+  // this hero and the 48px header mark -- so a page-wide check is satisfiable by
+  // the header alone while the hero's request has no response at all. An earlier
+  // version of this test did exactly that, and it is the hole worth naming: the
+  // count-plus-all-200 pair is nonempty but says nothing about *this* image.
+  const currentSrc = await image.evaluate(
+    (el: HTMLImageElement) => el.currentSrc,
+  );
+
+  // A load that never selected a source leaves this empty, which is itself the
+  // diagnosis, so it is asserted rather than allowed to key a lookup that would
+  // then fail for the wrong stated reason.
+  expect(currentSrc, "the hero image never selected a source").not.toBe("");
+  expect(
+    currentSrc,
+    "the hero image resolved to an unexpected resource",
+  ).toContain("danPool");
+
+  // Before the decode checks, so a request problem is reported as a request
+  // problem. Ordering is the whole point: after `naturalWidth`, a 500 still
+  // presents as "0 is not greater than 0" and these never run.
+  expect(
+    optimiserFailed.get(currentSrc),
+    `the hero image request failed outright: ${currentSrc}`,
+  ).toBeUndefined();
+  expect(
+    optimiserStatus.has(currentSrc),
+    `no response was observed for the hero image: ${currentSrc}`,
+  ).toBe(true);
+  expect(
+    optimiserStatus.get(currentSrc),
+    "the hero image's optimiser response was not 200",
+  ).toBe(200);
 
   // Every other assertion in this test passes against a `src` that 404s: the
   // element stays visible, Next still generates srcset/preload/sizes from the
@@ -257,6 +314,41 @@ test("the home page LCP image loads eagerly at a declared size", async ({
   expect(
     await image.evaluate((el) => (el as HTMLImageElement).naturalWidth),
   ).toBeGreaterThan(0);
+
+  // `naturalWidth` only proves the header parsed far enough to know the
+  // dimensions, so a truncated body can satisfy it -- and a truncated body is
+  // exactly the shape a failure under contention would take, with a 200 status to
+  // go with it. `decode()` rejects on pixel data that cannot be decoded, which is
+  // the one check here that a partial response cannot pass.
+  await image.evaluate((el: HTMLImageElement) => el.decode());
+
+  // #78 filed this test as flaky under full-suite load and guessed the race was
+  // on `complete`, it being the only assertion with an unbounded external
+  // dependency. The evidence points away from that. `page.goto` defaults to
+  // `waitUntil: "load"` and playwright.config.ts sets no navigation timeout, so
+  // for an eagerly-rendered image in the initial HTML the fetch is what `load`
+  // waits on, and goto returns after it has settled. Measured immediately after
+  // goto with no polling: `complete` already true and `naturalWidth` already 499,
+  // in isolation and inside the full suite alike, goto itself taking 75-121ms.
+  // Injecting an 8s delay on the optimiser made goto take 8s and the test still
+  // passed rather than timing out.
+  //
+  // So on this evidence a merely slow image delays goto rather than failing the
+  // assertions above, and a timeout would be reported against goto under the 30s
+  // test budget. Stated as what was observed rather than as an impossibility
+  // proof: no artifact of the original flake survives -- the only failed e2e run
+  // in CI history at the time of writing is a different test -- so this is a
+  // refuted hypothesis, not a diagnosed one.
+  //
+  // Note the 5s matcher budget applies to `toHaveJSProperty` above, not to the
+  // bare `evaluate` calls, which are bounded only by the test timeout.
+  //
+  // What the checks above add is naming: an observed non-200, an outright request
+  // failure, or a body that cannot be decoded now each report themselves instead
+  // of arriving as "0 is not greater than 0". Deliberately not a raised timeout
+  // and not a retry -- the issue argues against the first, and `retries: 0` is a
+  // policy of this suite. A latency assertion would need an agreed threshold and
+  // is not folded in here.
 
   // `priority` is the whole point of this image: it is the LCP element. Next 15
   // does *not* implement that as fetchpriority on the <img> -- it emits a
