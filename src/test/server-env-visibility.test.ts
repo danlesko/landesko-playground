@@ -39,7 +39,16 @@ import { describe, expect, it } from "vitest";
 
 // `EMAILJS_PRIVATE_KEY` is unprefixed, so a client read yields undefined rather
 // than leaking. Included because the same rule expresses the same intent.
+// Six entries during the rename, not three: `contact-actions.ts` reads the
+// unprefixed name and falls back to the prefixed one, so both spellings are live
+// and both have to stay server-side. When the `NEXT_PUBLIC_` variables are
+// deleted from Vercel and the fallback arms come out, the three prefixed entries
+// here fail their own per-name check and say exactly which lines to delete --
+// which is the point of checking each name rather than the set.
 const SERVER_ONLY_ENV_NAMES = [
+  "EMAILJS_SERVICE_ID",
+  "EMAILJS_TEMPLATE_ID",
+  "EMAILJS_PUBLIC_KEY",
   "NEXT_PUBLIC_EMAILJS_SERVICE_ID",
   "NEXT_PUBLIC_EMAILJS_TEMPLATE_ID",
   "NEXT_PUBLIC_EMAILJS_PUBLIC_KEY",
@@ -94,7 +103,15 @@ function readsEnv(text: string, name: string): boolean {
   ).test(text);
 }
 
-const SELF = "src/test/server-env-visibility.test.ts";
+/** Test files and test helpers, which are never part of a client bundle, so the
+ *  question this file asks does not apply to them. Replaces a single exclusion of
+ *  this file by name: `contact-actions.test.ts` legitimately reads these
+ *  variables to check which one the action prefers, and the guard flagged it on
+ *  its first real encounter. Excluding the category is the honest rule -- naming
+ *  each test file would mean editing this list every time one is added, which is
+ *  how a guard ends up being disabled to make it quiet. */
+const isTestFile = (file: string) =>
+  /\.test\.tsx?$/.test(file) || file.startsWith("src/test/");
 
 const scanned = [
   ...walk(join(ROOT, "src")),
@@ -104,7 +121,7 @@ const scanned = [
     file: relative(ROOT, file),
     text: readFileSync(file, "utf8"),
   }))
-  .filter(({ file }) => file !== SELF);
+  .filter(({ file }) => !isTestFile(file));
 
 describe("EmailJS configuration is read in one place", () => {
   it("scans a plausible number of files, so a broken walk cannot pass", () => {
