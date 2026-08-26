@@ -1,9 +1,10 @@
 import BackLink from "@/components/ui/BackLink";
 import PageHeading from "@/components/ui/PageHeading";
+import { cardClasses } from "@/components/ui/card";
 
 const LoadingSkeletons = () => {
   return (
-    <div className="mt-4 p-4 border border-border rounded-lg lg:min-w-[600px] lg:w-1/2 h-32 animate-pulse">
+    <div className={`${cardClasses} h-32 animate-pulse`}>
       <div className="h-6 bg-muted rounded w-3/4 mb-4"></div>
       <div className="h-4 bg-muted rounded w-full mb-2"></div>
       <div className="h-4 bg-muted rounded w-full mb-2"></div>

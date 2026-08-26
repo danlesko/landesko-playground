@@ -3,6 +3,7 @@ import { BLOG_DATE_FORMAT } from "@/lib/blogDate";
 import BackLink from "@/components/ui/BackLink";
 import PageHeading from "@/components/ui/PageHeading";
 import { getSession, loadBlog } from "./loaders";
+import { cardClasses } from "@/components/ui/card";
 
 export async function generateMetadata(props: {
   params: Promise<{ id: string }>;
@@ -47,10 +48,7 @@ export default async function Blog(props: { params: Promise<{ id: string }> }) {
     <div>
       <PageHeading>{blog.title}</PageHeading>
       <BackLink />
-      <div
-        key={blog.title}
-        className="mt-4 p-4 rounded-lg lg:min-w-[600px] lg:w-1/2 min-h-32 border border-border overflow-auto"
-      >
+      <div key={blog.title} className={`${cardClasses} min-h-32 overflow-auto`}>
         <div className="flow-root">
           <p className="text-sm font-medium text-muted">
             {blog.date.toLocaleDateString("en-US", BLOG_DATE_FORMAT)}
