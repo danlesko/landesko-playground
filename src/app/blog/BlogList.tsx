@@ -4,16 +4,14 @@ import TextLink from "@/components/ui/TextLink";
 import BlogBodyAbbr from "@/components/BlogBodyAbbr";
 import { deleteBlogPost } from "@/lib/actions";
 import { fetchRecentBlogs } from "@/lib/data";
+import { cardClasses } from "@/components/ui/card";
 
 // Ten to match the LIMIT in fetchRecentBlogs.
 export const BlogListSkeleton = () => (
   <>
     <PageHeading>Blog Posts</PageHeading>
     {Array.from({ length: 10 }, (_, index) => (
-      <div
-        key={index}
-        className="mt-4 p-4 border border-border rounded-lg lg:min-w-[600px] lg:w-1/2 h-32 animate-pulse"
-      >
+      <div key={index} className={`${cardClasses} h-32 animate-pulse`}>
         <div className="h-6 bg-muted rounded w-3/4 mb-4"></div>
         <div className="h-4 bg-muted rounded w-full mb-2"></div>
         <div className="h-4 bg-muted rounded w-full mb-2"></div>

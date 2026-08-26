@@ -11,6 +11,7 @@ import {
   dangerButtonClasses,
   primaryButtonClasses,
 } from "@/components/ui/button";
+import { cardClasses } from "@/components/ui/card";
 
 interface BlogBodyAbbrProps {
   session: Session | null;
@@ -93,7 +94,7 @@ const BlogBodyAbbr = ({ session, blog, deleteBlogPost }: BlogBodyAbbrProps) => {
   };
 
   return (
-    <div className="mt-4 p-4 rounded-lg lg:min-w-[600px] lg:w-1/2 h-32 border border-border overflow-auto">
+    <div className={`${cardClasses} h-32 overflow-auto`}>
       <div className="flow-root">
         <div className="flex justify-between items-center">
           <h2 className="text-xl font-semibold">

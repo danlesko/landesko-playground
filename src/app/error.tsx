@@ -2,6 +2,7 @@
 import PageHeading from "@/components/ui/PageHeading";
 import TextLink from "@/components/ui/TextLink";
 import useErrorRetry from "./useErrorRetry";
+import { cardClasses } from "@/components/ui/card";
 
 export default function Error({
   error,
@@ -17,7 +18,7 @@ export default function Error({
       <PageHeading>
         <span className="text-danger">Something Went Wrong</span>
       </PageHeading>
-      <div className="mt-4 p-4 rounded-lg lg:min-w-[600px] lg:w-1/2 min-h-32 border border-border overflow-auto">
+      <div className={`${cardClasses} min-h-32 overflow-auto`}>
         <p>
           This page could not be loaded. If the problem is temporary, trying
           again may help.
