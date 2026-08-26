@@ -1,33 +1,44 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative } from "node:path";
 import { describe, expect, it } from "vitest";
 
 /**
- * Guards the trap #14 names: the EmailJS values are read through
- * `NEXT_PUBLIC_`-prefixed names but are only ever needed on the server.
+ * Pins where the EmailJS configuration is read from. #14 records the hazard:
  *
- * The prefix is a *visibility switch*. Next inlines such a variable into the
- * client bundle at each point client-bundled code references it -- not merely
- * because it is prefixed. So today nothing leaks: the only reader is a
- * `"use server"` module, which was verified empirically on #14 by building with
- * sentinel values and grepping `.next/static` (absent for all three EmailJS
- * values, present for the reCAPTCHA site key, which is the positive control that
- * proved the method could detect exposure at all).
+ * > a `NEXT_PUBLIC_` name is an active trap, because the moment any client
+ * > component references one of these it silently becomes public again, and
+ * > nothing in CI would catch it.
  *
- * The hazard is that this is one import away from being false, silently, and the
- * moment a client component reads one of these the values ship to every visitor.
- * #14 records that "nothing in CI would catch it". This is that check.
+ * `NEXT_PUBLIC_` is a visibility switch rather than an unconditional publish:
+ * Next replaces *statically analysable* `process.env.NEXT_PUBLIC_NAME` reads in
+ * client-bundled code with the literal value at build time. Nothing leaks today,
+ * which #14 established by building with sentinel values and grepping
+ * `.next/static` -- absent for all three EmailJS values, present for the
+ * reCAPTCHA site key, which is the positive control proving the method could
+ * detect exposure at all.
  *
- * WHAT THIS PROVES, precisely: no module in `src/` outside a `"use server"` file
- * mentions these names. That is the *cause* a leak would have, not the effect.
- * It cannot prove absence from the built client bundle -- the sentinel build is
- * the only thing that does, and it needs real values, so it does not belong in a
- * unit suite. Treat this as an authoring-time tripwire, not a proof.
+ * WHAT THIS PROVES: these names are read via `process.env` in exactly the files
+ * listed below, and nowhere else in the project's build-relevant sources. That
+ * is all. In particular it does NOT prove the values stay out of the browser,
+ * and three routes to exposure would keep it green:
+ *
+ *   - data flow. A Server Action may return one of these, or a Server Component
+ *     may pass one as a prop to a client component. Both put the value in the
+ *     client payload without any new `process.env` read.
+ *   - aliasing. A value injected under a different identifier via
+ *     `next.config.ts`'s `env` key would not mention a guarded name at all.
+ *   - dynamic access. `process.env[computed]` is not matched here, and is also
+ *     not inlined by Next, so it is a smaller hazard than it looks.
+ *
+ * The effect-level check is a build with synthetic sentinel values, asserting
+ * they are absent from the browser assets with a deliberately-public sentinel as
+ * the positive control. That needs **fake** values, not real ones, so it is
+ * CI-able -- it is simply a bigger change than this file and is noted on #14.
+ * This is an authoring-time tripwire, and the narrow one.
  */
 
-// `EMAILJS_PRIVATE_KEY` is unprefixed, so a client read would yield undefined
-// rather than leaking it. Included anyway: the same rule expresses the same
-// intent, and a client component reaching for it is a bug regardless.
+// `EMAILJS_PRIVATE_KEY` is unprefixed, so a client read yields undefined rather
+// than leaking. Included because the same rule expresses the same intent.
 const SERVER_ONLY_ENV_NAMES = [
   "NEXT_PUBLIC_EMAILJS_SERVICE_ID",
   "NEXT_PUBLIC_EMAILJS_TEMPLATE_ID",
@@ -35,69 +46,99 @@ const SERVER_ONLY_ENV_NAMES = [
   "EMAILJS_PRIVATE_KEY",
 ] as const;
 
-const SRC = join(process.cwd(), "src");
+/**
+ * An explicit list, not a heuristic. An earlier version of this file inferred
+ * "server-only" from a `"use server"` directive, which is wrong in both
+ * directions: ordinary Server Components, route handlers and server utilities
+ * read env without it, while `"use server"` actually marks Server Actions, which
+ * are callable *from* the client. Its failure message also advised adding
+ * `"use server"` to a plain utility, which would turn every export in that
+ * module into an RPC endpoint. `import "server-only"` is the marker for a
+ * server-only utility; a hand-maintained list is the honest instrument here.
+ */
+const ALLOWED_READERS = ["src/lib/contact-actions.ts"];
 
-function sourceFiles(dir: string): string[] {
+const ROOT = process.cwd();
+
+// `allowJs` is on in tsconfig.json, so a `.js` or `.jsx` file is a legitimate
+// part of this project even though none exists today. Scanning only `.ts`/`.tsx`
+// would leave a hole that nothing announces.
+const SOURCE_EXTENSIONS = /\.(?:tsx?|jsx?|mjs|cjs)$/;
+
+// `next.config.ts` sits outside `src/` and can inject values into the client
+// build, so the scan cannot stop at `src/`.
+const ROOT_FILES = [
+  "next.config.ts",
+  "next.config.js",
+  "next.config.mjs",
+  "tailwind.config.ts",
+  "playwright.config.ts",
+  "vitest.config.ts",
+];
+
+function walk(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
     const full = join(dir, entry.name);
-    if (entry.isDirectory()) return sourceFiles(full);
-    return /\.tsx?$/.test(entry.name) ? [full] : [];
+    if (entry.isDirectory()) return walk(full);
+    return SOURCE_EXTENSIONS.test(entry.name) ? [full] : [];
   });
 }
 
-/** This file names all four variables in order to check for them, so it would
- *  otherwise report itself. */
-const SELF = relative(SRC, __filename);
+/** Matches an actual read, not a mention. The names also appear as string
+ *  literals in this codebase -- `contact-actions.ts` lists them to report which
+ *  are missing -- and an earlier version of this file counted those, so deleting
+ *  the real read would have left it green. */
+function readsEnv(text: string, name: string): boolean {
+  return new RegExp(
+    `process\\.env\\s*(?:\\.${name}\\b|\\[\\s*(['"\`])${name}\\1\\s*\\])`,
+  ).test(text);
+}
 
-const referencing = sourceFiles(SRC)
+const SELF = "src/test/server-env-visibility.test.ts";
+
+const scanned = [
+  ...walk(join(ROOT, "src")),
+  ...ROOT_FILES.map((f) => join(ROOT, f)).filter(existsSync),
+]
   .map((file) => ({
-    file: relative(SRC, file),
+    file: relative(ROOT, file),
     text: readFileSync(file, "utf8"),
   }))
-  .filter(({ file }) => file !== SELF)
-  .filter(({ text }) =>
-    SERVER_ONLY_ENV_NAMES.some((name) => text.includes(name)),
-  );
+  .filter(({ file }) => file !== SELF);
 
-describe("EmailJS configuration stays server-side", () => {
-  // Every name individually, not "some name was found somewhere". The weaker
-  // version passed a mutation it should have failed: renaming the three
-  // prefixed variables left `EMAILJS_PRIVATE_KEY` still matching in the same
-  // file, so the list kept looking alive while three quarters of it guarded
-  // nothing. Per-name is also self-maintaining -- when the `NEXT_PUBLIC_`
-  // prefixes are eventually dropped (the open item on #14) this fails and says
-  // exactly which entry to update.
-  it.each(SERVER_ONLY_ENV_NAMES)("still has a reader for %s", (name) => {
-    const readers = referencing
-      .filter(({ text }) => text.includes(name))
+describe("EmailJS configuration is read in one place", () => {
+  it("scans a plausible number of files, so a broken walk cannot pass", () => {
+    expect(scanned.length).toBeGreaterThan(20);
+    expect(scanned.map((s) => s.file)).toContain("src/lib/contact-actions.ts");
+  });
+
+  // Per name, and on a real `process.env` read. Both matter: the weaker "some
+  // name appears somewhere" version passed a mutation that renamed the whole
+  // prefixed trio, and a text-based version passes even with every real read
+  // deleted, because the diagnostic labels still mention the names.
+  it.each(SERVER_ONLY_ENV_NAMES)("%s is actually read somewhere", (name) => {
+    const readers = scanned
+      .filter(({ text }) => readsEnv(text, name))
       .map(({ file }) => file);
 
     expect(readers, `nothing reads ${name}; update this list`).not.toEqual([]);
   });
 
-  it("is read only from modules that cannot be bundled for the browser", () => {
-    const notServerOnly = referencing
-      .filter(({ text }) => !/^\s*(["'])use server\1/.test(text))
+  it("is read only from the files allowed to read it", () => {
+    const unexpected = scanned
+      .filter(({ file, text }) =>
+        SERVER_ONLY_ENV_NAMES.some(
+          (name) => readsEnv(text, name) && !ALLOWED_READERS.includes(file),
+        ),
+      )
       .map(({ file }) => file);
 
-    // Phrased as an invariant rather than as a fixed path, so a second genuine
-    // server-side reader is free to exist. The two ways out of a failure here:
-    // add `"use server"` if the module really is server-only, or stop reading
-    // the value there.
+    // If this fails, the question to answer is whether that file can end up in a
+    // client bundle. If it genuinely cannot, add it to ALLOWED_READERS and say
+    // why; if it can, the value must not be read there.
     expect(
-      notServerOnly,
-      "these read EmailJS config outside a server module",
+      unexpected,
+      "these read EmailJS config and are not in ALLOWED_READERS",
     ).toEqual([]);
-  });
-
-  it("is not referenced from any client component", () => {
-    const clientSide = referencing
-      .filter(({ text }) => /^\s*(["'])use client\1/.test(text))
-      .map(({ file }) => file);
-
-    // A narrower, bluntly-stated version of the check above. It is the one whose
-    // failure means the values are actually being published, so it is worth
-    // failing on its own terms rather than only as part of the invariant.
-    expect(clientSide, "a client component reads EmailJS config").toEqual([]);
   });
 });
