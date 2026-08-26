@@ -16,15 +16,16 @@ vi.mock("@/lib/data", () => ({
 vi.mock("@/lib/actions", () => ({ deleteBlogPost: vi.fn() }));
 
 import { fetchRecentBlogs, getBlog } from "@/lib/data";
-// `./BlogList` and not `./page`. `page.tsx` is now a synchronous shell whose
-// only job is to declare a `<Suspense>`, so `renderToStaticMarkup` on it renders
-// the *fallback*: this file used to import `./page` under the name `BlogList`,
+// `blog/BlogList` and not `blog/page`. `blog/page.tsx` is a synchronous shell
+// whose only job is to declare a `<Suspense>`, so `renderToStaticMarkup` on it
+// renders the *fallback*: this file used to import it under the name `BlogList`,
 // which kept compiling and kept passing while asserting the heading order of the
 // skeleton. Measured: the markup contained no row title and `fetchRecentBlogs`
 // was never called, so the signed-in case below rendered zero of the controls it
-// exists to check. The shell's own fallback is covered in ./page.test.ts.
+// exists to check. The shell's own fallback is covered in blog/page.test.ts.
 import BlogList from "@/app/blog/BlogList";
 import BlogDetail from "@/app/blog/[id]/page";
+import Animation from "@/app/animation/page";
 
 const id = "11111111-1111-4111-8111-111111111111";
 const row = {
@@ -81,6 +82,16 @@ describe.each([
       vi.mocked(getBlog).mockResolvedValue(row);
       return BlogDetail({ params: Promise.resolve({ id }) });
     },
+  },
+  // The only route besides /blog carrying more than a lone h1, so the only
+  // other one where a level can be skipped. It needs none of the mocking
+  // above — no data, session or env — and the `beforeEach` resets are inert for
+  // it. `ProcessingDrawing` is a client component whose p5 wrapper is a
+  // `dynamic(..., { ssr: false })` import, so it contributes no markup and no
+  // headings here; the two this asserts are the page's own.
+  {
+    route: "/animation",
+    render: async () => Animation(),
   },
 ])("$route heading levels", ({ render }) => {
   it("opens at h1 and has exactly one", async () => {
