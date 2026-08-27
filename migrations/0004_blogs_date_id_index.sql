@@ -1,0 +1,132 @@
+-- ============================================================================
+-- NOT EXECUTED. Safe to run at any time, unlike 0003 -- it adds an index and
+-- changes no data, so there is no code/schema pairing that stores a wrong value.
+-- Read the CONCURRENTLY section before running it anyway, because the failure
+-- mode is silent.
+-- ============================================================================
+--
+-- Purpose: give the blog listing queries an index to sort with.
+--
+-- ---------------------------------------------------------------------------
+-- Why now
+-- ---------------------------------------------------------------------------
+-- #83 filed this as "inert today, load-bearing once #42 lands". #42 has landed:
+-- every listing query now sorts by (date, id) with LIMIT/OFFSET, and there is
+-- nothing to sort with. Verified against the live database on 2026-08-27, the
+-- table has exactly one index:
+--
+--   blogs_pkey   CREATE UNIQUE INDEX blogs_pkey ON public.blogs USING btree (id)
+--
+-- The four queries it has to serve, all in src/lib/data.ts:
+--
+--   1  signed-in rows   SELECT * FROM blogs
+--                       ORDER BY date DESC, id DESC LIMIT $1 OFFSET $2
+--   2  anonymous rows   ... WHERE private != TRUE
+--                       ORDER BY date DESC, id DESC LIMIT $1 OFFSET $2
+--   3  signed-in count  SELECT COUNT(*) FROM blogs
+--   4  anonymous count  SELECT COUNT(*) FROM blogs WHERE private != TRUE
+--
+-- ---------------------------------------------------------------------------
+-- Why (date, id) and not (date DESC, id DESC)
+-- ---------------------------------------------------------------------------
+-- A btree can be scanned backwards, so a plain ascending index serves an
+-- all-descending ORDER BY with no sort step. Spelling out DESC is only necessary
+-- for a *mixed* ordering such as `date DESC, id ASC`, where no single scan
+-- direction produces the required order. This ordering is all-DESC, so the plain
+-- index is equivalent and shorter.
+--
+-- ---------------------------------------------------------------------------
+-- Why one plain index and not a partial one
+-- ---------------------------------------------------------------------------
+-- A partial index `WHERE private != TRUE` would match query 2's predicate exactly
+-- and is the obvious alternative. It is not used here because the plain index
+-- already serves query 2 -- walk it in order, discard private rows, keep the
+-- ordering and stop at the LIMIT -- and one index is the right amount of
+-- machinery for a table this size. Postgres normalises `bool != TRUE` to
+-- `NOT bool` in both a query and an index predicate, so if a partial index is
+-- ever added it will match the query as written; there is no need to rewrite the
+-- application to `NOT private` first.
+--
+-- Add the partial index if the private fraction ever becomes large enough that
+-- the discarded rows dominate a page of results. `INCLUDE (private)` was also
+-- considered and rejected: it would let query 2 filter inside an index-only scan,
+-- but it widens every entry for a table where the heap fetch is not the problem.
+--
+-- ---------------------------------------------------------------------------
+-- What this does NOT help
+-- ---------------------------------------------------------------------------
+-- Neither count. Query 3 counts every row, and the planner will prefer the
+-- narrower blogs_pkey for an index-only scan over this wider index. Query 4 has
+-- to evaluate `private` per row, which this index does not carry, so it gains
+-- nothing material. The counts were never the complaint in #83; the missing sort
+-- support was.
+--
+-- ---------------------------------------------------------------------------
+-- CONCURRENTLY, and the trap in IF NOT EXISTS
+-- ---------------------------------------------------------------------------
+-- CONCURRENTLY cannot run inside a transaction block, which is why this file has
+-- no BEGIN/COMMIT where 0003 has one. Do not add them.
+--
+-- It is not lock-free -- it takes SHARE UPDATE EXCLUSIVE on the table, which
+-- permits INSERT/UPDATE/DELETE but blocks other DDL and other index builds, and
+-- it waits for transactions already open before it can finish. It is the right
+-- choice because a plain CREATE INDEX takes a lock that blocks writes for the
+-- whole build; it is not the same thing as taking no lock.
+--
+-- **If it fails part-way it leaves an INVALID index behind**, and nothing in the
+-- application notices: an invalid index is simply never used, so the symptom is
+-- the unindexed plan you started with. Worse, re-running this file would then do
+-- NOTHING, because IF NOT EXISTS matches on the *name* -- it neither validates the
+-- definition nor repairs an invalid index. So after running it, check:
+--
+--   SELECT c.relname, i.indisvalid
+--   FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid
+--   WHERE c.relname = 'blogs_date_id_idx';
+--
+-- If indisvalid is false, drop it explicitly and run the CREATE again:
+--
+--   DROP INDEX CONCURRENTLY IF EXISTS public.blogs_date_id_idx;
+--
+-- ---------------------------------------------------------------------------
+-- Verifying it, and what cannot be verified from here
+-- ---------------------------------------------------------------------------
+-- There IS a measurable before, and it is the plan shape rather than a timing.
+-- EXPLAIN on the live database, 2026-08-27, for query 1:
+--
+--   Limit  (cost=1.14..1.15 rows=6 width=89)
+--     ->  Sort  (cost=1.14..1.15 rows=6 width=89)
+--           Sort Key: date DESC, id DESC
+--           ->  Seq Scan on blogs  (cost=0.00..1.06 rows=6 width=89)
+--
+-- The explicit **Sort** node is the thing this index removes. It is cheap at six
+-- rows and it is not cheap at ten thousand, because a Sort under a LIMIT still has
+-- to see every candidate row before it can return the first one.
+--
+-- What is NOT claimed: a timing improvement. At this size Postgres will keep
+-- choosing the sequential scan, so the plan above will not change on its own after
+-- the index exists, and no row count is given for when the planner switches --
+-- that depends on statistics, row width and effective_cache_size rather than on a
+-- threshold anyone can quote.
+--
+-- So the check after running it is structural: that the index CAN serve the
+-- ordering, forcing the planner past the size question.
+--
+--   SET enable_seqscan = off;
+--   EXPLAIN SELECT * FROM blogs ORDER BY date DESC, id DESC LIMIT 10 OFFSET 0;
+--   RESET enable_seqscan;
+--
+-- An "Index Scan Backward using blogs_date_id_idx" with no Sort node is the
+-- structural confirmation. A Sort node means the index cannot serve the ordering
+-- and this file is wrong.
+--
+-- ---------------------------------------------------------------------------
+-- Reversal
+-- ---------------------------------------------------------------------------
+--   DROP INDEX CONCURRENTLY IF EXISTS public.blogs_date_id_idx;
+--
+-- Dropping it cannot break correctness; the queries would go back to sorting
+-- without help.
+-- ============================================================================
+
+CREATE INDEX CONCURRENTLY IF NOT EXISTS blogs_date_id_idx
+  ON public.blogs (date, id);
