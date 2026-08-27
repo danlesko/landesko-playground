@@ -49,17 +49,20 @@
 --
 -- Add the partial index if the private fraction ever becomes large enough that
 -- the discarded rows dominate a page of results. `INCLUDE (private)` was also
--- considered and rejected: it would let query 2 filter inside an index-only scan,
--- but it widens every entry for a table where the heap fetch is not the problem.
+-- considered and rejected, though not for the reason that first suggests itself:
+-- it could NOT give query 2 an index-only scan, because that query is `SELECT *`
+-- and an index-only scan needs every referenced column in the index. At most it
+-- would let the private rows be discarded before the heap fetch, which is not the
+-- cost here.
 --
 -- ---------------------------------------------------------------------------
 -- What this does NOT help
 -- ---------------------------------------------------------------------------
--- Neither count. Query 3 counts every row, and the planner will prefer the
--- narrower blogs_pkey for an index-only scan over this wider index. Query 4 has
--- to evaluate `private` per row, which this index does not carry, so it gains
--- nothing material. The counts were never the complaint in #83; the missing sort
--- support was.
+-- Neither count, as far as can be reasoned without measuring. Query 3 counts every
+-- row and has no ordering to satisfy, so this index gives it nothing a narrower one
+-- does not; which index the planner actually picks for it has not been checked.
+-- Query 4 must evaluate `private` per row, which this index does not carry. The
+-- counts were never the complaint in #83; the missing sort support was.
 --
 -- ---------------------------------------------------------------------------
 -- CONCURRENTLY, and the trap in IF NOT EXISTS
@@ -83,7 +86,14 @@
 --   FROM pg_class c JOIN pg_index i ON i.indexrelid = c.oid
 --   WHERE c.relname = 'blogs_date_id_idx';
 --
--- If indisvalid is false, drop it explicitly and run the CREATE again:
+-- Check the definition too, not just the name and validity -- IF NOT EXISTS would
+-- also skip a same-named index over the wrong columns:
+--
+--   SELECT indexdef FROM pg_indexes WHERE indexname = 'blogs_date_id_idx';
+--
+-- If it is invalid, or the definition is not `(date, id)`, drop it explicitly and
+-- run the CREATE again. DROP INDEX CONCURRENTLY also cannot run inside a
+-- transaction block, and both statements need ownership of the table:
 --
 --   DROP INDEX CONCURRENTLY IF EXISTS public.blogs_date_id_idx;
 --
@@ -99,8 +109,10 @@
 --           ->  Seq Scan on blogs  (cost=0.00..1.06 rows=6 width=89)
 --
 -- The explicit **Sort** node is the thing this index removes. It is cheap at six
--- rows and it is not cheap at ten thousand, because a Sort under a LIMIT still has
--- to see every candidate row before it can return the first one.
+-- rows. It gets more expensive as the table grows, because a Sort under a LIMIT
+-- still has to consume every candidate row before it can emit the first one -- true
+-- even of a top-N heapsort, which bounds the memory but not the input. No figure is
+-- given for how expensive, because none has been measured.
 --
 -- What is NOT claimed: a timing improvement. At this size Postgres will keep
 -- choosing the sequential scan, so the plan above will not change on its own after
@@ -116,8 +128,9 @@
 --   RESET enable_seqscan;
 --
 -- An "Index Scan Backward using blogs_date_id_idx" with no Sort node is the
--- structural confirmation. A Sort node means the index cannot serve the ordering
--- and this file is wrong.
+-- structural confirmation. A Sort node is a reason to look closer rather than proof
+-- this file is wrong: `enable_seqscan = off` discourages sequential scans, it does
+-- not forbid them, and a bitmap or a different index can still win on cost.
 --
 -- ---------------------------------------------------------------------------
 -- Reversal
