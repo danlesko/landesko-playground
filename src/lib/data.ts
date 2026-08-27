@@ -184,6 +184,11 @@ export async function fetchBlogPage(session: Session | null, page: number) {
 
     // The page size and offset are interpolated *values*, so they arrive as bound
     // parameters rather than as query text.
+    //
+    // `migrations/0004_blogs_date_id_index.sql` indexes `(date, id)` for this
+    // ordering. Changing the sort columns or their order does not break anything,
+    // it just silently stops the index applying -- so it wants a NEW migration,
+    // not an edit to that one, which has already been run.
     const blogs = signedIn
       ? await sql`SELECT * FROM blogs ORDER BY blogs.date DESC, blogs.id DESC LIMIT ${BLOG_PAGE_SIZE} OFFSET ${offset}`
       : await sql`SELECT * FROM blogs WHERE blogs.private != TRUE ORDER BY blogs.date DESC, blogs.id DESC LIMIT ${BLOG_PAGE_SIZE} OFFSET ${offset}`;
