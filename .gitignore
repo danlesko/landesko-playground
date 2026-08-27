@@ -65,3 +65,10 @@ next-env.d.ts
 # dot-directories. Only the worktrees directory is listed, leaving room to track
 # agent config alongside the code later.
 /.claude/worktrees/
+
+# Per-machine agent permissions. This is a personal throughput choice rather than
+# a property of the project, and it can grant an agent the ability to merge, so it
+# should not arrive in anyone else's checkout by being committed. Note the
+# deliberate asymmetry with the line above: `.claude/settings.json` stays
+# trackable, so team-wide agent config can still be shared when there is some.
+/.claude/settings.local.json
