@@ -57,12 +57,10 @@ body {
    on its final keyframe instead of reverting to the pre-animation state. Nothing
    here listens for those events today; this is about not depending on that.
 
-   Covers only what CSS drives: the `animate-pulse` skeletons under blog/, and
-   rewind-ui's `transition-*` and `animate-spin`. Three animations in the app are
-   JS-driven and unaffected — the /animation p5 sketch (requestAnimationFrame),
-   the rewind-ui Modal's open slide (Web Animations API, see #60), and the
-   rewind-ui Toast used by the contact form (Framer Motion). Do not read this
-   block as full reduced-motion support. */
+   The first rule covers only what CSS drives: the `animate-pulse` skeletons under
+   blog/, and rewind-ui's `transition-*` and `animate-spin`. The second covers the
+   two JS-driven ones it can reach. The p5 sketch on /animation is neither — it
+   reads `matchMedia` itself and stops (#79). */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -71,5 +69,37 @@ body {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
     scroll-behavior: auto !important;
+  }
+
+  /* rewind-ui's Toast and Modal animate regardless of the preference, and their
+     animations are unreachable from JS: the Toast's framer-motion is *vendored*
+     inside `@rewind-ui/core/dist/node_modules/` and imported by relative path, so
+     `<MotionConfig reducedMotion="user">`, `pnpm.overrides` and resolution aliases
+     all address a package that is not the one running. The Modal uses the Web
+     Animations API directly.
+
+     CSS reaches both anyway, because the cascade puts `!important` author
+     declarations above both inline styles (how framer-motion writes transforms)
+     and animation declarations (how WAAPI does). Measured under emulated
+     `reduce` before this rule: the toast ran through 26 distinct transforms,
+     translating 224px and scaling from 0.88; the modal ran through 17, sliding
+     100px.
+
+     Two things this deliberately does NOT do:
+
+     `transform` only, never `opacity`. `[role="dialog"]` is in the DOM before the
+     modal is ever opened and stays mounted at `opacity: 0` after it closes, so
+     forcing opacity would leave a closed modal permanently on screen. Measured,
+     and it is why this rule is narrow. Suppressing the fade would also be the
+     wrong reading of the preference, which is about movement.
+
+     It does not stop the animations running, only their visible effect, and that
+     is what makes it safe. The Modal gates `useFocusTrap` on the animation's
+     `onfinish`; anything that cancelled or skipped the animation would break the
+     focus trap, which is the trap #60 warns about. The timeline still completes
+     on schedule, so the callback still fires. See #60 and #64. */
+  div:has(> [role="alert"]),
+  [role="dialog"] {
+    transform: none !important;
   }
 }
