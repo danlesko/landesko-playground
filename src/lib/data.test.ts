@@ -43,8 +43,11 @@ import { deleteBlog, fetchBlogPage, getBlog } from "@/lib/data";
  * queueing a number here would test a shape the database cannot produce.
  */
 function queueBlogPage(rows: unknown[], total: number = rows.length): void {
-  queueSqlResult(rows);
+  // Count first, then rows: `fetchBlogPage` counts before it reads, so that the
+  // offset is only ever computed for a page that exists. Queue them the other way
+  // round and the count parse gets a blog row.
   queueSqlResult([{ total: String(total) }]);
+  queueSqlResult(rows);
 }
 
 /**
@@ -158,7 +161,7 @@ describe("fetchBlogPage", () => {
 
     // This is the authorization boundary. The mock records the query text the
     // application built; it does not synthesise it.
-    const text = normalizeSql(sqlCalls()[0]!.text);
+    const text = normalizeSql(sqlCalls()[1]!.text);
     expect(text).toBe(PAGE_ROWS_ANONYMOUS);
     expect(text).toContain(PRIVATE_GUARD);
   });
@@ -168,7 +171,7 @@ describe("fetchBlogPage", () => {
 
     await fetchBlogPage(session(), 1);
 
-    const text = normalizeSql(sqlCalls()[0]!.text);
+    const text = normalizeSql(sqlCalls()[1]!.text);
     expect(text).toBe(PAGE_ROWS_SIGNED_IN);
     expect(text).not.toContain(PRIVATE_GUARD);
   });
@@ -181,7 +184,7 @@ describe("fetchBlogPage", () => {
 
     await fetchBlogPage(sessionWithoutUser(), 1);
 
-    const text = normalizeSql(sqlCalls()[0]!.text);
+    const text = normalizeSql(sqlCalls()[1]!.text);
     expect(text).toBe(PAGE_ROWS_ANONYMOUS);
     expect(text).toContain(PRIVATE_GUARD);
   });
@@ -211,12 +214,12 @@ describe("fetchBlogPage", () => {
   it("keeps the total ordering and binds the window on both branches", async () => {
     queueBlogPage([]);
     await fetchBlogPage(null, 1);
-    const anonymous = sqlCalls()[0]!;
+    const anonymous = sqlCalls()[1]!;
 
     resetSqlMock();
     queueBlogPage([]);
     await fetchBlogPage(session(), 1);
-    const authenticated = sqlCalls()[0]!;
+    const authenticated = sqlCalls()[1]!;
 
     for (const call of [anonymous, authenticated]) {
       // `blogs.id DESC` is not decoration. OFFSET only means anything against a
@@ -233,12 +236,40 @@ describe("fetchBlogPage", () => {
   });
 
   it("offsets by whole pages", async () => {
-    queueBlogPage([]);
+    // 30 posts, so page 3 exists. With the default total of 0 there would be one
+    // page, the read below would be skipped as out of range, and there would be no
+    // second call to assert on -- which is how the reordering announced itself.
+    queueBlogPage([], 30);
     await fetchBlogPage(null, 3);
 
     // Page 3 starts after two full pages, not three. An off-by-one here would
     // silently skip or repeat ten posts.
-    expect(sqlCalls()[0]!.values).toEqual([10, 20]);
+    expect(sqlCalls()[1]!.values).toEqual([10, 20]);
+  });
+
+  // The availability half of counting first. `page` comes from a query string, so
+  // before the reorder `?page=900719925474099` reached the database as
+  // `OFFSET 9007199254740980`, which Postgres answers by scanning. Now a page that
+  // cannot exist costs exactly one COUNT and no read at all.
+  it("does not read rows for a page past the end", async () => {
+    queueBlogPage([], 5);
+    const result = await fetchBlogPage(null, 900719925474099);
+
+    expect(sqlCalls()).toHaveLength(1);
+    expect(normalizeSql(sqlCalls()[0]!.text)).toBe(PAGE_COUNT_ANONYMOUS);
+    expect(result).toMatchObject({ blogs: [], total: 5, totalPages: 1 });
+  });
+
+  // A count above Number.MAX_SAFE_INTEGER coerces *successfully* to an imprecise
+  // number, and `.int()` accepts it because the rounded value is still an integer.
+  // So the one input a bigint column exists for was the one being silently
+  // rounded, which is why the schema checks explicitly.
+  it("rejects a count that cannot be represented exactly", async () => {
+    queueSqlResult([{ total: "9007199254740993" }]);
+
+    await expect(fetchBlogPage(null, 1)).rejects.toThrow(
+      "Failed to fetch blogs.",
+    );
   });
 
   it("carries the privacy guard on the count as well as the rows", async () => {
@@ -248,7 +279,7 @@ describe("fetchBlogPage", () => {
     // Two queries, and the second is an authorization surface too: an unguarded
     // count would offer an anonymous reader page links for posts they cannot see.
     expect(sqlCalls()).toHaveLength(2);
-    const count = normalizeSql(sqlCalls()[1]!.text);
+    const count = normalizeSql(sqlCalls()[0]!.text);
     expect(count).toBe(PAGE_COUNT_ANONYMOUS);
     expect(count).toContain(PRIVATE_GUARD);
   });
@@ -257,7 +288,7 @@ describe("fetchBlogPage", () => {
     queueBlogPage([]);
     await fetchBlogPage(session(), 1);
 
-    const count = normalizeSql(sqlCalls()[1]!.text);
+    const count = normalizeSql(sqlCalls()[0]!.text);
     expect(count).toBe(PAGE_COUNT_SIGNED_IN);
     expect(count).not.toContain(PRIVATE_GUARD);
   });

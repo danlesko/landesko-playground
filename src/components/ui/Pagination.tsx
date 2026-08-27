@@ -23,7 +23,15 @@ import { contentColumnClasses } from "@/components/ui/layout";
  * Every page number is listed, with no ellipsis. That is right for a blog with
  * tens of posts and wrong for one with thousands; the point at which it needs
  * windowing is the point at which someone should decide what the window looks
- * like, and guessing now would be a control nobody has seen.
+ * like, and guessing now would be a control nobody has seen. What that decision
+ * does NOT have to wait for is the row overflowing a narrow screen, so the list
+ * wraps -- an unwindowed control that wraps is merely tall, while one that does
+ * not is unreachable.
+ *
+ * Each target is padded to at least 44x44 CSS pixels. A bare number is a
+ * two-or-three character link, which is a small target for a touch screen and
+ * under both the 24px floor of WCAG 2.5.8 and the 44px this uses. Padding is the
+ * cheapest fix and changes nothing about the layout on a pointer device.
  */
 export default function Pagination({
   page,
@@ -38,10 +46,14 @@ export default function Pagination({
 
   const pages = Array.from({ length: totalPages }, (_, index) => index + 1);
 
+  // Applied to the current page as well as the links, so the row does not change
+  // height as you move through it.
+  const target = "inline-flex min-h-11 min-w-11 items-center justify-center";
+
   return (
     <nav
       aria-label="Blog pages"
-      className={`mt-6 flex items-center gap-4 ${contentColumnClasses}`}
+      className={`mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 ${contentColumnClasses}`}
     >
       {page > 1 && (
         <TextLink href={`/blog?page=${page - 1}`} className="font-bold">
@@ -49,15 +61,20 @@ export default function Pagination({
         </TextLink>
       )}
 
-      <ol className="flex items-center gap-3">
+      <ol className="flex flex-wrap items-center gap-x-1 gap-y-2">
         {pages.map((number) => (
           <li key={number}>
             {number === page ? (
-              <span aria-current="page" className="font-bold text-foreground">
+              <span
+                aria-current="page"
+                className={`${target} font-bold text-foreground`}
+              >
                 {number}
               </span>
             ) : (
-              <TextLink href={`/blog?page=${number}`}>{number}</TextLink>
+              <TextLink href={`/blog?page=${number}`} className={target}>
+                {number}
+              </TextLink>
             )}
           </li>
         ))}

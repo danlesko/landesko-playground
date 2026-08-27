@@ -34,19 +34,28 @@ export default async function BlogList({
   searchParams: Promise<{ page?: string | string[] }>;
 }) {
   // Awaited here and not in ./page.tsx on purpose. That file is a synchronous
-  // shell whose only job is to declare the Suspense boundary; making it async to
-  // read searchParams would suspend it *above* its own boundary, so the skeleton
-  // would stop streaming and the reader would get nothing until the query landed.
+  // shell whose only job is to declare the Suspense boundary, and awaiting there
+  // would delay the boundary itself until searchParams resolved -- so the
+  // fallback could not be flushed first. Stated as a delay and not as "the
+  // skeleton would never show", which is what an earlier version of this comment
+  // claimed and is too strong: searchParams is not I/O, so the delay is small.
+  // Passing the promise down keeps the shell synchronous either way.
   const { page: pageParam } = await searchParams;
   const page = parseBlogPageParam(pageParam);
 
   const session = await getSession();
-  const { blogs, total, totalPages } = await fetchBlogPage(session, page);
+  const { blogs, totalPages } = await fetchBlogPage(session, page);
 
   // A well-formed page number past the end names nothing, so it answers 404
-  // rather than an empty list. `total > 0` keeps an empty blog on page 1 showing
-  // its empty state instead of a 404 -- there is no post to be missing yet.
-  if (total > 0 && page > totalPages) notFound();
+  // rather than an empty list.
+  //
+  // No empty-blog exemption. An earlier version exempted `total === 0`, reasoning
+  // that there is no post to be past the end of -- which made an empty blog answer
+  // 200 for every page number while a five-post blog answered 404 for page 2. The
+  // same URL shape treated two ways, for no reason a reader could see.
+  // `totalPages` is floored at 1, so page 1 still renders its empty state and only
+  // page 2 and up are missing.
+  if (page > totalPages) notFound();
 
   return (
     <>

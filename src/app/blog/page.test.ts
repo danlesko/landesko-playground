@@ -94,6 +94,7 @@ describe("blog list page", () => {
       blogs: [],
       total: 0,
       totalPages: 1,
+      page: 1,
     });
 
     const tree = await BlogList({ searchParams: Promise.resolve({}) });
@@ -106,6 +107,7 @@ describe("blog list page", () => {
       blogs: [row],
       total: 1,
       totalPages: 1,
+      page: 1,
     });
 
     const tree = await BlogList({ searchParams: Promise.resolve({}) });
@@ -122,6 +124,7 @@ describe("blog list page", () => {
       blogs: [],
       total: 0,
       totalPages: 1,
+      page: 1,
     });
 
     const tree = await BlogList({ searchParams: Promise.resolve({}) });
@@ -181,6 +184,7 @@ describe("the /blog shell", () => {
       blogs: [],
       total: 5,
       totalPages: 1,
+      page: 2,
     });
 
     const error = await BlogList({
@@ -192,19 +196,68 @@ describe("the /blog shell", () => {
     );
   });
 
-  // An empty blog is not a missing page. There is no post to be past the end of,
-  // so ?page=2 shows the empty state rather than a 404 -- otherwise a fresh blog
-  // would answer 404 for a URL that will become valid the moment a post exists.
-  it("does not 404 on an empty blog, whatever the page number", async () => {
+  // Page 1 of an empty blog is a real page: it renders the empty state. This is
+  // the floor on totalPages doing its job, and it is the case that must NOT 404.
+  it("renders page 1 of an empty blog rather than a 404", async () => {
     vi.mocked(fetchBlogPage).mockResolvedValue({
       blogs: [],
       total: 0,
       totalPages: 1,
+      page: 1,
     });
 
     await expect(
-      BlogList({ searchParams: Promise.resolve({ page: "9" }) }),
+      BlogList({ searchParams: Promise.resolve({}) }),
     ).resolves.toBeTruthy();
+  });
+
+  // And page 2 of an empty blog DOES 404. An earlier version exempted empty blogs
+  // entirely, which meant a five-post blog answered 404 for page 2 while an empty
+  // one answered 200 -- the same URL shape treated two ways.
+  it("answers 404 for page 2 of an empty blog", async () => {
+    vi.mocked(fetchBlogPage).mockResolvedValue({
+      blogs: [],
+      total: 0,
+      totalPages: 1,
+      page: 2,
+    });
+
+    const error = await BlogList({
+      searchParams: Promise.resolve({ page: "2" }),
+    }).catch((thrown: unknown) => thrown);
+
+    expect((error as { digest?: unknown }).digest).toBe(
+      "NEXT_HTTP_ERROR_FALLBACK;404",
+    );
+  });
+
+  // Nothing else asserted that the parsed page actually reaches the query. The
+  // parser and the reader were each tested in isolation, so a BlogList that always
+  // asked for page 1 would have passed both.
+  it("asks the query for the page the URL named", async () => {
+    vi.mocked(fetchBlogPage).mockResolvedValue({
+      blogs: [],
+      total: 30,
+      totalPages: 3,
+      page: 3,
+    });
+
+    await BlogList({ searchParams: Promise.resolve({ page: "3" }) });
+
+    expect(vi.mocked(fetchBlogPage).mock.calls[0]?.[1]).toBe(3);
+  });
+
+  it("asks for page 1 when the URL names a malformed page", async () => {
+    vi.mocked(fetchBlogPage).mockResolvedValue({
+      blogs: [],
+      total: 30,
+      totalPages: 3,
+      page: 1,
+    });
+
+    await BlogList({ searchParams: Promise.resolve({ page: "abc" }) });
+
+    expect(vi.mocked(fetchBlogPage).mock.calls[0]?.[1]).toBe(1);
   });
 
   it("renders no rows itself, which is why the other suites import BlogList", () => {
@@ -212,6 +265,7 @@ describe("the /blog shell", () => {
       blogs: [row],
       total: 1,
       totalPages: 1,
+      page: 1,
     });
 
     expect(

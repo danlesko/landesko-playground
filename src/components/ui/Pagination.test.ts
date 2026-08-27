@@ -70,10 +70,16 @@ describe("Pagination", () => {
   it("points Previous and Next at the adjacent pages", () => {
     const html = render(3, 5);
 
-    // Asserted as a set membership rather than by position, so adding a page
-    // number between them does not rewrite this test.
-    expect(hrefs(html)).toContain("/blog?page=2");
-    expect(hrefs(html)).toContain("/blog?page=4");
+    // Asserted on the anchors carrying those labels, not on the href list. The
+    // first version of this test checked that `/blog?page=2` and `/blog?page=4`
+    // appeared *somewhere*, which on page 3 of 5 is true of the page-number links
+    // regardless -- so it passed with Previous and Next deleted entirely. Vacuous,
+    // and codex caught it.
+    const labelled = (label: string) =>
+      new RegExp(`<a[^>]*href="([^"]*)"[^>]*>${label}</a>`).exec(html)?.[1];
+
+    expect(labelled("Previous")).toBe("/blog?page=2");
+    expect(labelled("Next")).toBe("/blog?page=4");
   });
 
   it("is a named landmark, so it is distinguishable from the site navigation", () => {

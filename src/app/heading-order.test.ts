@@ -76,6 +76,7 @@ describe.each([
         blogs: [row, { ...row, id: "b" }],
         total: 2,
         totalPages: 1,
+        page: 1,
       });
       return BlogList({ searchParams: Promise.resolve({}) });
     },

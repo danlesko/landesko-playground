@@ -97,13 +97,32 @@ export const BLOG_PAGE_SIZE = 10;
 /**
  * `COUNT(*)` comes back as a Postgres `bigint`, which the driver hands over as a
  * *string* rather than a number — 8 bytes does not fit a JS number, so it refuses
- * to guess. `z.coerce` rather than `Number()` so a driver that ever returned
- * something unparseable fails here with the other parse failures instead of
- * silently producing `NaN` and, through the `Math.ceil` below, a page count of
- * `NaN`.
+ * to guess. Parsed rather than passed through `Number()` so an unparseable value
+ * fails here with the other parse failures instead of silently producing `NaN`
+ * and, through `Math.ceil`, a page count of `NaN`.
+ *
+ * `z.coerce.number()` alone was not enough, and the reason is the whole point of
+ * the column being a bigint: a count above `Number.MAX_SAFE_INTEGER` coerces
+ * *successfully* to an imprecise number, and `.int()` accepts it because the
+ * rounded value is still an integer. So the one input the wider type exists for
+ * would have been silently rounded. Checked explicitly instead. It is
+ * unreachable for a blog and costs one comparison.
  */
 const CountRowSchema = z.object({
-  total: z.coerce.number().int().nonnegative(),
+  total: z.union([z.string(), z.number()]).transform((value, ctx) => {
+    const total = Number(value);
+    if (!Number.isSafeInteger(total) || total < 0) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        // No value in the message: `loggable` copies `path` and `code`, and for a
+        // custom issue it copies neither `received` nor `message`, but a row must
+        // not be one edit away from the log either way.
+        message: "count is not a safe non-negative integer",
+      });
+      return z.NEVER;
+    }
+    return total;
+  }),
 });
 
 /**
@@ -129,20 +148,19 @@ export async function fetchBlogPage(session: Session | null, page: number) {
   // types, so a session object carrying no user would otherwise be read as
   // signed in here while actions.ts and the UI treat it as anonymous.
   const signedIn = Boolean(session?.user);
-  const offset = (page - 1) * BLOG_PAGE_SIZE;
 
   try {
-    // Separate tagged templates rather than an interpolated predicate, so each
-    // query text stays a literal the driver parameterises. The page size and
-    // offset are interpolated *values*, so they arrive as bound parameters.
-    const blogs = signedIn
-      ? await sql`SELECT * FROM blogs ORDER BY blogs.date DESC, blogs.id DESC LIMIT ${BLOG_PAGE_SIZE} OFFSET ${offset}`
-      : await sql`SELECT * FROM blogs WHERE blogs.private != TRUE ORDER BY blogs.date DESC, blogs.id DESC LIMIT ${BLOG_PAGE_SIZE} OFFSET ${offset}`;
-
-    // A second query, which is the cost #42 predicted: "any real fix adds a
-    // second query shape". It has to carry the same privacy predicate as the
-    // read above, or an anonymous reader is offered pages that are empty for
-    // them.
+    // The count runs FIRST, and that ordering is load-bearing rather than
+    // stylistic. `page` comes from a query string, so before this the offset was
+    // whatever an unbounded page number multiplied out to -- `?page=900719925474099`
+    // asked the database to skip 9e15 rows, which it answers by scanning. Knowing
+    // the total first means the offset below is only ever computed for a page that
+    // exists, so it is bounded by the table.
+    //
+    // It has to carry the same privacy predicate as the read, or an anonymous
+    // reader is offered page links for posts they cannot see. Two separate tagged
+    // templates rather than an interpolated predicate, so each query text stays a
+    // literal the driver parameterises.
     const counted = signedIn
       ? await sql`SELECT COUNT(*) AS total FROM blogs`
       : await sql`SELECT COUNT(*) AS total FROM blogs WHERE blogs.private != TRUE`;
@@ -153,12 +171,28 @@ export async function fetchBlogPage(session: Session | null, page: number) {
     // the `ZodError`; see the note there for why that is not optional.
     const { total } = CountRowSchema.parse(counted.rows[0]);
 
+    // Floored at 1 so an empty blog still has a page 1 to be on, rather than
+    // "page 1 of 0".
+    const totalPages = Math.max(1, Math.ceil(total / BLOG_PAGE_SIZE));
+
+    // Out of range, so there is nothing to read. Returning it rather than
+    // throwing keeps the 404 decision in the component, where the router is: this
+    // module is also called from tests that have no router.
+    if (page > totalPages) return { blogs: [], total, totalPages, page };
+
+    const offset = (page - 1) * BLOG_PAGE_SIZE;
+
+    // The page size and offset are interpolated *values*, so they arrive as bound
+    // parameters rather than as query text.
+    const blogs = signedIn
+      ? await sql`SELECT * FROM blogs ORDER BY blogs.date DESC, blogs.id DESC LIMIT ${BLOG_PAGE_SIZE} OFFSET ${offset}`
+      : await sql`SELECT * FROM blogs WHERE blogs.private != TRUE ORDER BY blogs.date DESC, blogs.id DESC LIMIT ${BLOG_PAGE_SIZE} OFFSET ${offset}`;
+
     return {
       blogs: z.array(BlogRowSchema).parse(blogs.rows),
       total,
-      // Floored at 1 so an empty blog still has a page 1 to be on, rather than
-      // "page 1 of 0".
-      totalPages: Math.max(1, Math.ceil(total / BLOG_PAGE_SIZE)),
+      totalPages,
+      page,
     };
   } catch (error) {
     console.error("Failed to fetch blogs:", loggable(error));
