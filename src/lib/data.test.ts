@@ -13,6 +13,7 @@ import {
 
 import {
   normalizeSql,
+  sqlCalls,
   onlySqlCall,
   queueSqlResult,
   failNextSqlCalls,
@@ -33,7 +34,18 @@ vi.mock("next/cache", async () => {
 
 // `vi.mock` is hoisted above this import, so `data.ts` receives the mocks.
 import { sql } from "@vercel/postgres";
-import { deleteBlog, fetchRecentBlogs, getBlog } from "@/lib/data";
+import { deleteBlog, fetchBlogPage, getBlog } from "@/lib/data";
+
+/**
+ * The two results `fetchBlogPage` consumes, in order: the page of rows, then the
+ * count. `total` is queued as a *string* because that is what the driver returns
+ * for `COUNT(*)` -- it is a Postgres bigint, which does not fit a JS number -- so
+ * queueing a number here would test a shape the database cannot produce.
+ */
+function queueBlogPage(rows: unknown[], total: number = rows.length): void {
+  queueSqlResult(rows);
+  queueSqlResult([{ total: String(total) }]);
+}
 
 /**
  * The clause that keeps private posts away from anonymous visitors.
@@ -46,10 +58,16 @@ import { deleteBlog, fetchRecentBlogs, getBlog } from "@/lib/data";
  */
 const PRIVATE_GUARD = "private != TRUE";
 
-const RECENT_BLOGS_ANONYMOUS =
-  "SELECT * FROM blogs WHERE blogs.private != TRUE ORDER BY blogs.date DESC LIMIT 10";
-const RECENT_BLOGS_SIGNED_IN =
-  "SELECT * FROM blogs ORDER BY blogs.date DESC LIMIT 10";
+const PAGE_ROWS_ANONYMOUS =
+  "SELECT * FROM blogs WHERE blogs.private != TRUE ORDER BY blogs.date DESC, blogs.id DESC LIMIT $1 OFFSET $2";
+const PAGE_ROWS_SIGNED_IN =
+  "SELECT * FROM blogs ORDER BY blogs.date DESC, blogs.id DESC LIMIT $1 OFFSET $2";
+// The count is a second authorization surface, not bookkeeping: if it dropped the
+// guard, an anonymous reader would be offered page links for posts they cannot
+// see, and every one of those pages would be empty for them.
+const PAGE_COUNT_ANONYMOUS =
+  "SELECT COUNT(*) AS total FROM blogs WHERE blogs.private != TRUE";
+const PAGE_COUNT_SIGNED_IN = "SELECT COUNT(*) AS total FROM blogs";
 const GET_BLOG_ANONYMOUS =
   "SELECT * FROM blogs WHERE id=$1 AND private != TRUE";
 const GET_BLOG_SIGNED_IN = "SELECT * FROM blogs WHERE id=$1";
@@ -132,26 +150,26 @@ it("resolves `sql` to the mock, so no query can reach a real database", () => {
   expect(vi.isMockFunction(sql)).toBe(true);
 });
 
-describe("fetchRecentBlogs", () => {
+describe("fetchBlogPage", () => {
   it("issues exactly the private-filtered query when there is no session", async () => {
-    queueSqlResult([]);
+    queueBlogPage([]);
 
-    await fetchRecentBlogs(null);
+    await fetchBlogPage(null, 1);
 
     // This is the authorization boundary. The mock records the query text the
     // application built; it does not synthesise it.
-    const text = normalizeSql(onlySqlCall().text);
-    expect(text).toBe(RECENT_BLOGS_ANONYMOUS);
+    const text = normalizeSql(sqlCalls()[0]!.text);
+    expect(text).toBe(PAGE_ROWS_ANONYMOUS);
     expect(text).toContain(PRIVATE_GUARD);
   });
 
   it("does not filter private posts for a signed-in session", async () => {
-    queueSqlResult([]);
+    queueBlogPage([]);
 
-    await fetchRecentBlogs(session());
+    await fetchBlogPage(session(), 1);
 
-    const text = normalizeSql(onlySqlCall().text);
-    expect(text).toBe(RECENT_BLOGS_SIGNED_IN);
+    const text = normalizeSql(sqlCalls()[0]!.text);
+    expect(text).toBe(PAGE_ROWS_SIGNED_IN);
     expect(text).not.toContain(PRIVATE_GUARD);
   });
 
@@ -159,12 +177,12 @@ describe("fetchRecentBlogs", () => {
   // must agree, so a session object with no user fails closed to the
   // private-filtered query rather than being treated as signed in.
   it("treats a session that carries no user as anonymous", async () => {
-    queueSqlResult([]);
+    queueBlogPage([]);
 
-    await fetchRecentBlogs(sessionWithoutUser());
+    await fetchBlogPage(sessionWithoutUser(), 1);
 
-    const text = normalizeSql(onlySqlCall().text);
-    expect(text).toBe(RECENT_BLOGS_ANONYMOUS);
+    const text = normalizeSql(sqlCalls()[0]!.text);
+    expect(text).toBe(PAGE_ROWS_ANONYMOUS);
     expect(text).toContain(PRIVATE_GUARD);
   });
 
@@ -183,25 +201,81 @@ describe("fetchRecentBlogs", () => {
         private: false,
       },
     ];
-    queueSqlResult(rows);
+    queueBlogPage(rows);
 
-    await expect(fetchRecentBlogs(null)).resolves.toEqual(rows);
+    await expect(fetchBlogPage(null, 1)).resolves.toMatchObject({
+      blogs: rows,
+    });
   });
 
-  it("keeps the LIMIT and the newest-first ordering on both branches", async () => {
-    queueSqlResult([]);
-    await fetchRecentBlogs(null);
-    const anonymous = normalizeSql(onlySqlCall().text);
+  it("keeps the total ordering and binds the window on both branches", async () => {
+    queueBlogPage([]);
+    await fetchBlogPage(null, 1);
+    const anonymous = sqlCalls()[0]!;
 
     resetSqlMock();
-    queueSqlResult([]);
-    await fetchRecentBlogs(session());
-    const authenticated = normalizeSql(onlySqlCall().text);
+    queueBlogPage([]);
+    await fetchBlogPage(session(), 1);
+    const authenticated = sqlCalls()[0]!;
 
-    for (const text of [anonymous, authenticated]) {
-      expect(text).toContain("ORDER BY blogs.date DESC");
-      expect(text).toContain("LIMIT 10");
+    for (const call of [anonymous, authenticated]) {
+      // `blogs.id DESC` is not decoration. OFFSET only means anything against a
+      // total order: with ties on `date` alone the database may return them in
+      // any order per query, so one post could appear on two pages or none.
+      expect(normalizeSql(call.text)).toContain(
+        "ORDER BY blogs.date DESC, blogs.id DESC",
+      );
+      // The window arrives as bound parameters rather than as literals, so the
+      // text no longer carries the numbers and the values are where to assert.
+      expect(normalizeSql(call.text)).toContain("LIMIT $1 OFFSET $2");
+      expect(call.values).toEqual([10, 0]);
     }
+  });
+
+  it("offsets by whole pages", async () => {
+    queueBlogPage([]);
+    await fetchBlogPage(null, 3);
+
+    // Page 3 starts after two full pages, not three. An off-by-one here would
+    // silently skip or repeat ten posts.
+    expect(sqlCalls()[0]!.values).toEqual([10, 20]);
+  });
+
+  it("carries the privacy guard on the count as well as the rows", async () => {
+    queueBlogPage([]);
+    await fetchBlogPage(null, 1);
+
+    // Two queries, and the second is an authorization surface too: an unguarded
+    // count would offer an anonymous reader page links for posts they cannot see.
+    expect(sqlCalls()).toHaveLength(2);
+    const count = normalizeSql(sqlCalls()[1]!.text);
+    expect(count).toBe(PAGE_COUNT_ANONYMOUS);
+    expect(count).toContain(PRIVATE_GUARD);
+  });
+
+  it("counts every row for a signed-in reader", async () => {
+    queueBlogPage([]);
+    await fetchBlogPage(session(), 1);
+
+    const count = normalizeSql(sqlCalls()[1]!.text);
+    expect(count).toBe(PAGE_COUNT_SIGNED_IN);
+    expect(count).not.toContain(PRIVATE_GUARD);
+  });
+
+  it("derives the page count from the total, flooring at one page", async () => {
+    queueBlogPage([], 21);
+    await expect(fetchBlogPage(null, 1)).resolves.toMatchObject({
+      total: 21,
+      totalPages: 3,
+    });
+
+    resetSqlMock();
+    // An empty blog still has a page 1 to be on, rather than "page 1 of 0".
+    queueBlogPage([], 0);
+    await expect(fetchBlogPage(null, 1)).resolves.toMatchObject({
+      total: 0,
+      totalPages: 1,
+    });
   });
 
   // Driven from one table over both session states: when the two branches each
@@ -221,7 +295,7 @@ describe("fetchRecentBlogs", () => {
       // One invocation, awaited twice. Calling the subject a second time would
       // reject again and log again, which is what makes the log count below
       // exact rather than a restatement of how this test is written.
-      const rejected = fetchRecentBlogs(makeSession());
+      const rejected = fetchBlogPage(makeSession(), 1);
       await expect(rejected).rejects.toThrow("Failed to fetch blogs.");
       await expect(rejected).rejects.not.toThrow(/hunter2/);
 
@@ -255,7 +329,7 @@ describe("getBlog", () => {
     expect(text).not.toContain(PRIVATE_GUARD);
   });
 
-  // Same predicate as above; see the note in the fetchRecentBlogs block.
+  // Same predicate as above; see the note in the fetchBlogPage block.
   it("treats a session that carries no user as anonymous", async () => {
     queueSqlResult([]);
 
@@ -284,7 +358,7 @@ describe("getBlog", () => {
   });
 
   it("returns the first row when one matched", async () => {
-    // See the note on the equivalent row in fetchRecentBlogs.
+    // See the note on the equivalent row in fetchBlogPage.
     const row = {
       id,
       title: "one",
@@ -297,7 +371,7 @@ describe("getBlog", () => {
     await expect(getBlog(null, id)).resolves.toEqual(row);
   });
 
-  // Same table as fetchRecentBlogs; see the note there.
+  // Same table as fetchBlogPage; see the note there.
   it.each([
     ["anonymous", (): Session | null => null],
     ["signed in", (): Session | null => session()],
@@ -313,7 +387,7 @@ describe("getBlog", () => {
       await expect(rejected).rejects.toThrow("Failed to fetch blog.");
       await expect(rejected).rejects.not.toThrow(/password/);
 
-      // Note the prefix differs by one character from the fetchRecentBlogs one,
+      // Note the prefix differs by one character from the fetchBlogPage one,
       // so a copy-paste of the wrong message is caught here rather than
       // silently logging the wrong operation.
       expectLoggedExactly("Failed to fetch blog:", driverError);
@@ -343,9 +417,11 @@ describe("blog row validation", () => {
   /** The valid row is asserted to pass first, so each rejection below is
    * attributable to the one field it breaks rather than to the fixture. */
   it("accepts the row the driver actually produces", async () => {
-    queueSqlResult([validRow()]);
+    queueBlogPage([validRow()]);
 
-    await expect(fetchRecentBlogs(session())).resolves.toEqual([validRow()]);
+    await expect(fetchBlogPage(session(), 1)).resolves.toMatchObject({
+      blogs: [validRow()],
+    });
   });
 
   it.each([
@@ -375,9 +451,9 @@ describe("blog row validation", () => {
     // annotation — would keep the whole suite green.
     ["content arriving as a number", "content", 42],
   ])("rejects a row with %s", async (_label, field, value) => {
-    queueSqlResult([{ ...validRow(), [field]: value }]);
+    queueBlogPage([{ ...validRow(), [field]: value }]);
 
-    await expect(fetchRecentBlogs(session())).rejects.toThrow(
+    await expect(fetchBlogPage(session(), 1)).rejects.toThrow(
       "Failed to fetch blogs.",
     );
   });
@@ -386,20 +462,20 @@ describe("blog row validation", () => {
   // looked at `rows[0]` would satisfy. This one is the reason the list read uses
   // `z.array(...)` rather than parsing a single row and trusting the rest.
   it("rejects a bad row that is not the first one", async () => {
-    queueSqlResult([validRow(), { ...validRow(), date: "2026-01-01" }]);
+    queueBlogPage([validRow(), { ...validRow(), date: "2026-01-01" }]);
 
-    await expect(fetchRecentBlogs(session())).rejects.toThrow(
+    await expect(fetchBlogPage(session(), 1)).rejects.toThrow(
       "Failed to fetch blogs.",
     );
   });
 
   it("strips an undeclared column from a row that is not the first one", async () => {
-    queueSqlResult([
+    queueBlogPage([
       validRow(),
       { ...validRow(), author_email: "someone@example.com" },
     ]);
 
-    const rows = await fetchRecentBlogs(session());
+    const { blogs: rows } = await fetchBlogPage(session(), 1);
 
     expect(rows).toEqual([validRow(), validRow()]);
   });
@@ -409,9 +485,9 @@ describe("blog row validation", () => {
     // column to `validRow` cannot leave this case quietly testing an old shape.
     const withoutPrivate: Partial<ReturnType<typeof validRow>> = validRow();
     delete withoutPrivate.private;
-    queueSqlResult([withoutPrivate]);
+    queueBlogPage([withoutPrivate]);
 
-    await expect(fetchRecentBlogs(session())).rejects.toThrow(
+    await expect(fetchBlogPage(session(), 1)).rejects.toThrow(
       "Failed to fetch blogs.",
     );
   });
@@ -430,8 +506,8 @@ describe("blog row validation", () => {
   }
 
   it("logs which field failed, under the same prefix as a query failure", async () => {
-    queueSqlResult([{ ...validRow(), date: "2026-01-01" }]);
-    await expect(fetchRecentBlogs(session())).rejects.toThrow();
+    queueBlogPage([{ ...validRow(), date: "2026-01-01" }]);
+    await expect(fetchBlogPage(session(), 1)).rejects.toThrow();
 
     const logged = loggedPayload("Failed to fetch blogs:");
     expect(JSON.stringify(logged)).toContain('"path":[0,"date"]');
@@ -447,9 +523,9 @@ describe("blog row validation", () => {
    * an un-inspectable payload makes this reject with the wrong error.
    */
   it("logs something Node can actually format, so the generic error survives", async () => {
-    queueSqlResult([{ ...validRow(), date: "2026-01-01" }]);
+    queueBlogPage([{ ...validRow(), date: "2026-01-01" }]);
 
-    await expect(fetchRecentBlogs(session())).rejects.toThrow(
+    await expect(fetchBlogPage(session(), 1)).rejects.toThrow(
       "Failed to fetch blogs.",
     );
 
@@ -464,8 +540,8 @@ describe("blog row validation", () => {
   // value for some issue types, so this holds because of the reduction rather
   // than because ZodError is inherently value-free.
   it("keeps the post's content out of what it logs", async () => {
-    queueSqlResult([{ ...validRow(), date: "2026-01-01" }]);
-    await expect(fetchRecentBlogs(session())).rejects.toThrow();
+    queueBlogPage([{ ...validRow(), date: "2026-01-01" }]);
+    await expect(fetchBlogPage(session(), 1)).rejects.toThrow();
 
     const logged = loggedPayload("Failed to fetch blogs:");
     // Both serialisers, because JSON.stringify drops keys that `inspect` shows.
@@ -477,9 +553,9 @@ describe("blog row validation", () => {
   // component, so anything left on them is serialised into the page. A column
   // added to the table must not ride along.
   it("strips a column the type does not declare instead of passing it on", async () => {
-    queueSqlResult([{ ...validRow(), author_email: "someone@example.com" }]);
+    queueBlogPage([{ ...validRow(), author_email: "someone@example.com" }]);
 
-    const rows = await fetchRecentBlogs(session());
+    const { blogs: rows } = await fetchBlogPage(session(), 1);
 
     expect(rows[0]).toEqual(validRow());
     expect(Object.keys(rows[0] ?? {})).not.toContain("author_email");
@@ -553,7 +629,15 @@ describe("deleteBlog", () => {
  * leave an export covered on one path only.
  */
 const EVERY_EXPORT: [string, () => Promise<unknown>][] = [
-  ["fetchRecentBlogs", () => fetchRecentBlogs(null)],
+  [
+    "fetchBlogPage",
+    () => {
+      // Two results, because it issues two queries; an unqueued count fails to
+      // parse and the call rejects before the assertion is reached.
+      queueBlogPage([]);
+      return fetchBlogPage(null, 1);
+    },
+  ],
   ["getBlog", () => getBlog(null, "11111111-1111-4111-8111-111111111111")],
   ["deleteBlog", () => deleteBlog("22222222-2222-4222-8222-222222222222")],
 ];

@@ -10,17 +10,17 @@ vi.mock("@/auth", async () => {
 });
 
 vi.mock("@/lib/data", () => ({
-  fetchRecentBlogs: vi.fn(),
+  fetchBlogPage: vi.fn(),
   getBlog: vi.fn(),
 }));
 vi.mock("@/lib/actions", () => ({ deleteBlogPost: vi.fn() }));
 
-import { fetchRecentBlogs, getBlog } from "@/lib/data";
+import { fetchBlogPage, getBlog } from "@/lib/data";
 // `blog/BlogList` and not `blog/page`. `blog/page.tsx` is a synchronous shell
 // whose only job is to declare a `<Suspense>`, so `renderToStaticMarkup` on it
 // renders the *fallback*: this file used to import it under the name `BlogList`,
 // which kept compiling and kept passing while asserting the heading order of the
-// skeleton. Measured: the markup contained no row title and `fetchRecentBlogs`
+// skeleton. Measured: the markup contained no row title and the page query
 // was never called, so the signed-in case below rendered zero of the controls it
 // exists to check. The shell's own fallback is covered in blog/page.test.ts.
 import BlogList from "@/app/blog/BlogList";
@@ -63,7 +63,7 @@ function firstSkip(levels: number[]): string | undefined {
 
 beforeEach(() => {
   resetAuthMock();
-  vi.mocked(fetchRecentBlogs).mockReset();
+  vi.mocked(fetchBlogPage).mockReset();
   vi.mocked(getBlog).mockReset();
   auth.mockResolvedValue(null);
 });
@@ -72,8 +72,12 @@ describe.each([
   {
     route: "/blog",
     render: async () => {
-      vi.mocked(fetchRecentBlogs).mockResolvedValue([row, { ...row, id: "b" }]);
-      return BlogList();
+      vi.mocked(fetchBlogPage).mockResolvedValue({
+        blogs: [row, { ...row, id: "b" }],
+        total: 2,
+        totalPages: 1,
+      });
+      return BlogList({ searchParams: Promise.resolve({}) });
     },
   },
   {

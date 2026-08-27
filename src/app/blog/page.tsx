@@ -13,11 +13,19 @@ export const metadata: Metadata = {
 // flush the shell before that route's layout could set a 404. A `<Suspense>`
 // declared inside a sibling `page.tsx` creates no boundary over a child segment,
 // so the list keeps streaming and the detail route keeps its status.
-export default function Blog() {
+// The searchParams promise is passed down rather than awaited here, which keeps
+// this shell synchronous. Awaiting it would suspend this component above its own
+// <Suspense>, and the fallback of a boundary you are rendering cannot cover you --
+// so the skeleton would never show.
+export default function Blog({
+  searchParams,
+}: {
+  searchParams: Promise<{ page?: string | string[] }>;
+}) {
   return (
     <div>
       <Suspense fallback={<BlogListSkeleton />}>
-        <BlogList />
+        <BlogList searchParams={searchParams} />
       </Suspense>
     </div>
   );

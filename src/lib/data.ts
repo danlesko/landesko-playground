@@ -90,22 +90,76 @@ function loggable(error: unknown): unknown {
   };
 }
 
-export async function fetchRecentBlogs(session: Session | null) {
+/** Rows per page. Exported because the list skeleton renders this many
+ *  placeholders and drifting the two apart is a layout shift. */
+export const BLOG_PAGE_SIZE = 10;
+
+/**
+ * `COUNT(*)` comes back as a Postgres `bigint`, which the driver hands over as a
+ * *string* rather than a number — 8 bytes does not fit a JS number, so it refuses
+ * to guess. `z.coerce` rather than `Number()` so a driver that ever returned
+ * something unparseable fails here with the other parse failures instead of
+ * silently producing `NaN` and, through the `Math.ceil` below, a page count of
+ * `NaN`.
+ */
+const CountRowSchema = z.object({
+  total: z.coerce.number().int().nonnegative(),
+});
+
+/**
+ * One page of posts, newest first, plus how many pages there are.
+ *
+ * `ORDER BY date DESC, id DESC` and not `date DESC` alone. `OFFSET` only means
+ * anything against a *total* order: with ties on `date` the database may return
+ * them in any order per query, so two posts sharing a timestamp could both
+ * appear on page 1 and page 2, or neither. `id` is the tiebreak because it is the
+ * primary key, so the pair is unique by construction and the order is total.
+ *
+ * That tiebreak is the substantive half of the cursor pagination #42 raises.
+ * The other half does not survive numbered pages: a cursor cannot address "page
+ * 5", which is what a page number *is*. So this is offset pagination with a
+ * deterministic sort, and the residual weakness is inherent rather than
+ * overlooked — publishing a post while someone reads page 2 shifts a row from
+ * page 1 down into it. For a personal blog that is the right trade against
+ * losing shareable page URLs.
+ */
+export async function fetchBlogPage(session: Session | null, page: number) {
   noStore();
   // `session?.user`, not `session`: `Session.user` is optional in @auth/core's
   // types, so a session object carrying no user would otherwise be read as
   // signed in here while actions.ts and the UI treat it as anonymous.
+  const signedIn = Boolean(session?.user);
+  const offset = (page - 1) * BLOG_PAGE_SIZE;
+
   try {
-    // Two separate tagged templates rather than an interpolated predicate, so
-    // each query text stays a literal the driver parameterises.
-    const blogs = session?.user
-      ? await sql`SELECT * FROM blogs ORDER BY blogs.date DESC LIMIT 10`
-      : await sql`SELECT * FROM blogs WHERE blogs.private != TRUE ORDER BY blogs.date DESC LIMIT 10`;
+    // Separate tagged templates rather than an interpolated predicate, so each
+    // query text stays a literal the driver parameterises. The page size and
+    // offset are interpolated *values*, so they arrive as bound parameters.
+    const blogs = signedIn
+      ? await sql`SELECT * FROM blogs ORDER BY blogs.date DESC, blogs.id DESC LIMIT ${BLOG_PAGE_SIZE} OFFSET ${offset}`
+      : await sql`SELECT * FROM blogs WHERE blogs.private != TRUE ORDER BY blogs.date DESC, blogs.id DESC LIMIT ${BLOG_PAGE_SIZE} OFFSET ${offset}`;
+
+    // A second query, which is the cost #42 predicted: "any real fix adds a
+    // second query shape". It has to carry the same privacy predicate as the
+    // read above, or an anonymous reader is offered pages that are empty for
+    // them.
+    const counted = signedIn
+      ? await sql`SELECT COUNT(*) AS total FROM blogs`
+      : await sql`SELECT COUNT(*) AS total FROM blogs WHERE blogs.private != TRUE`;
+
     // Inside the existing `try` on purpose: a failed parse takes the same route
     // as a failed query — logged server-side, reported to the reader as the
     // generic message. What reaches the log is the reduction in `loggable`, not
     // the `ZodError`; see the note there for why that is not optional.
-    return z.array(BlogRowSchema).parse(blogs.rows);
+    const { total } = CountRowSchema.parse(counted.rows[0]);
+
+    return {
+      blogs: z.array(BlogRowSchema).parse(blogs.rows),
+      total,
+      // Floored at 1 so an empty blog still has a page 1 to be on, rather than
+      // "page 1 of 0".
+      totalPages: Math.max(1, Math.ceil(total / BLOG_PAGE_SIZE)),
+    };
   } catch (error) {
     console.error("Failed to fetch blogs:", loggable(error));
     throw new Error("Failed to fetch blogs.");
