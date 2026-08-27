@@ -15,10 +15,10 @@ vi.mock("@/auth", async () => {
   return { auth: authMock };
 });
 
-vi.mock("@/lib/data", () => ({ fetchRecentBlogs: vi.fn() }));
+vi.mock("@/lib/data", () => ({ fetchBlogPage: vi.fn(), BLOG_PAGE_SIZE: 10 }));
 vi.mock("@/lib/actions", () => ({ deleteBlogPost: vi.fn() }));
 
-import { fetchRecentBlogs } from "@/lib/data";
+import { fetchBlogPage } from "@/lib/data";
 import BlogBodyAbbr from "@/components/BlogBodyAbbr";
 // ./BlogList and not ./page: `page.tsx` is a synchronous shell that only
 // declares the Suspense boundary, so calling it renders no rows and every
@@ -84,23 +84,33 @@ function countElements(node: ReactNode, type: unknown): number {
 
 beforeEach(() => {
   resetAuthMock();
-  vi.mocked(fetchRecentBlogs).mockReset();
+  vi.mocked(fetchBlogPage).mockReset();
   auth.mockResolvedValue(null);
 });
 
 describe("blog list page", () => {
   it("says so when there are no posts to show", async () => {
-    vi.mocked(fetchRecentBlogs).mockResolvedValue([]);
+    vi.mocked(fetchBlogPage).mockResolvedValue({
+      blogs: [],
+      total: 0,
+      totalPages: 1,
+      page: 1,
+    });
 
-    const tree = await BlogList();
+    const tree = await BlogList({ searchParams: Promise.resolve({}) });
     expect(countElements(tree, BlogBodyAbbr)).toBe(0);
     expect(textOf(tree)).toContain(EMPTY_MESSAGE);
   });
 
   it("does not say so when there are posts", async () => {
-    vi.mocked(fetchRecentBlogs).mockResolvedValue([row]);
+    vi.mocked(fetchBlogPage).mockResolvedValue({
+      blogs: [row],
+      total: 1,
+      totalPages: 1,
+      page: 1,
+    });
 
-    const tree = await BlogList();
+    const tree = await BlogList({ searchParams: Promise.resolve({}) });
     // The row count is the load-bearing half. `not.toContain` alone is
     // satisfied by an empty render, so on its own it passed even when this
     // called a shell that rendered no list at all.
@@ -110,19 +120,26 @@ describe("blog list page", () => {
 
   it("shows the same empty message to a signed-in viewer", async () => {
     auth.mockResolvedValue(signedInSession());
-    vi.mocked(fetchRecentBlogs).mockResolvedValue([]);
+    vi.mocked(fetchBlogPage).mockResolvedValue({
+      blogs: [],
+      total: 0,
+      totalPages: 1,
+      page: 1,
+    });
 
-    const tree = await BlogList();
+    const tree = await BlogList({ searchParams: Promise.resolve({}) });
     expect(countElements(tree, BlogBodyAbbr)).toBe(0);
     expect(textOf(tree)).toContain(EMPTY_MESSAGE);
   });
 
   it("keeps a fetch failure out of the empty state", async () => {
-    vi.mocked(fetchRecentBlogs).mockRejectedValue(
+    vi.mocked(fetchBlogPage).mockRejectedValue(
       new Error("Failed to fetch blogs."),
     );
 
-    await expect(BlogList()).rejects.toThrow("Failed to fetch blogs.");
+    await expect(
+      BlogList({ searchParams: Promise.resolve({}) }),
+    ).rejects.toThrow("Failed to fetch blogs.");
   });
 });
 
@@ -146,7 +163,7 @@ describe("the /blog shell", () => {
   };
 
   it("declares a Suspense boundary whose fallback is the skeleton", () => {
-    const suspense = findSuspense(Blog());
+    const suspense = findSuspense(Blog({ searchParams: Promise.resolve({}) }));
 
     expect(suspense).toBeDefined();
     const { fallback, children } = suspense!.props as {
@@ -159,11 +176,102 @@ describe("the /blog shell", () => {
     expect(children.type).toBe(BlogList);
   });
 
-  it("renders no rows itself, which is why the other suites import BlogList", () => {
-    vi.mocked(fetchRecentBlogs).mockResolvedValue([row]);
+  // `next/navigation` is deliberately NOT mocked, following blog/[id]/page.test.ts:
+  // the claim is that this produces the digest Next itself routes to a 404, and a
+  // stand-in would only prove the stand-in was called.
+  it("answers 404 for a well-formed page number past the end", async () => {
+    vi.mocked(fetchBlogPage).mockResolvedValue({
+      blogs: [],
+      total: 5,
+      totalPages: 1,
+      page: 2,
+    });
 
-    expect(countElements(Blog(), BlogBodyAbbr)).toBe(0);
-    expect(vi.mocked(fetchRecentBlogs)).not.toHaveBeenCalled();
+    const error = await BlogList({
+      searchParams: Promise.resolve({ page: "2" }),
+    }).catch((thrown: unknown) => thrown);
+
+    expect((error as { digest?: unknown }).digest).toBe(
+      "NEXT_HTTP_ERROR_FALLBACK;404",
+    );
+  });
+
+  // Page 1 of an empty blog is a real page: it renders the empty state. This is
+  // the floor on totalPages doing its job, and it is the case that must NOT 404.
+  it("renders page 1 of an empty blog rather than a 404", async () => {
+    vi.mocked(fetchBlogPage).mockResolvedValue({
+      blogs: [],
+      total: 0,
+      totalPages: 1,
+      page: 1,
+    });
+
+    await expect(
+      BlogList({ searchParams: Promise.resolve({}) }),
+    ).resolves.toBeTruthy();
+  });
+
+  // And page 2 of an empty blog DOES 404. An earlier version exempted empty blogs
+  // entirely, which meant a five-post blog answered 404 for page 2 while an empty
+  // one answered 200 -- the same URL shape treated two ways.
+  it("answers 404 for page 2 of an empty blog", async () => {
+    vi.mocked(fetchBlogPage).mockResolvedValue({
+      blogs: [],
+      total: 0,
+      totalPages: 1,
+      page: 2,
+    });
+
+    const error = await BlogList({
+      searchParams: Promise.resolve({ page: "2" }),
+    }).catch((thrown: unknown) => thrown);
+
+    expect((error as { digest?: unknown }).digest).toBe(
+      "NEXT_HTTP_ERROR_FALLBACK;404",
+    );
+  });
+
+  // Nothing else asserted that the parsed page actually reaches the query. The
+  // parser and the reader were each tested in isolation, so a BlogList that always
+  // asked for page 1 would have passed both.
+  it("asks the query for the page the URL named", async () => {
+    vi.mocked(fetchBlogPage).mockResolvedValue({
+      blogs: [],
+      total: 30,
+      totalPages: 3,
+      page: 3,
+    });
+
+    await BlogList({ searchParams: Promise.resolve({ page: "3" }) });
+
+    expect(vi.mocked(fetchBlogPage).mock.calls[0]?.[1]).toBe(3);
+  });
+
+  it("asks for page 1 when the URL names a malformed page", async () => {
+    vi.mocked(fetchBlogPage).mockResolvedValue({
+      blogs: [],
+      total: 30,
+      totalPages: 3,
+      page: 1,
+    });
+
+    await BlogList({ searchParams: Promise.resolve({ page: "abc" }) });
+
+    expect(vi.mocked(fetchBlogPage).mock.calls[0]?.[1]).toBe(1);
+  });
+
+  it("renders no rows itself, which is why the other suites import BlogList", () => {
+    vi.mocked(fetchBlogPage).mockResolvedValue({
+      blogs: [row],
+      total: 1,
+      totalPages: 1,
+      page: 1,
+    });
+
+    expect(
+      countElements(Blog({ searchParams: Promise.resolve({}) }), BlogBodyAbbr),
+    ).toBe(0);
+    expect(vi.mocked(fetchBlogPage)).not.toHaveBeenCalled();
   });
 
   it("gives the fallback the same single h1 as the loaded list", () => {
