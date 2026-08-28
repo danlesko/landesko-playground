@@ -53,9 +53,18 @@ export async function sendContactEmail(
   // both means the deploy can land now and the dashboard change can happen
   // whenever, in either order, with no window where the form is down.
   //
-  // It is a deliberate temporary shim with a defined end: once the unprefixed
-  // names exist everywhere and the `NEXT_PUBLIC_` ones are deleted, the `??`
-  // arms come out. The guard test's list is what will fail and say so.
+  // Written as a temporary shim, and it is not one: #14 closed with the rename
+  // ACCEPTED AS-IS, so the unprefixed names do not exist in Vercel and are not
+  // scheduled to. The fallback is what actually serves the form, and the `??`
+  // arms are load-bearing rather than transitional.
+  //
+  // Not a problem to leave: the trap the rename existed to remove is already shut
+  // by src/test/server-env-visibility.test.ts, which fails if any of these names
+  // is read outside a server module. What the fallback buys is that the rename
+  // stays available at zero cost — add the three unprefixed names in Vercel
+  // whenever, in any order, and this file starts preferring them with no deploy
+  // and no window where the form is down. THEN the arms can come out, and the
+  // guard test's per-name check is what will fail and say which lines to delete.
   const serviceId =
     process.env.EMAILJS_SERVICE_ID ??
     process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID;
