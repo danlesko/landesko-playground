@@ -58,7 +58,29 @@ const nextConfig: NextConfig = {
   // local procedure reproduces production for that format. That does not make the
   // AVIF byte counts a production figure: Vercel runs its own optimizer, so its
   // sizes will differ. What this line decides is the format; the magnitude is a
-  // local measurement.
+  // local measurement. Production served 17,058 / 34,347 / 46,255 for those same
+  // three widths after this deployed -- same direction, smaller than their WebP
+  // counterparts, but different absolute bytes from the local encoder.
+  //
+  // THE AVIF COLUMN IS SPECIFIC TO THE CURRENTLY LOCKED sharp, 0.34.5. `next`
+  // declares `sharp: ^0.34.3` as an optional dependency; the lockfile resolves
+  // 0.34.5. Trialled on 0.35.4, twice, with `.next/cache/images` emptied:
+  // 22,489 / 47,764 / 68,074, which against the same WebP is -4.6% / +4.0% /
+  // +13.4% in this table's convention -- so AVIF comes out LARGER than WebP at two
+  // of the three candidate widths. Next still asks for quality 55 and `effort: 3`,
+  // but libaom, libheif and libvips all moved underneath and 0.35.4 adds a default
+  // HEIF `tune`, so equal options are not equal output and this is a size result
+  // rather than a quality-adjusted one.
+  //
+  // The point being: re-measure this table if sharp ever moves. It is not a
+  // property of the codec choice alone, and nothing in the suite would notice --
+  // the e2e assertion pins the negotiated FORMAT, not the byte count.
+  //
+  // Whether any of this reaches a visitor is a separate question and not one this
+  // repository can answer. The differing production bytes are consistent with
+  // Vercel optimizing images on its own infrastructure rather than through this
+  // sharp, but that is circumstantial: a different byte count proves different
+  // output, not a different encoder.
   //
   // NOT free of a quality judgement, which is worth being exact about because an
   // earlier version of this comment claimed it was. Next asks sharp for AVIF at
