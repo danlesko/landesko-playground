@@ -1,6 +1,5 @@
 import type { Config } from "tailwindcss";
 import forms from "@tailwindcss/forms";
-import typography from "@tailwindcss/typography";
 import scrollbar from "tailwind-scrollbar";
 
 export default {
@@ -39,7 +38,11 @@ export default {
     },
   },
   plugins: [
-    typography,
+    // No `@tailwindcss/typography`. It was declared and nothing used it: there is
+    // no `prose` class anywhere in src, and the two rewind-ui styles that mention
+    // the word use `max-w-prose`, which is a CORE Tailwind width utility rather
+    // than this plugin's. Measured before removing it -- see the note in
+    // src/components/ui/card.ts for what it was costing.
     scrollbar({ nocompatible: true }),
     forms({
       strategy: "class", // only generate classes
