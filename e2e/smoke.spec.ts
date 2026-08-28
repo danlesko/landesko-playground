@@ -566,20 +566,22 @@ test.describe("/contact", () => {
     // pressed again because they did not hear it. The component keys the message
     // element on a counter for exactly this case; the observer is how that is
     // checked as behaviour rather than by reading the markup for a key React does
-    // not emit.
-    const mutations = await outcome.evaluate((region: HTMLElement) => {
+    // not emit. Measured: with the key removed, this counter stays at 0.
+    //
+    // `childList` only. The claim is that the message ELEMENT is replaced, and
+    // watching characterData across the subtree as well would also count a text
+    // edit in place -- which is the thing that does not reliably announce.
+    //
+    // What this does NOT establish is that a screen reader spoke. It establishes
+    // the DOM change that a screen reader needs; no browser test in this repo can
+    // observe the announcement itself.
+    await outcome.evaluate((region: HTMLElement) => {
       const seen = { count: 0 };
       new MutationObserver((records) => {
         seen.count += records.length;
-      }).observe(region, {
-        childList: true,
-        characterData: true,
-        subtree: true,
-      });
+      }).observe(region, { childList: true });
       Object.assign(window, { __outcomeMutations: seen });
-      return seen.count;
     });
-    expect(mutations).toBe(0);
 
     await submit();
 
@@ -598,8 +600,11 @@ test.describe("/contact", () => {
       "Please complete the reCAPTCHA challenge before sending.",
     );
 
-    // No browser dialog at any point. The message is in the page, where it can be
-    // re-read, rather than in a modal that has to be acknowledged to get rid of.
+    // No browser dialog across the two submits -- the listener is registered above
+    // rather than before `goto`, so this says nothing about page load. That is the
+    // window that matters: `alert()` lived in the submit handler. The message is in
+    // the page, where it can be re-read, rather than in a modal that has to be
+    // acknowledged to get rid of.
     expect(dialogs).toEqual([]);
 
     // Still nothing fetched from the captcha origins, now including across two

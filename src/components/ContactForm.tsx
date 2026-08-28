@@ -54,13 +54,18 @@ const ContactForm = () => {
   // announces DOM changes, so replacing "Please complete the reCAPTCHA challenge
   // before sending." with the identical string produces no text-node mutation and
   // may announce nothing at all -- which is precisely the case of someone pressing
-  // submit again because they did not hear it the first time. The message is
-  // rendered in a span keyed on this counter, so every outcome swaps the element
-  // and the region changes whether or not the words did.
+  // submit again because they did not hear it the first time. Measured, not
+  // reasoned: with the message in an unkeyed span, a second press produced zero
+  // mutation records.
+  //
+  // So the message is rendered in a span keyed on this counter, and every
+  // committed outcome changes the region -- inserting the span where there was
+  // none, or replacing it where there was.
   //
   // This is the one thing `window.alert()` did better than an inline message, and
   // the only reason it needs handling: an alert announces every invocation
-  // unconditionally.
+  // unconditionally. What the key buys is the DOM change a screen reader needs; it
+  // is not a guarantee that every reader's combination speaks it.
   const [status, setStatus] = useState<
     (ContactStatus & { revision: number }) | null
   >(null);
@@ -106,6 +111,13 @@ const ContactForm = () => {
     // `getValue()` is undefined, so this returns without sending. The token is
     // verified server-side in `sendContactEmail` regardless, which is where the
     // real boundary is.
+    //
+    // One rough edge in that state, left rather than branched on. If a script or
+    // an extension submits a form with no site key, the outcome below asks the
+    // reader to complete a challenge the notice above says cannot load. Nothing a
+    // reader can do reaches it -- submit and all three fields are disabled, so
+    // clicking and Enter are both out -- and a branch for a path only a
+    // programmatic submit takes is more code than the confusion is worth.
     const captchaValue = recaptcha.current?.getValue();
     if (!captchaValue) {
       report(CAPTCHA_MISSING);

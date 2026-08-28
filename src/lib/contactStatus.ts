@@ -37,9 +37,12 @@ export const UNREACHABLE: ContactStatus = {
 };
 
 /**
- * Never rejects: every path returns something the form can display. That is the
- * point of the seam -- the caller has one place to put the answer, so there is no
- * branch in the component where a failure can end up reported nowhere.
+ * Returns on every path rather than rejecting, so the caller has one place to put
+ * the answer and no branch where a failure ends up reported nowhere. Not an
+ * absolute guarantee: `console.error` below is inside the catch and unguarded, and
+ * it can itself throw -- this repo has a case on record where logging a ZodError
+ * crashed Node's inspector. Nothing that reaches here is a ZodError, so it is
+ * noted rather than defended against.
  *
  * Takes the send as a thunk rather than the form's values, so a test does not
  * have to stand up the server action, `@vercel/postgres` or auth to reach any of

@@ -21,9 +21,28 @@ const resolving = (result: SendContactEmailResult) =>
   vi.fn<() => Promise<SendContactEmailResult>>().mockResolvedValue(result);
 
 describe("the three contact-form outcomes are distinguishable", () => {
-  // Every case below asserts a *specific* message, so if two of these collapsed
-  // into one string the assertions would still pass while the form said the wrong
-  // thing. This is the check that keeps them honest.
+  // The literals, pinned. Every other test in this file compares a result against
+  // one of these imported constants, so swapping SENT's message with
+  // UNREACHABLE's would leave all of them green while a successful send reported
+  // "Failed to send message" and a crash reported "Successfully emailed Dan!".
+  // Nothing but naming the strings catches that. It does mean a copy edit fails
+  // here, which is the intended cost: /contact's e2e pins the captcha wording for
+  // the same reason.
+  it("says exactly what it says", () => {
+    expect(SENT).toStrictEqual({
+      ok: true,
+      message: "Successfully emailed Dan!",
+    });
+    expect(UNREACHABLE).toStrictEqual({
+      ok: false,
+      message: "Failed to send message. Please try again.",
+    });
+    expect(CAPTCHA_MISSING).toStrictEqual({
+      ok: false,
+      message: "Please complete the reCAPTCHA challenge before sending.",
+    });
+  });
+
   it("gives each outcome its own non-empty message", () => {
     const messages = [
       SENT.message,

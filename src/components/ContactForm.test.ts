@@ -81,11 +81,11 @@ afterAll(() => {
 // tied to whether the form can be sent, and rendering it only in the operable
 // case would leave the `requestSubmit` path with nowhere to report.
 //
-// What is NOT here: the populated states. The component holds them in `useState`
-// after an awaited server action, and this suite renders statically in Node with
-// no DOM, so there is no submit to perform. The decision those states display is
-// covered by src/lib/contactStatus.test.ts and the render is covered in the
-// browser by e2e/smoke.spec.ts.
+// What is NOT here: the populated states. This file renders statically, so there
+// is no submit to perform. They are covered elsewhere -- the decision itself in
+// src/lib/contactStatus.test.ts, the component actually displaying it in
+// ContactForm.interaction.test.ts, which runs under jsdom and submits, and the
+// captcha-missing case alone in a real browser in e2e/smoke.spec.ts.
 describe.each([
   { label: "with the site key set", value: "a-test-site-key" },
   { label: "with no site key", value: undefined },
