@@ -249,9 +249,14 @@ test("the home page LCP image loads eagerly at a declared size", async ({
   // map alone cannot tell "answered badly" from "never answered".
   const optimiserStatus = new Map<string, number>();
   const optimiserFailed = new Map<string, string>();
+  const optimiserType = new Map<string, string>();
   page.on("response", (response) => {
     if (response.url().includes("/_next/image")) {
       optimiserStatus.set(response.url(), response.status());
+      optimiserType.set(
+        response.url(),
+        response.headers()["content-type"] ?? "",
+      );
     }
   });
   page.on("requestfailed", (request) => {
@@ -302,6 +307,30 @@ test("the home page LCP image loads eagerly at a declared size", async ({
     optimiserStatus.get(currentSrc),
     "the hero image's optimiser response was not 200",
   ).toBe(200);
+
+  // The format the browser was actually served, which is the only way to check
+  // `images.formats` in next.config.ts as behaviour rather than as configuration.
+  // Chromium advertises AVIF, so a response of anything else means the optimizer
+  // never offered it as a candidate -- which is what the default
+  // `formats: ["image/webp"]` does, and it costs about 20-32% of this image's
+  // bytes locally.
+  //
+  // This pins the negotiated format and nothing else. It is not evidence about
+  // production byte counts, about what Vercel's own optimizer emits, about decode
+  // cost on a real device, or about fidelity -- and it says nothing about browsers
+  // other than the one Chromium this suite pins.
+  //
+  // Keyed to `currentSrc` like everything above it, and for the same reason: the
+  // home page requests a second optimised image for the 48px header mark, so a
+  // page-wide "some response was AVIF" would pass on the header alone while the
+  // hero came back as WebP.
+  //
+  // Asserted with a prefix rather than equality, because a content-type may carry
+  // parameters. It does not today.
+  expect(
+    optimiserType.get(currentSrc),
+    "the hero image was not served as AVIF",
+  ).toMatch(/^image\/avif\b/);
 
   // Every other assertion in this test passes against a `src` that 404s: the
   // element stays visible, Next still generates srcset/preload/sizes from the
