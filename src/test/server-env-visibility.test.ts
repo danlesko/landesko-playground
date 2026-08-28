@@ -39,12 +39,19 @@ import { describe, expect, it } from "vitest";
 
 // `EMAILJS_PRIVATE_KEY` is unprefixed, so a client read yields undefined rather
 // than leaking. Included because the same rule expresses the same intent.
-// Six entries during the rename, not three: `contact-actions.ts` reads the
-// unprefixed name and falls back to the prefixed one, so both spellings are live
-// and both have to stay server-side. When the `NEXT_PUBLIC_` variables are
-// deleted from Vercel and the fallback arms come out, the three prefixed entries
-// here fail their own per-name check and say exactly which lines to delete --
-// which is the point of checking each name rather than the set.
+// Seven: the three unprefixed names, the three `NEXT_PUBLIC_` ones, and the private
+// key. Not "six during the rename", as this used to say — #14 closed with that
+// rename accepted as-is, so `contact-actions.ts` reads both spellings indefinitely
+// rather than transitionally.
+//
+// Both spellings are listed because this file's question is where a name is read
+// from, not whether it currently resolves to anything. The unprefixed three are
+// read and resolve to undefined until someone adds them in Vercel; that makes no
+// difference to the check, which is textual.
+//
+// If the fallback is ever removed, the entries for the dropped spelling fail their
+// own per-name check and name the lines to delete — the point of checking each
+// name rather than the set.
 const SERVER_ONLY_ENV_NAMES = [
   "EMAILJS_SERVICE_ID",
   "EMAILJS_TEMPLATE_ID",

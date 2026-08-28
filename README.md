@@ -62,7 +62,9 @@ Set these in `.env.local` for local development and in the Vercel project settin
 - `NEXT_PUBLIC_EMAILJS_SERVICE_ID`
 - `NEXT_PUBLIC_EMAILJS_TEMPLATE_ID`
 
-The `NEXT_PUBLIC_` prefix on those three is vestigial: the send used to happen in the browser, but it now runs inside a server action, so nothing reads them client-side and their values no longer reach the client bundle. Dropping the prefix is tracked in [#14](https://github.com/danlesko/landesko-playground/issues/14) — it needs the unprefixed names added in Vercel before the code change ships.
+The `NEXT_PUBLIC_` prefix on those three is vestigial: the send used to happen in the browser, but it now runs inside a server action, so nothing reads them client-side and their values no longer reach the client bundle.
+
+The code change to drop the prefix has already shipped — `contact-actions.ts` reads `EMAILJS_SERVICE_ID` and falls back to the prefixed name — so the rename no longer needs the Vercel side to go first. Add `EMAILJS_SERVICE_ID`, `EMAILJS_TEMPLATE_ID` and `EMAILJS_PUBLIC_KEY` whenever you like and the app prefers them from the next request; delete the prefixed ones afterwards. [#14](https://github.com/danlesko/landesko-playground/issues/14) closed with this accepted as-is, so it is optional tidying rather than outstanding work. `src/test/server-env-visibility.test.ts` fails if any of these names is ever read outside the one file allowed to read them, which is what the prefix removal was for.
 
 ## Authentication
 
