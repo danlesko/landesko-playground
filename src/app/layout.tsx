@@ -67,9 +67,16 @@ export default async function RootLayout({
   children: React.ReactNode;
 }>) {
   const session = await getSession();
-  // Guarded on `session.user` and not `session`: a broken auth config makes
-  // `auth()` resolve to a truthy object with no user, so the looser check
-  // renders the logged-in header to anonymous readers.
+  // Guarded on `session.user` and not `session`. This used to be the only thing
+  // stopping a broken auth config from rendering the logged-in header to anonymous
+  // readers: `auth()` resolved to a truthy object carrying an error, so the looser
+  // check passed for everyone. That was CVE-worthy upstream too — GHSA-8fpg-xm3f-6cx3
+  // — and next-auth 5.0.0-beta.32 fixed it, so a non-OK session response is now
+  // parsed as no session at all.
+  //
+  // The guard stays, for a reason that does not depend on that bug: `Session["user"]`
+  // is optional in @auth/core's types, so `session` being truthy has never implied a
+  // user. It is now defence in depth rather than the only defence.
   const signedIn = Boolean(session?.user);
   return (
     <html lang="en">

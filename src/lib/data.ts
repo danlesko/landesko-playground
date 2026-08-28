@@ -207,7 +207,7 @@ export async function fetchBlogPage(session: Session | null, page: number) {
 
 export async function getBlog(session: Session | null, id: string) {
   noStore();
-  // Same predicate as fetchRecentBlogs; see the note there.
+  // Same predicate as fetchBlogPage; see the note there.
   try {
     // The anonymous query is also empty when the post exists but is private, so
     // an anonymous request for a private post is indistinguishable from a
@@ -217,7 +217,7 @@ export async function getBlog(session: Session | null, id: string) {
       : await sql`SELECT * FROM blogs WHERE id=${id} AND private != TRUE`;
     // `.optional()`, because no row is the ordinary answer here — a missing post
     // and a private one both land on it — so `undefined` has to pass while a row
-    // of the wrong shape still fails. See the note in fetchRecentBlogs.
+    // of the wrong shape still fails. See the note in fetchBlogPage.
     return BlogRowSchema.optional().parse(blog.rows[0]);
   } catch (error) {
     console.error("Failed to fetch blog:", loggable(error));
