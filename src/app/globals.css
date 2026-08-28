@@ -59,7 +59,7 @@ body {
 
    The first rule covers only what CSS drives: the `animate-pulse` skeletons under
    blog/, and rewind-ui's `transition-*` and `animate-spin`. The second covers the
-   two JS-driven ones it can reach. The p5 sketch on /animation is neither — it
+   one JS-driven animation it can reach. The p5 sketch on /animation is neither — it
    reads `matchMedia` itself and stops (#79). */
 @media (prefers-reduced-motion: reduce) {
   *,
@@ -71,61 +71,45 @@ body {
     scroll-behavior: auto !important;
   }
 
-  /* rewind-ui's Toast and Modal animate regardless of the preference, and their
-     animations are unreachable from JS: the Toast's framer-motion is *vendored*
-     inside `@rewind-ui/core/dist/node_modules/` and imported by relative path, so
-     `<MotionConfig reducedMotion="user">`, `pnpm.overrides` and resolution aliases
-     all address a package that is not the one running. The Modal uses the Web
-     Animations API directly.
+  /* rewind-ui's Modal slides in regardless of the preference, and its animation is
+     unreachable from JS — it drives the Web Animations API directly. CSS reaches it
+     anyway, because the cascade puts `!important` author declarations above
+     animation declarations. Note it would NOT beat a CSS transition, which sits
+     above important-author; the Modal does not use one for the movement.
 
-     CSS reaches both anyway, because the cascade puts `!important` author
-     declarations above both inline styles (how framer-motion writes transforms)
-     and animation declarations (how WAAPI does). Note it would NOT beat a CSS
-     transition, which sits above important-author — neither of these two uses one
-     for the movement.
+     Measured through a scratch route, since the Modal needs a signed-in session.
+     Sampling computed style every frame under emulated `reduce`, before this rule
+     the modal ran through 17 distinct transforms, sliding 100px; after it, one,
+     pinned at `none`. With `no-preference` it still ran (13 distinct). The harness
+     is deleted, so those numbers are a record of a measurement rather than
+     something this repo can re-run — which is also why there is no e2e guard.
 
-     Measured through a scratch route, since neither component is reachable in this
-     environment: the real Toast needs a contact-form submit, disabled without a
-     reCAPTCHA key, and the real Modal needs a signed-in session. Sampling computed
-     style every frame under emulated `reduce`, before this rule, the toast ran
-     through 26 distinct transforms — translating 224px and scaling from 0.88 — and
-     the modal through 17, sliding 100px; after it, one each, pinned at `none`. With
-     `no-preference` the animations still ran (50 and 13 distinct). The harness is
-     deleted, so those numbers are a record of a measurement rather than something
-     this repo can re-run — which is also why there is no e2e guard.
-
-     `transform` only, never `opacity`, because the preference is about movement
-     and a fade is not movement. An earlier version of this comment justified it
-     instead by claiming that forcing opacity would leave a closed modal on screen
-     — that is false, and worth recording as false: a closed `[role="dialog"]` is
+     `transform` only, never `opacity`, because the preference is about movement and
+     a fade is not movement. An earlier version of this comment justified it instead
+     by claiming that forcing opacity would leave a closed modal on screen — that is
+     false, and worth recording as false: a closed `[role="dialog"]` is
      `visibility: hidden` as well as `opacity: 0`, so visibility would still hide
      it. Right decision, wrong reason.
 
-     It does not stop the animations running, only their visible effect, and that
-     is what makes it safe rather than merely narrow. The Modal gates
-     `useFocusTrap` on the animation's `onfinish`; cancelling or skipping the
-     animation is the naive fix #60 warns breaks the focus trap. The timeline still
-     completes on schedule, so the callback still fires.
+     It does not stop the animation running, only its visible effect, and that is
+     what makes it safe rather than merely narrow. The Modal gates `useFocusTrap` on
+     the animation's `onfinish`; cancelling or skipping the animation is the naive
+     fix #60 warns breaks the focus trap. The timeline still completes on schedule,
+     so the callback still fires.
 
-     NOT fixed here, and not fixable this way: the Toast also drives a progress
-     indicator by writing `style.width` from its requestAnimationFrame timer, so a
-     bar still moves for the full three seconds under `reduce`. Width is not
-     transform, and pinning it would collapse the bar rather than still it. Tracked
-     on #64 with the rest of that component's defects.
+     A companion `div:has(> [role="alert"])` rule used to sit here for rewind-ui's
+     Toast, whose framer-motion is *vendored* inside
+     `@rewind-ui/core/dist/node_modules/` and imported by relative path. It is gone
+     because the Toast is: #120 replaced /contact's toasts with an inline live
+     region, which also retired the one defect that rule could not reach — the Toast
+     drove a progress bar by writing `style.width` from a requestAnimationFrame
+     timer, and width is not transform.
 
-     The two selectors are separate rules on purpose. In one comma-separated list a
-     selector the browser cannot parse invalidates the WHOLE rule, so on a browser
-     without `:has()` the Modal fix would have died with the Toast fix. Split, they
-     fail independently. See #60 and #64. */
-  div:has(> [role="alert"]) {
-    transform: none !important;
-  }
-
-  /* Deliberately broad: nothing in this app authors `role="dialog"`, and
-     rewind-ui's Modal is the only thing that renders one — checked, along with the
-     fact that the app imports no Drawer, Alert, Popover or Tooltip. If a component
-     is ever added whose dialog needs a transform to be positioned, this is where it
-     breaks, so scope it then. */
+     Deliberately broad: nothing in this app authors `role="dialog"`, and rewind-ui's
+     Modal is the only thing that renders one — checked, along with the fact that the
+     app imports no Drawer, Alert, Popover or Tooltip. If a component is ever added
+     whose dialog needs a transform to be positioned, this is where it breaks, so
+     scope it then. See #60 and #64. */
   [role="dialog"] {
     transform: none !important;
   }

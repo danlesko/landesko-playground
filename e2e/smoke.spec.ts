@@ -509,14 +509,14 @@ test.describe("/contact", () => {
     // by the server's HTML alone, so none of it can tell a hydrated page from
     // one whose bundle never ran. `requestSubmit()` is the way in: a disabled
     // submit button blocks clicking and Enter, but not a programmatic submit, so
-    // React's `onSubmit` still fires and `handleSubmit` runs. Reaching the alert
-    // therefore proves the route hydrated and React bound the handler -- the
-    // same thing the old click-based version of this test proved, via an API
-    // that is public rather than via React's private `__react*` expandos.
+    // React's `onSubmit` still fires and `handleSubmit` runs. The outcome message
+    // appearing therefore proves the route hydrated and React bound the handler
+    // -- the same thing the old click-based version of this test proved, via an
+    // API that is public rather than via React's private `__react*` expandos.
     //
     // It doubles as the assertion that even a programmatic submit cannot send
     // unverified: with no widget mounted `getValue()` is undefined, which is the
-    // branch that alerts instead of calling the server action.
+    // branch that reports instead of calling the server action.
     //
     // The fields are deliberately not filled first, and cannot be -- they are
     // disabled, so `fill()` would wait for them to become editable and time out.
@@ -525,24 +525,90 @@ test.describe("/contact", () => {
     // earlier draft of this test filled them, from before the fields were
     // disabled too.
     //
-    // Dismissed from inside the listener rather than after an awaited call.
-    // Registering any dialog listener disables Playwright's auto-dismiss, and a
-    // native alert blocks the page, so awaiting the submit would never resolve
-    // and this would fail on a timeout instead of on its assertion.
-    let alerted = "";
-    page.once("dialog", async (dialog) => {
-      alerted = dialog.message();
+    // This used to poll a `page.once("dialog")` listener for a native alert.
+    // #120 replaced that alert, and the three toasts beside it, with one inline
+    // live region -- so the oracle is the region's text. A dialog listener stays,
+    // inverted: any dialog at all is now a failure, which is what stops `alert()`
+    // coming back. It dismisses rather than merely recording, because a native
+    // alert blocks the page and would otherwise turn this into a timeout instead
+    // of an assertion.
+    const dialogs: string[] = [];
+    page.on("dialog", async (dialog) => {
+      dialogs.push(dialog.message());
       await dialog.dismiss();
     });
 
-    await page
-      .locator('form:has(textarea[name="message"])')
-      .evaluate((form: HTMLFormElement) => form.requestSubmit());
+    const outcome = page.locator(
+      'form:has(textarea[name="message"]) [aria-live="polite"]',
+    );
 
-    await expect.poll(() => alerted).toBe("Please verify the reCAPTCHA!");
+    // The precondition, not decoration. Without it this test would also pass on a
+    // build that server-rendered the message into the page and never hydrated;
+    // asserting empty-then-populated is what makes it a transition rather than a
+    // string match.
+    await expect(outcome).toBeAttached();
+    await expect(outcome).toBeEmpty();
 
-    // Still nothing fetched from the captcha origins, now including across a
-    // submit attempt.
+    const submit = () =>
+      page
+        .locator('form:has(textarea[name="message"])')
+        .evaluate((form: HTMLFormElement) => form.requestSubmit());
+
+    await submit();
+
+    await expect(outcome).toHaveText(
+      "Please complete the reCAPTCHA challenge before sending.",
+    );
+
+    // A second press with nothing changed. The message is identical, so a naive
+    // implementation re-renders the same text node, no DOM mutation occurs, and a
+    // polite live region announces nothing -- silently, to the one reader who
+    // pressed again because they did not hear it. The component keys the message
+    // element on a counter for exactly this case; the observer is how that is
+    // checked as behaviour rather than by reading the markup for a key React does
+    // not emit. Measured: with the key removed, this counter stays at 0.
+    //
+    // `childList` only. The claim is that the message ELEMENT is replaced, and
+    // watching characterData across the subtree as well would also count a text
+    // edit in place -- which is the thing that does not reliably announce.
+    //
+    // What this does NOT establish is that a screen reader spoke. It establishes
+    // the DOM change that a screen reader needs; no browser test in this repo can
+    // observe the announcement itself.
+    await outcome.evaluate((region: HTMLElement) => {
+      const seen = { count: 0 };
+      new MutationObserver((records) => {
+        seen.count += records.length;
+      }).observe(region, { childList: true });
+      Object.assign(window, { __outcomeMutations: seen });
+    });
+
+    await submit();
+
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            (window as unknown as { __outcomeMutations: { count: number } })
+              .__outcomeMutations.count,
+        ),
+      )
+      .toBeGreaterThan(0);
+
+    // Still the same message: the point is that it was re-announced, not changed.
+    await expect(outcome).toHaveText(
+      "Please complete the reCAPTCHA challenge before sending.",
+    );
+
+    // No browser dialog across the two submits -- the listener is registered above
+    // rather than before `goto`, so this says nothing about page load. That is the
+    // window that matters: `alert()` lived in the submit handler. The message is in
+    // the page, where it can be re-read, rather than in a modal that has to be
+    // acknowledged to get rid of.
+    expect(dialogs).toEqual([]);
+
+    // Still nothing fetched from the captcha origins, now including across two
+    // submit attempts.
     expect(captchaRequests).toEqual([]);
 
     // The symptom #51 described: these dropped to 0 as React unmounted the

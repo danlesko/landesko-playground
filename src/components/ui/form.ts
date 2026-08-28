@@ -18,3 +18,14 @@ export const formLabelClasses = "block mt-2 text-base text-foreground";
 // Sits on --background, where --danger measures 6.40:1. The element is always
 // rendered and empty when valid, so it holds no height until it has text.
 export const formErrorClasses = "mt-1 text-sm text-danger";
+
+// The success half of the same element, so a good outcome and a bad one appear in
+// the same place with the same type -- colour is the only difference. It does not
+// follow that a message costs no layout: an empty paragraph has no line box, so
+// gaining text does grow the form, and a long server-authored error wraps.
+//
+// --accent (cyan-400, 9.80:1) rather than a green, because the palette has no
+// success token and this site's positive colour is the cyan accent. Inventing one
+// would mean a fourth hue on a page that already carries brand purple, danger red
+// and accent cyan.
+export const formSuccessClasses = "mt-1 text-sm text-accent";
