@@ -11,7 +11,7 @@ This is Dan Lesko's personal website written in [Next.js 15](https://nextjs.org)
 
 ## Running the page locally
 
-Requires [pnpm](https://pnpm.io). CI builds on Node 22; Node 20 or newer is recommended locally.
+Requires [pnpm](https://pnpm.io). CI builds on Node 22. Locally you need **Node 22.22.2 or newer** — `jsdom`, which one test file uses for DOM-level component coverage, declares `^22.22.2 || ^24.15.0 || >=26.0.0`, so Node 20 installs but cannot run the full test suite.
 
 ```bash
 pnpm install
@@ -20,21 +20,26 @@ pnpm dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
-Most pages need the environment variables below. The blog reads from Postgres, so without a database connection `/blog` fails rather than rendering empty.
+How much you need the environment variables below depends on what you are working on. `/`, `/animation` and `/credits` render with none of them. `/contact` renders with its fields disabled and an explanatory notice, and its mailto link still works. Signing in needs the Auth.js and GitHub values, sending a message needs the reCAPTCHA and EmailJS ones, and `/blog` reads from Postgres — without a database connection it fails rather than rendering empty.
 
 ### Scripts
 
-| Script              | What it does                       |
-| ------------------- | ---------------------------------- |
-| `pnpm dev`          | Development server (Turbopack)     |
-| `pnpm build`        | Production build                   |
-| `pnpm start`        | Serve a production build           |
-| `pnpm lint`         | ESLint, warnings treated as errors |
-| `pnpm typecheck`    | `tsc --noEmit`                     |
-| `pnpm pretty`       | Format everything with Prettier    |
-| `pnpm format:check` | Verify formatting without writing  |
+| Script              | What it does                          |
+| ------------------- | ------------------------------------- |
+| `pnpm dev`          | Development server (Turbopack)        |
+| `pnpm build`        | Production build                      |
+| `pnpm start`        | Serve a production build              |
+| `pnpm lint`         | ESLint, warnings treated as errors    |
+| `pnpm typecheck`    | `tsc --noEmit`                        |
+| `pnpm test`         | Vitest, once                          |
+| `pnpm test:watch`   | Vitest in watch mode                  |
+| `pnpm test:e2e`     | Playwright against a production build |
+| `pnpm pretty`       | Format everything with Prettier       |
+| `pnpm format:check` | Verify formatting without writing     |
 
-CI runs lint, format check, typecheck, and build on every pull request to `main`.
+CI runs two jobs on every pull request to `main`: lint, format check, typecheck and build in one, and the Playwright suite in another. `pnpm test:e2e` builds and serves the app itself rather than reusing a running server, so it reflects the build rather than the source — rebuild before trusting a result.
+
+The local gate is four commands, not three: `pnpm lint`, `pnpm typecheck`, `pnpm format:check` and `pnpm test`. The pre-commit hook only runs Prettier, so a clean commit is not a green gate.
 
 ## Environment variables
 
@@ -64,7 +69,7 @@ Set these in `.env.local` for local development and in the Vercel project settin
 
 The `NEXT_PUBLIC_` prefix on those three is vestigial: the send used to happen in the browser, but it now runs inside a server action, so nothing reads them client-side and their values no longer reach the client bundle.
 
-The code change to drop the prefix has already shipped — `contact-actions.ts` reads `EMAILJS_SERVICE_ID` and falls back to the prefixed name — so the rename no longer needs the Vercel side to go first. Add `EMAILJS_SERVICE_ID`, `EMAILJS_TEMPLATE_ID` and `EMAILJS_PUBLIC_KEY` whenever you like and the app prefers them from the next request; delete the prefixed ones afterwards. [#14](https://github.com/danlesko/landesko-playground/issues/14) closed with this accepted as-is, so it is optional tidying rather than outstanding work. `src/test/server-env-visibility.test.ts` fails if any of these names is ever read outside the one file allowed to read them, which is what the prefix removal was for.
+The code change to drop the prefix has already shipped — `contact-actions.ts` reads `EMAILJS_SERVICE_ID` and falls back to the prefixed name — so the rename no longer needs the Vercel side to go first. Add `EMAILJS_SERVICE_ID`, `EMAILJS_TEMPLATE_ID` and `EMAILJS_PUBLIC_KEY` whenever you like and the app prefers them from the next request; delete the prefixed ones afterwards. [#14](https://github.com/danlesko/landesko-playground/issues/14) closed with this accepted as-is, so it is optional tidying rather than outstanding work. `src/test/server-env-visibility.test.ts` fails if a literal `process.env.NAME` read of any of these appears outside the one file allowed to read them, which is what the prefix removal was for. It is an authoring-time tripwire and a narrow one: it does not see computed access, a value aliased under another name, or a value passed onward to a client component, and the test says so at length.
 
 ## Authentication
 
@@ -74,26 +79,60 @@ Sign-in is GitHub OAuth, and the `signIn` callback in `src/auth.ts` allows an ex
 
 ## Pages
 
-| Route          | Description                                                                                                             |
-| -------------- | ----------------------------------------------------------------------------------------------------------------------- |
-| `/`            | Landing page.                                                                                                           |
-| `/blog`        | The ten most recent posts. Private posts are hidden unless signed in, which also reveals the create and delete actions. |
-| `/blog/[id]`   | A single post. Unknown, malformed, and private-without-a-session ids all render `src/app/blog/[id]/error.tsx`.          |
-| `/blog/create` | Post authoring form. Signed-in only.                                                                                    |
-| `/animation`   | A p5.js fish tank. Click to blow bubbles; the goldfish follows the cursor and the purple fish avoids it.                |
-| `/contact`     | Contact form, sent through EmailJS and gated by reCAPTCHA, plus a direct mailto link.                                   |
-| `/credits`     | Attribution for the icons, framework, and libraries used.                                                               |
+| Route          | Description                                                                                                                                                                                     |
+| -------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `/`            | Landing page.                                                                                                                                                                                   |
+| `/blog`        | The ten most recent posts. Private posts are hidden unless signed in, which also reveals the create and delete actions.                                                                         |
+| `/blog/[id]`   | A single post. Unknown and private-without-a-session ids call `notFound()` and render the root `src/app/not-found.tsx`; a malformed id or a failed query reaches `src/app/blog/[id]/error.tsx`. |
+| `/blog/create` | Post authoring form. Signed-in only.                                                                                                                                                            |
+| `/animation`   | A p5.js fish tank. Click to blow bubbles; the goldfish follows the cursor and the purple fish avoids it.                                                                                        |
+| `/contact`     | Contact form, sent through EmailJS and gated by reCAPTCHA, plus a direct mailto link.                                                                                                           |
+| `/credits`     | Attribution for the icons, framework, and libraries used.                                                                                                                                       |
 
 ## Deployment
 
 The application is deployed through [Vercel](https://www.vercel.com) on their free tier and uses a Postgres database, hosted in [Neon](https://neon.tech), for storing blog entries. Pull requests get a preview deployment, but GitHub sign-in does not work there, because the OAuth app's callback is registered against the production domain.
 
-## Known issues
+## Testing
 
-**The animation renders in `pnpm dev` again**, so the `pnpm build && pnpm start` workaround this section used to describe is no longer needed. [#16](https://github.com/danlesko/landesko-playground/issues/16) is closed: p5 1.x's minified bundle fails to parse under Turbopack, and `next.config.ts` aliases `p5` to the unminified build to avoid it. Do not remove that alias — the comment there explains what breaks, and the failure only ever appeared in dev, so nothing in CI would catch its return.
+Unit tests are Vitest, running in Node with no DOM by default. One file,
+`src/components/ContactForm.interaction.test.ts`, opts into jsdom with a
+`// @vitest-environment jsdom` docblock so it can mount a component and drive a real
+submit — that is the only way to cover event-handler wiring here, and it is why the
+Node floor above exists.
 
-**`pnpm audit` is not clean, and one entry is deliberate.** `sharp` carries a high-severity advisory for inherited libvips CVEs, patched in a version outside the range `next` declares. It is accepted rather than overridden, because nothing in this app lets a visitor control the bytes the image optimizer decodes — no uploads, no image proxy, and no configured `remotePatterns`. The reasoning and its limits are in [#123](https://github.com/danlesko/landesko-playground/pull/123) and in `next.config.ts`. The remaining advisories are dev-only, in lint and build tooling.
+Four end-to-end tests are **skipped**, and a skipped test is a declared gap rather
+than coverage:
 
-**Dependency majors are behind on purpose**, one tracked issue each: Tailwind 4 ([#124](https://github.com/danlesko/landesko-playground/issues/124)), Next 16 ([#125](https://github.com/danlesko/landesko-playground/issues/125)), zod 4 ([#126](https://github.com/danlesko/landesko-playground/issues/126)), ESLint 10 ([#127](https://github.com/danlesko/landesko-playground/issues/127)), TypeScript 7 ([#128](https://github.com/danlesko/landesko-playground/issues/128)), p5 2 ([#129](https://github.com/danlesko/landesko-playground/issues/129)) and a batch of the rest ([#130](https://github.com/danlesko/landesko-playground/issues/130)). Each issue records the repo-side surface that actually breaks rather than just the version numbers.
+- three blog cases need a live Postgres database to read rows from
+- the `/contact` delivery case needs a real reCAPTCHA site key and mail credentials
 
-**Some tests are skipped for want of credentials**, and a skipped test is a declared gap rather than coverage: the `/contact` delivery path needs a real reCAPTCHA key and mail credentials, and the blog specs that read rows need a database. Neither belongs in this repository.
+None of those belong in this repository, so the gap is deliberate. `migrations/` does
+hold the schema, so the database half is a connection away rather than unknown.
+
+## Known limitations
+
+**`pnpm audit` is not clean, and one entry is a deliberate decision rather than an
+oversight.** `sharp` carries a high-severity advisory for four inherited libvips
+CVEs, patched only in a version outside the range `next` declares. It was accepted
+rather than overridden.
+
+The reasoning is that current reachability is low, **not that the CVEs do not
+matter**: no route in this app was found that lets a visitor introduce
+attacker-chosen image bytes for the optimizer to decode — there is no upload, no
+image proxy, no response reflection, and no configured `remotePatterns`, so absolute
+URLs are rejected. A visitor does still choose the same-origin path, the width, the
+quality and the output format.
+
+That reasoning explicitly does **not** cover self-hosted deployments, an exposed
+development server, a maliciously contributed asset, or any future route that accepts
+image input. If you add one of those, revisit it. Full analysis and its limits are in
+[#123](https://github.com/danlesko/landesko-playground/pull/123) — `next.config.ts`
+discusses sharp's effect on image size, not this risk.
+
+Every other advisory is dev-only, in lint and build tooling.
+
+**Dependency majors are behind deliberately**, each with its own issue recording the
+repo-side surface that actually breaks. See the
+[open issues](https://github.com/danlesko/landesko-playground/issues) rather than a
+list here, which would go stale as they close.

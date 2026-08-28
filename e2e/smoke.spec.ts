@@ -1215,10 +1215,12 @@ const unimplemented = (reason: string) => () => {
   throw new Error(`Not implemented: ${reason}`);
 };
 
-// `/blog` and `/blog/[id]` need a real `blogs` table. There is no schema in git
-// -- the only DDL is a gitignored seed helper that declares no `private` column,
-// so it demonstrably is not the live schema -- and CI has no database. `/blog`
-// answers 200 today while rendering an error, so a naive check would look green.
+// `/blog` and `/blog/[id]` need a real `blogs` table, and CI has no database. The
+// claim that used to sit here -- that there is no schema in git, only a gitignored
+// seed helper -- is out of date: `migrations/` now holds the DDL, starting with
+// 0001_initial.sql. So what is missing is a connection and a running database, not
+// knowledge of the shape. `/blog` answers 200 today while rendering an error, so a
+// naive status check would look green.
 test.skip(
   "/blog lists posts (needs a database -- see #3)",
   unimplemented("no blogs table in CI"),
