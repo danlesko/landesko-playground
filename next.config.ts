@@ -31,35 +31,60 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   turbopack: { resolveAlias: { p5: "p5/lib/p5.js" } },
 
-  // `formats` defaults to `["image/webp"]`, so the optimizer answered every
-  // request with WebP even when the browser advertised AVIF. Order is preference
-  // order: AVIF to anything that accepts it, WebP to everything else, and JPEG to
-  // a client that asks for neither.
+  // `formats` defaults to `["image/webp"]`, which is why the optimizer answered
+  // with WebP even when the browser advertised AVIF: an unlisted format is never a
+  // candidate. Adding AVIF is what changes the outcome -- NOT putting it first.
+  // Next hands this array to `@hapi/accept`'s `mediaType`, so the client's own
+  // q-weighting decides between the listed formats; a client that genuinely
+  // prefers WebP still gets WebP. WebP stays listed for clients without AVIF, and
+  // a client accepting neither gets the source format re-encoded.
   //
-  // Measured against a production build, `/_next/image?url=%2FdanPool.jpeg&q=75`,
-  // the same widths a browser actually requests for the hero:
+  // Applies to EVERY optimized image, not just the hero -- `slide.png`, the header
+  // mark in layout.tsx, now has an AVIF variant too. Checked rather than assumed:
+  // its alpha channel survives the round trip, and at its rendered size the two
+  // are indistinguishable side by side.
   //
-  //     width   WebP     AVIF     saving
-  //      640    23,562   18,899   -20%
-  //     1080    45,924   32,550   -29%
-  //     1920    60,014   40,622   -32%
+  // Measured against a local production build, `/_next/image?url=...&q=75`, at the
+  // widths a browser actually requests. RMS is the per-channel difference between
+  // the decoded AVIF and the decoded WebP, 0-255:
   //
-  // The WebP column matched what www.landesko.dev was serving to within 4 bytes,
-  // which is what makes the AVIF column trustworthy as a local number. Vercel runs
-  // its own optimizer rather than this sharp, so production bytes will differ a
-  // little; the format it picks is what this line decides.
+  //     candidate      WebP     AVIF     saving   RMS
+  //     hero  640w    23,562   18,899    -19.8%   2.61
+  //     hero 1080w    45,924   32,550    -29.1%   2.08
+  //     hero 1920w    60,014   40,622    -32.3%   1.95
+  //     mark   96w     3,522    2,499    -29.0%   7.15
   //
-  // This is deliberately NOT the "re-encode public/danPool.jpeg" that #8 asks for.
-  // The 291,380-byte source is never sent to a visitor -- `<Image>` serves derived
-  // candidates, none over 60 kB -- so re-encoding it would change repository size
-  // and nothing a reader downloads. It also stays byte-identical here, which means
-  // no second lossy pass over the original photograph.
+  // The WebP column matched what www.landesko.dev serves to within 4 bytes, so the
+  // local procedure reproduces production for that format. That does not make the
+  // AVIF byte counts a production figure: Vercel runs its own optimizer, so its
+  // sizes will differ. What this line decides is the format; the magnitude is a
+  // local measurement.
   //
-  // Cost, since AVIF encoding is usually the objection: measured cold, AVIF was
-  // 0.077s at 1080 and 0.069s at 1920 against WebP's 0.092s and 0.100s -- not
-  // slower at these sizes. Warm was ~2ms for both. The first encode of any size is
-  // once per deployment, and the hero's candidates are requested on the first hit
-  // of the home page.
+  // NOT free of a quality judgement, which is worth being exact about because an
+  // earlier version of this comment claimed it was. Next asks sharp for AVIF at
+  // `quality - 20` with `effort: 3`, so a `q=75` request is AVIF quality 55
+  // against WebP's 75 -- the -20 is the codec heuristic, not an identity. Part of
+  // the saving above is therefore a lower quality target rather than pure codec
+  // efficiency. The RMS column and a side-by-side look are the evidence that it
+  // does not show: no visible artefact, no colour shift, and the mark's hard edges
+  // are intact.
+  //
+  // This is deliberately NOT the "re-encode public/danPool.jpeg" that #8 asks for,
+  // and the reason is that a normal page load never downloads that file --
+  // `<Image>` serves derived candidates. It is still publicly routable at
+  // /danPool.jpeg, and Next falls back to the source if optimization fails, so
+  // "never served" would be too strong. Leaving it alone keeps one lossy
+  // generation between the camera and the reader instead of two; every delivered
+  // AVIF is still a lossy derivative of it.
+  //
+  // Cost. Measured with a fresh server process and `.next/cache/images` emptied
+  // for each format, so neither warmed the other: the first-ever 640w request was
+  // 0.096s for AVIF against 0.082s for WebP, and a second request at 1080w with
+  // sharp already warm was 0.075s against 0.087s. So ~14ms on a cold encode at the
+  // size desktop Chrome selects. Local sharp only -- Vercel's optimizer and its
+  // cache lifetimes are its own, and a cold encode is not once per deployment: the
+  // cache key includes the negotiated MIME type, and entries expire and are
+  // evicted.
   images: { formats: ["image/avif", "image/webp"] },
 };
 

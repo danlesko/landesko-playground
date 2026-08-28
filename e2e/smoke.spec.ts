@@ -311,8 +311,14 @@ test("the home page LCP image loads eagerly at a declared size", async ({
   // The format the browser was actually served, which is the only way to check
   // `images.formats` in next.config.ts as behaviour rather than as configuration.
   // Chromium advertises AVIF, so a response of anything else means the optimizer
-  // declined to offer it -- which is what happens on the default
-  // `formats: ["image/webp"]`, and it costs 20-32% of this image's bytes.
+  // never offered it as a candidate -- which is what the default
+  // `formats: ["image/webp"]` does, and it costs about 20-32% of this image's
+  // bytes locally.
+  //
+  // This pins the negotiated format and nothing else. It is not evidence about
+  // production byte counts, about what Vercel's own optimizer emits, about decode
+  // cost on a real device, or about fidelity -- and it says nothing about browsers
+  // other than the one Chromium this suite pins.
   //
   // Keyed to `currentSrc` like everything above it, and for the same reason: the
   // home page requests a second optimised image for the 48px header mark, so a
