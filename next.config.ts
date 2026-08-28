@@ -58,7 +58,17 @@ const nextConfig: NextConfig = {
   // local procedure reproduces production for that format. That does not make the
   // AVIF byte counts a production figure: Vercel runs its own optimizer, so its
   // sizes will differ. What this line decides is the format; the magnitude is a
-  // local measurement.
+  // local measurement. Production, after this deployed: 17,058 / 34,347 / 46,255 --
+  // same direction, different encoder.
+  //
+  // THE AVIF COLUMN IS SPECIFIC TO sharp 0.34.5, which is what `next` pins
+  // (`sharp: ^0.34.3`, an optional dependency). Measured on 0.35.4, twice, with the
+  // image cache emptied: 22,489 / 47,764 / 68,074, i.e. +4.6% / -4.0% / -13.4%
+  // against the same WebP -- AVIF comes out LARGER than WebP at two of the three
+  // candidate widths. libvips/libaom moved under the same `effort: 3`. So if sharp
+  // is ever upgraded here, re-measure before trusting the table above; it is not a
+  // property of the codec choice alone. It does not affect what visitors get, since
+  // Vercel does not use this sharp -- see the byte difference noted above.
   //
   // NOT free of a quality judgement, which is worth being exact about because an
   // earlier version of this comment claimed it was. Next asks sharp for AVIF at
