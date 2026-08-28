@@ -65,9 +65,11 @@ beforeEach(() => {
 const STATES = [
   { state: "no session", session: null, label: "Login", signsIn: true },
   // The two cases below differ only in `user`, which is what pins
-  // `Boolean(session?.user)` rather than `Boolean(session)`: a misconfigured
-  // provider resolves `auth()` to a truthy object with no user, and the looser
-  // guard offers the anonymous reader a logout.
+  // `Boolean(session?.user)` rather than `Boolean(session)`: the looser guard would
+  // offer an anonymous reader a logout. Until next-auth 5.0.0-beta.32 a
+  // misconfigured provider produced exactly that shape, which is how this case was
+  // found; beta.32 parses a non-OK session response as no session, so it is now a
+  // type contract (`Session["user"]` is optional) rather than a reachable state.
   {
     state: "a session with no user",
     session: sessionWithoutUser(),

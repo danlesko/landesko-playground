@@ -18,8 +18,19 @@ export function signedInSession(): Session {
 }
 
 /**
- * A session object that exists but carries no user. NextAuth can return this,
- * and `if (!session)` alone would wrongly treat it as authorized.
+ * A session object that exists but carries no user, so `if (!session)` alone would
+ * wrongly treat it as authorized.
+ *
+ * Synthetic, and worth being precise about since it used to be observed behaviour.
+ * next-auth returned exactly this shape from a misconfigured provider until
+ * 5.0.0-beta.32, which now parses any non-OK session response as no session
+ * (GHSA-8fpg-xm3f-6cx3). On beta.32, with this app's config, nothing produces it:
+ * a successful JWT session always carries a user, and there is no
+ * `callbacks.session` here that could strip one.
+ *
+ * Kept anyway, because `Session["user"]` is optional in @auth/core's types, so the
+ * shape is legal and a future session callback could return it. It pins a type
+ * contract now rather than a live upstream behaviour.
  */
 export function sessionWithoutUser(): Session {
   return {
