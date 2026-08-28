@@ -1,19 +1,19 @@
 "use client";
 import { useState, ChangeEvent, FormEventHandler, useRef, useId } from "react";
-import {
-  Textarea,
-  Input,
-  Button,
-  ToastContainer,
-  useToast,
-} from "@rewind-ui/core";
+import { Textarea, Input, Button } from "@rewind-ui/core";
 import { Email } from "@/lib/definitions";
 import ReCAPTCHA from "react-google-recaptcha";
 import { sendContactEmail } from "@/lib/contact-actions";
 import {
+  CAPTCHA_MISSING,
+  submitContactEmail,
+  type ContactStatus,
+} from "@/lib/contactStatus";
+import {
   formControlClasses,
   formErrorClasses,
   formLabelClasses,
+  formSuccessClasses,
 } from "@/components/ui/form";
 import { primaryButtonClasses } from "@/components/ui/button";
 import { contentColumnClasses } from "@/components/ui/layout";
@@ -38,7 +38,6 @@ const recaptchaSiteKey =
   process.env.NEXT_PUBLIC_REACT_APP_SITE_KEY_RECAPTCHA?.trim() || undefined;
 
 const ContactForm = () => {
-  const toast = useToast();
   const recaptcha = useRef<ReCAPTCHA | null>(null);
   // Per-instance, so two of these on one page cannot emit colliding ids and
   // silently point the second form's labels at the first form's controls.
@@ -50,6 +49,27 @@ const ContactForm = () => {
   });
 
   const [isSendingEmail, setIsSendingEmail] = useState<boolean>(false);
+
+  // `revision` is not display data and is not decoration. A polite live region
+  // announces DOM changes, so replacing "Please complete the reCAPTCHA challenge
+  // before sending." with the identical string produces no text-node mutation and
+  // may announce nothing at all -- which is precisely the case of someone pressing
+  // submit again because they did not hear it the first time. The message is
+  // rendered in a span keyed on this counter, so every outcome swaps the element
+  // and the region changes whether or not the words did.
+  //
+  // This is the one thing `window.alert()` did better than an inline message, and
+  // the only reason it needs handling: an alert announces every invocation
+  // unconditionally.
+  const [status, setStatus] = useState<
+    (ContactStatus & { revision: number }) | null
+  >(null);
+
+  const report = (next: ContactStatus) =>
+    setStatus((previous) => ({
+      ...next,
+      revision: (previous?.revision ?? 0) + 1,
+    }));
 
   // One value rather than the same condition repeated on four controls, because
   // the failure mode of repeating it is that one control disagrees with the rest
@@ -88,58 +108,43 @@ const ContactForm = () => {
     // real boundary is.
     const captchaValue = recaptcha.current?.getValue();
     if (!captchaValue) {
-      alert("Please verify the reCAPTCHA!");
+      report(CAPTCHA_MISSING);
       return;
     }
 
+    // Cleared only once a send is actually under way, so the previous outcome is
+    // not on screen next to a spinner describing a different attempt. Not done
+    // above the guard: clearing and re-reporting the same captcha message in one
+    // handler batches into a single commit, and the point of `revision` is that
+    // such a commit still counts as a change.
+    setStatus(null);
     setIsSendingEmail(true);
 
     try {
-      // The reCAPTCHA check and the send both happen inside this one server
+      // Every outcome comes back as a value, so there is one place that decides
+      // what to say and one place that says it. The previous shape had three
+      // notification calls in three branches, which is how a branch ends up
+      // reporting nothing.
+      //
+      // The reCAPTCHA check and the send both happen inside the one server
       // action, so the token is actually bound to the send.
-      const result = await sendContactEmail({
-        name: userInput.name,
-        email: userInput.email,
-        message: userInput.message,
-        captchaToken: captchaValue,
-      });
+      const outcome = await submitContactEmail(() =>
+        sendContactEmail({
+          name: userInput.name,
+          email: userInput.email,
+          message: userInput.message,
+          captchaToken: captchaValue,
+        }),
+      );
 
-      if (result.ok) {
+      if (outcome.ok) {
         setUserInput({
           name: "",
           email: "",
           message: "",
         });
-        // All three toasts below pass `description` and no `title` on purpose.
-        // rewind-ui renders `description` as a <p> but `title` as an <h4>, and
-        // this page's only heading is its <h1>, so adding a title puts an h4
-        // directly under it and skips two levels. Nothing would catch that: the
-        // heading-order suite does not render this page, and the /contact e2e
-        // asserts the <h1> exists rather than checking heading order. Phrased as
-        // "not this page" rather than by listing the routes it does cover, so it
-        // stays true as that list grows.
-        toast.add({
-          color: "green",
-          tone: "solid",
-          iconType: "success",
-          description: "Successfully emailed Dan!",
-        });
-      } else {
-        toast.add({
-          color: "red",
-          tone: "solid",
-          iconType: "error",
-          description: result.error,
-        });
       }
-    } catch (error) {
-      console.error("Failed to send message. Please try again later.", error);
-      toast.add({
-        color: "red",
-        tone: "solid",
-        iconType: "error",
-        description: "Failed to send message. Please try again.",
-      });
+      report(outcome);
     } finally {
       // Always reset, so a failure cannot leave the button disabled forever.
       recaptcha.current?.reset();
@@ -148,93 +153,109 @@ const ContactForm = () => {
   };
 
   return (
-    <>
-      <form
-        className={`text-lg mt-2 ${contentColumnClasses} h-1/2`}
-        onSubmit={handleSubmit}
-        aria-describedby={
-          recaptchaSiteKey ? undefined : `${fieldId}-recaptcha-missing`
-        }
+    <form
+      className={`text-lg mt-2 ${contentColumnClasses} h-1/2`}
+      onSubmit={handleSubmit}
+      aria-describedby={
+        recaptchaSiteKey ? undefined : `${fieldId}-recaptcha-missing`
+      }
+    >
+      {/* First, not down beside the submit button where the widget used to sit.
+          The notice is about the whole form, and a reader who meets it after
+          filling three fields has already wasted the effort. It is described on
+          the <form> for the same reason: it was originally an aria-describedby on
+          the submit button, which is disabled and therefore not focusable, so
+          assistive tech would rarely reach it. */}
+      {!recaptchaSiteKey && (
+        // Naming the variable is the point: the reader of this notice is a
+        // contributor or a preview deployment that is missing it, and the
+        // alternative was a dead route. It is a public key's *name*, never a
+        // value.
+        //
+        // No `aria-live`, unlike the message elements in CreateBlogForm.
+        // Those announce a change; this is decided before first paint and
+        // never changes, so a live region would have nothing to announce.
+        <p id={`${fieldId}-recaptcha-missing`} className={formErrorClasses}>
+          This form is unavailable because
+          NEXT_PUBLIC_REACT_APP_SITE_KEY_RECAPTCHA is not set, so the reCAPTCHA
+          challenge cannot load. Email the address above instead.
+        </p>
+      )}
+      <label htmlFor={`${fieldId}-name`} className={formLabelClasses}>
+        Name
+      </label>
+      <Input
+        required
+        id={`${fieldId}-name`}
+        disabled={formInoperable}
+        value={userInput.name}
+        type="text"
+        name="name"
+        color="purple"
+        className={`${formControlClasses} mt-1`}
+        onChange={handleChange}
+      />
+      <label htmlFor={`${fieldId}-email`} className={formLabelClasses}>
+        Email
+      </label>
+      <Input
+        required
+        id={`${fieldId}-email`}
+        disabled={formInoperable}
+        value={userInput.email}
+        type="email"
+        name="email"
+        color="purple"
+        className={`${formControlClasses} mt-1`}
+        onChange={handleChange}
+      />
+      <label htmlFor={`${fieldId}-message`} className={formLabelClasses}>
+        Message
+      </label>
+      <Textarea
+        required
+        id={`${fieldId}-message`}
+        disabled={formInoperable}
+        className={`${formControlClasses} mt-1`}
+        tone="solid"
+        color="purple"
+        placeholder="Ask me anything!"
+        name="message"
+        value={userInput.message}
+        onChange={handleChange}
+      />
+      {recaptchaSiteKey && (
+        <ReCAPTCHA theme="dark" ref={recaptcha} sitekey={recaptchaSiteKey} />
+      )}
+      <Button
+        variant="primary"
+        type="submit"
+        className={`mt-1 font-bold ${primaryButtonClasses}`}
+        disabled={formInoperable}
+        loading={isSendingEmail}
       >
-        {/* First, not down beside the submit button where the widget used to
-            sit. The notice is about the whole form, and a reader who meets it
-            after filling three fields has already wasted the effort. It is
-            described on the <form> for the same reason: it was originally an
-            aria-describedby on the submit button, which is disabled and
-            therefore not focusable, so assistive tech would rarely reach it. */}
-        {!recaptchaSiteKey && (
-          // Naming the variable is the point: the reader of this notice is a
-          // contributor or a preview deployment that is missing it, and the
-          // alternative was a dead route. It is a public key's *name*, never a
-          // value.
-          //
-          // No `aria-live`, unlike the message elements in CreateBlogForm.
-          // Those announce a change; this is decided before first paint and
-          // never changes, so a live region would have nothing to announce.
-          <p id={`${fieldId}-recaptcha-missing`} className={formErrorClasses}>
-            This form is unavailable because
-            NEXT_PUBLIC_REACT_APP_SITE_KEY_RECAPTCHA is not set, so the
-            reCAPTCHA challenge cannot load. Email the address above instead.
-          </p>
-        )}
-        <label htmlFor={`${fieldId}-name`} className={formLabelClasses}>
-          Name
-        </label>
-        <Input
-          required
-          id={`${fieldId}-name`}
-          disabled={formInoperable}
-          value={userInput.name}
-          type="text"
-          name="name"
-          color="purple"
-          className={`${formControlClasses} mt-1`}
-          onChange={handleChange}
-        />
-        <label htmlFor={`${fieldId}-email`} className={formLabelClasses}>
-          Email
-        </label>
-        <Input
-          required
-          id={`${fieldId}-email`}
-          disabled={formInoperable}
-          value={userInput.email}
-          type="email"
-          name="email"
-          color="purple"
-          className={`${formControlClasses} mt-1`}
-          onChange={handleChange}
-        />
-        <label htmlFor={`${fieldId}-message`} className={formLabelClasses}>
-          Message
-        </label>
-        <Textarea
-          required
-          id={`${fieldId}-message`}
-          disabled={formInoperable}
-          className={`${formControlClasses} mt-1`}
-          tone="solid"
-          color="purple"
-          placeholder="Ask me anything!"
-          name="message"
-          value={userInput.message}
-          onChange={handleChange}
-        />
-        {recaptchaSiteKey && (
-          <ReCAPTCHA theme="dark" ref={recaptcha} sitekey={recaptchaSiteKey} />
-        )}
-        <Button
-          variant="primary"
-          type="submit"
-          className={`mt-1 font-bold ${primaryButtonClasses}`}
-          disabled={formInoperable}
-          loading={isSendingEmail}
-        >
-          Send Message
-        </Button>
-      </form>
-      <ToastContainer />
-    </>
+        Send Message
+      </Button>
+      {/* Always in the tree and empty until there is something to say, and marked
+          a live region up front rather than inserted at the moment it gains text:
+          the inserted-then-populated shape is the less dependable of the two
+          across assistive tech. Same idiom as the message elements in
+          CreateBlogForm.
+
+          `polite`, not `assertive`. The reader pressed the button; the answer is
+          not an interruption. The rewind-ui Toast this replaces was assertive, but
+          it was also gone in three seconds and dismissable only with a mouse, so
+          it announced once and could not be recalled.
+
+          Not added to the form's `aria-describedby`: this is the outcome of an
+          action, not a standing description of the form. */}
+      <p
+        aria-live="polite"
+        className={status?.ok ? formSuccessClasses : formErrorClasses}
+      >
+        {status && <span key={status.revision}>{status.message}</span>}
+      </p>
+    </form>
   );
 };
 

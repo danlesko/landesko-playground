@@ -55,6 +55,15 @@ function fieldTag(html: string, name: string): string {
   return tag;
 }
 
+/** Every live region in the rendered form. An array rather than the first match,
+ *  so a second one appearing is a failure instead of being ignored: two polite
+ *  regions holding the same outcome is a double announcement. */
+function liveRegions(html: string): { attrs: string; text: string }[] {
+  return [
+    ...html.matchAll(/<p([^>]*\baria-live="[^"]*"[^>]*)>([\s\S]*?)<\/p>/g),
+  ].map((match) => ({ attrs: match[1] as string, text: match[2] as string }));
+}
+
 const FIELD_NAMES = ["name", "email", "message"] as const;
 
 beforeEach(() => {
@@ -64,6 +73,41 @@ beforeEach(() => {
 afterAll(() => {
   if (originalKey === undefined) delete process.env[SITE_KEY_VAR];
   else process.env[SITE_KEY_VAR] = originalKey;
+});
+
+// The outcome of a submit is reported into this element, which replaced a
+// rewind-ui Toast (#64: 3-second auto-dismiss, mouse-only pause and dismissal).
+// Both key states are checked because the region is unconditional -- it is not
+// tied to whether the form can be sent, and rendering it only in the operable
+// case would leave the `requestSubmit` path with nowhere to report.
+//
+// What is NOT here: the populated states. The component holds them in `useState`
+// after an awaited server action, and this suite renders statically in Node with
+// no DOM, so there is no submit to perform. The decision those states display is
+// covered by src/lib/contactStatus.test.ts and the render is covered in the
+// browser by e2e/smoke.spec.ts.
+describe.each([
+  { label: "with the site key set", value: "a-test-site-key" },
+  { label: "with no site key", value: undefined },
+])("ContactForm's outcome region $label", ({ value }) => {
+  it("renders exactly one live region, and it is polite", async () => {
+    const regions = liveRegions(await render(value));
+
+    expect(regions).toHaveLength(1);
+    expect(regions[0]!.attrs).toContain('aria-live="polite"');
+  });
+
+  it("is empty until there is an outcome, so it holds no height", async () => {
+    expect(liveRegions(await render(value))[0]!.text).toBe("");
+  });
+
+  it("sits after the submit button, where the outcome of pressing it belongs", async () => {
+    const html = await render(value);
+
+    expect(html.indexOf(submitButtonTag(html))).toBeLessThan(
+      html.indexOf(liveRegions(html)[0]!.attrs),
+    );
+  });
 });
 
 describe("ContactForm with the reCAPTCHA site key configured", () => {
