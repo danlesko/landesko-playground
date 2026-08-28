@@ -31,24 +31,31 @@
 // rule.
 //
 // MEASURED, because the blanket version of that rule is the wrong shape and this
-// file was carrying it. Built the stylesheet twice -- once normally, once with the
-// content globs pointed at a comment-free copy of src produced by the TypeScript
-// compiler -- and diffed the emitted rules. Only eight rules differed, worth
-// 12,529 bytes, and ONE of them was worth 12,309 of it.
+// file was carrying it. The stylesheet was built against two copies of src that
+// were transpiled identically and differed ONLY in `removeComments`. Holding the
+// transform constant is the whole point: an earlier attempt compared raw source
+// against transpiled source, which also elides types and imports, so it could not
+// attribute the difference to comments at all.
 //
-// That one was `prose`. Not a utility: `@tailwindcss/typography` was a declared
-// plugin that nothing in this app used, and the plugin expands that single
-// candidate into 88 rules. The word appeared in exactly three comments, two of
-// which were warnings about this very hazard. Removing the plugin took the
-// stylesheet from 121,409 to 109,100 bytes, 10.1% of it, and `max-w-prose` --
-// which is a core width utility, and the only form rewind-ui actually uses --
-// survived, as it had to.
+// Result, with the transform held constant: **eight candidate names** differed,
+// not eight rules. Seven of them are one rule each and cost 220 bytes together.
+// The eighth was `prose`, and it alone expanded into 88 rules worth 12,309 bytes.
 //
-// The other seven cost 220 bytes between them. So the durable lesson is not "never
-// write a utility word in a comment", which contorts prose for twenty bytes a
-// time; it is that a PLUGIN can make one word cost a tenth of the stylesheet, and
-// that the way to know is to build it twice and diff rather than to guess. The
-// seven cheap ones are left in place deliberately, priced rather than avoided.
+// `prose` is not a utility. It came from `@tailwindcss/typography`, a declared
+// plugin that nothing in this app used. Removing it took the stylesheet from
+// 121,409 to 109,100 bytes -- 10.1% -- and the before and after files turned out to
+// share an identical 4,964-byte prefix and 104,136-byte suffix, so the removal was
+// literally one contiguous block and nothing else moved. `max-w-prose` survived,
+// as it had to: that one is a CORE width utility and is the only form rewind-ui
+// actually uses.
+//
+// So the durable lesson is not "never write a utility word in a comment", which
+// contorts a sentence for about thirty bytes at a time. It is that a PLUGIN can
+// make a single word cost a tenth of the stylesheet, and that the way to tell the
+// expensive words from the cheap ones is to build twice and diff. The seven cheap
+// ones are left in place deliberately -- an explicit 220-byte budget, not a claim
+// that core utilities are free. Some core utilities carry keyframes and would not
+// be.
 import { contentColumnClasses } from "@/components/ui/layout";
 
 export const cardClasses = `mt-4 p-4 rounded-lg border border-border ${contentColumnClasses}`;
