@@ -27,7 +27,28 @@
 // gone -- see ./layout.ts for what replaced them and why.
 //
 // Neither old class is named literally anywhere here on purpose: Tailwind reads
-// comment prose as class candidates, so quoting one keeps emitting its rule.
+// the words in a comment as class candidates, so quoting one keeps emitting its
+// rule.
+//
+// MEASURED, because the blanket version of that rule is the wrong shape and this
+// file was carrying it. Built the stylesheet twice -- once normally, once with the
+// content globs pointed at a comment-free copy of src produced by the TypeScript
+// compiler -- and diffed the emitted rules. Only eight rules differed, worth
+// 12,529 bytes, and ONE of them was worth 12,309 of it.
+//
+// That one was `prose`. Not a utility: `@tailwindcss/typography` was a declared
+// plugin that nothing in this app used, and the plugin expands that single
+// candidate into 88 rules. The word appeared in exactly three comments, two of
+// which were warnings about this very hazard. Removing the plugin took the
+// stylesheet from 121,409 to 109,100 bytes, 10.1% of it, and `max-w-prose` --
+// which is a core width utility, and the only form rewind-ui actually uses --
+// survived, as it had to.
+//
+// The other seven cost 220 bytes between them. So the durable lesson is not "never
+// write a utility word in a comment", which contorts prose for twenty bytes a
+// time; it is that a PLUGIN can make one word cost a tenth of the stylesheet, and
+// that the way to know is to build it twice and diff rather than to guess. The
+// seven cheap ones are left in place deliberately, priced rather than avoided.
 import { contentColumnClasses } from "@/components/ui/layout";
 
 export const cardClasses = `mt-4 p-4 rounded-lg border border-border ${contentColumnClasses}`;
