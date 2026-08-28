@@ -40,31 +40,27 @@ export async function sendContactEmail(
   }
 
   // Unprefixed first, falling back to the `NEXT_PUBLIC_` names. Only the server
-  // reads these three, so the prefix was never doing anything except marking them
-  // as publishable - #14 calls it "an active trap", because the moment a client
-  // component reads one they ship to every visitor. There is a guard for that in
-  // src/test/server-env-visibility.test.ts, but not needing the prefix at all is
-  // better than guarding it.
+  // reads these three, so the prefix marks them publishable for no reason — #14
+  // calls that "an active trap", because a client component reading one would ship
+  // it to every visitor.
   //
-  // The fallback is what makes this shippable on its own. The rename otherwise
-  // has to be a coordinated two-step - add the new names in Vercel for
-  // Production, Preview AND Development, only then deploy the code, or the form
-  // breaks in between - and that ordering is the reason #14 sat still. Reading
-  // both means the deploy can land now and the dashboard change can happen
-  // whenever, in either order, with no window where the form is down.
+  // The right-hand arms are the ones doing the work. #14 closed with the rename
+  // accepted as-is, and when that was checked (2026-08-28, `vercel env ls`) only
+  // the `NEXT_PUBLIC_` names existed. So this is not a migration in progress, and
+  // it is not a temporary shim, which is what an earlier version of this comment
+  // called it.
   //
-  // Written as a temporary shim, and it is not one: #14 closed with the rename
-  // ACCEPTED AS-IS, so the unprefixed names do not exist in Vercel and are not
-  // scheduled to. The fallback is what actually serves the form, and the `??`
-  // arms are load-bearing rather than transitional.
+  // Keeping the left-hand arms costs nothing and leaves the rename available:
+  // add the unprefixed names in Vercel and this file prefers them from the next
+  // request, with no code change and no window where the form is down. The arms
+  // could then come out, and the per-name check in
+  // src/test/server-env-visibility.test.ts would fail naming the lines to delete.
   //
-  // Not a problem to leave: the trap the rename existed to remove is already shut
-  // by src/test/server-env-visibility.test.ts, which fails if any of these names
-  // is read outside a server module. What the fallback buys is that the rename
-  // stays available at zero cost — add the three unprefixed names in Vercel
-  // whenever, in any order, and this file starts preferring them with no deploy
-  // and no window where the form is down. THEN the arms can come out, and the
-  // guard test's per-name check is what will fail and say which lines to delete.
+  // One sharp edge: `??` falls back on null and undefined but NOT on an empty
+  // string. An unprefixed name set to "" would therefore win over a populated
+  // prefixed one. The guard below still catches it — `!serviceId` treats "" as
+  // missing and the send is refused — so it fails closed rather than sending with
+  // a blank service id.
   const serviceId =
     process.env.EMAILJS_SERVICE_ID ??
     process.env.NEXT_PUBLIC_EMAILJS_SERVICE_ID;
