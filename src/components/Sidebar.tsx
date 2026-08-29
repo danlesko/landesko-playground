@@ -117,7 +117,7 @@ const Sidebar = () => {
       // viewport narrower than 250px. It is the positioning ancestor the panel
       // and the scrim are placed against, and it outranks the header so the panel
       // is not painted underneath it.
-      className="relative z-40 p-2 text-foreground lg:static lg:z-auto lg:min-w-[250px] lg:max-w-[250px] lg:bg-surface lg:p-4"
+      className="relative z-40 p-2 text-foreground lg:static lg:z-auto lg:bg-surface lg:px-4 lg:py-2"
     >
       {/* A scrim, not a modal backdrop. It carries no role, no handler and no
           name, so it adds nothing to the accessibility tree -- the dismissing
@@ -184,7 +184,7 @@ const Sidebar = () => {
         className={clsx(
           "absolute left-2 top-full z-10 w-[250px] max-w-[calc(100%-1rem)] rounded bg-surface p-2 shadow-2xl shadow-black",
           "lg:static lg:w-auto lg:max-w-none lg:rounded-none lg:bg-transparent lg:p-0 lg:shadow-none",
-          "space-y-2 lg:block",
+          "space-y-2 lg:flex lg:space-y-0 lg:gap-x-2",
           isOpen ? "block" : "hidden",
         )}
       >

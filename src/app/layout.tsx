@@ -118,12 +118,12 @@ export default async function RootLayout({
             </div>
           </header>
 
-          <div className="flex flex-col lg:flex-row flex-1">
+          <div className="flex flex-col flex-1">
             {/* Sidebar/Navbar */}
             <Sidebar />
 
             {/* Main Content */}
-            <main className="flex-1 bg-background p-4 text-foreground">
+            <main className="flex-1 bg-background p-4 text-foreground [&>*]:lg:mx-auto">
               {children}
             </main>
           </div>
