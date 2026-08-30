@@ -87,14 +87,17 @@ test("the home hero links to every destination it promises", async ({
 });
 
 /**
- * The `sizes` contract that #10 warned about in as many words: the sidebar is a
- * fixed 250px from `lg` up and `<main>` adds 32px of padding, so the hero's image
- * column is `calc((100vw - 282px) / 2)` -- and if the page structure or the sidebar
- * width changes without that attribute being updated, the browser is left choosing
+ * The `sizes` contract that #10 warned about in as many words. The hero is a single
+ * column as of #135, capped at `42rem` from `lg` up, and if the page structure or
+ * the cap changes without that attribute being updated the browser is left choosing
  * a candidate against a width the image no longer has -- and nothing about the
  * layout changes to announce it. Declare too large and the cost is bytes nobody
  * notices; too small and the photo goes soft, which is the kind of thing that gets
  * lived with rather than filed. That quiet is why this is a test and not a comment.
+ *
+ * It caught #135: reverting only the attribute to the old two-column half-width
+ * failed with "at 1280px wide, sizes declares calc((100vw - 282px) / 2) = 499px but
+ * the image renders 672px".
  *
  * What it pins is that mismatch, and only that. Whether any particular mismatch is
  * big enough to change which file the browser actually downloads depends on the
@@ -112,10 +115,12 @@ test("the home hero links to every destination it promises", async ({
  * relationship rather than a frozen constant, which is the difference between a
  * test that survives a legitimate change and one that gets muted for crying wolf.
  *
- * Sensitivity is worth stating, since it is not 1:1. The 282px is split between
- * two columns, so a sidebar change of N pixels moves this image by only N/2 --
- * which is why the tolerance below is a fraction of a pixel and not the pixel of
- * slack it started as, which passed a 250px -> 252px sidebar.
+ * Sensitivity changed with #135 and is now 1:1 in the band where the cap does not
+ * bind, and 0 where it does. Above `lg` the declared width is the cap, so a sidebar
+ * change moves the rendered width not at all until the sidebar grows enough to make
+ * the content box narrower than `42rem` -- at which point the two diverge and this
+ * fails. The sub-pixel tolerance is kept: it was tightened because a whole pixel of
+ * slack passed a 250px -> 252px sidebar back when the column was half the box.
  *
  * And the limit, since sampling is not proof: this checks the widths listed below.
  * A sidebar width introduced at a breakpoint above the largest of them, or active
@@ -127,13 +132,16 @@ test("the home hero image declares the width it actually renders", async ({
 }) => {
   await page.goto("/");
 
-  // Both branches of the attribute, three widths inside the `min-width: 1024px`
-  // one. The extra desktop widths are not redundant: a sidebar width introduced at
-  // a breakpoint above the only viewport tested would leave this green, so one
-  // sample per branch is not enough to claim the branch holds. 1281 is deliberately
-  // odd -- the column is half of `100vw - 282px`, so it lands on a half pixel and
-  // covers the fractional-track case that even widths never reach.
-  for (const width of [1280, 1281, 1600, 390]) {
+  // Both branches, and both sides of the breakpoint. 1023 and 1024 are the pair
+  // that matters and were missing: the cap is `lg:`-prefixed, so 1023 is the widest
+  // uncapped width and 1024 the narrowest capped one. Without them an UNPREFIXED
+  // cap -- which would silently narrow the 705-1023px band, an incident this repo
+  // has on record -- passed every sample. 768 covers the middle of that band.
+  //
+  // 1281 is deliberately odd. It no longer lands on a half pixel now the column is
+  // not a half track, but an odd width is still the cheapest guard against an
+  // arithmetic change that only misbehaves off even numbers.
+  for (const width of [1280, 1281, 1600, 1024, 1023, 768, 390]) {
     await page.setViewportSize({ width, height: 900 });
 
     const measured = await page.evaluate(() => {
@@ -379,7 +387,13 @@ test("the home page LCP image loads eagerly at a declared size", async ({
   // policy of this suite. A latency assertion would need an agreed threshold and
   // is not folded in here.
 
-  // `priority` is the whole point of this image: it is the LCP element. Next 15
+  // `priority` is here because this image is the largest thing on the first
+  // screen. Stated that way rather than "it is the LCP element": #135 made the
+  // hero a single column, so the photo now starts below the heading and copy and
+  // runs past the fold, and which element wins LCP has not been observed with a
+  // PerformanceObserver. It is still the plausible winner, which is why `priority`
+  // stays -- but the claim this test can actually make is about the preload, not
+  // about LCP. Next 15
   // does *not* implement that as fetchpriority on the <img> -- it emits a
   // `<link rel="preload" as="image">` into <head> and leaves the tag with no
   // loading and no fetchpriority attribute at all. Asserting fetchpriority here
@@ -397,8 +411,8 @@ test("the home page LCP image loads eagerly at a declared size", async ({
   expect(await image.getAttribute("loading")).not.toBe("lazy");
 
   // Without `sizes` the browser assumes 100vw and picks a candidate far wider
-  // than the half-width column this sits in. Both the tag and the preload hint
-  // have to carry it, or the preload races the tag for a different candidate.
+  // than the capped column this sits in. Both the tag and the preload hint have
+  // to carry it, or the preload races the tag for a different candidate.
   await expect(image).toHaveAttribute("sizes", /min-width/);
   await expect(
     page.locator('head link[rel="preload"][as="image"]'),
