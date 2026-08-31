@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { Montserrat } from "next/font/google";
 import "./globals.css";
 import Image from "next/image";
-import Sidebar from "@/components/Sidebar";
+import MainNav from "@/components/MainNav";
 import { Button } from "@rewind-ui/core";
 import { primaryButtonClasses } from "@/components/ui/button";
 import { signIn, signOut } from "@/auth";
@@ -118,9 +118,13 @@ export default async function RootLayout({
             </div>
           </header>
 
-          <div className="flex flex-col lg:flex-row flex-1">
-            {/* Sidebar/Navbar */}
-            <Sidebar />
+          {/* One axis at every width. This used to switch to a row at `lg`, which
+              put the nav in a 250px column beside the content; #136 moved it to a
+              band under the header. The nav still precedes `<main>` in the DOM
+              exactly as before -- only the direction changed, and it no longer
+              changes -- so reading and focus order are untouched by this. */}
+          <div className="flex flex-col flex-1">
+            <MainNav />
 
             {/* Main Content */}
             <main className="flex-1 bg-background p-4 text-foreground">

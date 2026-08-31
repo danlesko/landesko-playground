@@ -14,7 +14,8 @@ export default async function Home() {
     //
     // Capped on the shared measure rather than left to fill the content box. Not
     // tidiness: with the grid gone the photo's width is its parent's content box,
-    // `100vw - 282px`, which is 1638px at a 1920px viewport -- a 1638x2183 render
+    // `100vw - 32px` now that #136 removed the 250px rail, which is 1888px at a
+    // 1920px viewport -- a 1888x2516 render
     // of a 1286x1714 portrait. The cap also puts the paragraph on the same measure
     // as the cards and forms, which is what `layout.ts` calls the one content
     // measure. Not every route: /credits is uncapped and /animation deliberately
@@ -78,11 +79,19 @@ export default async function Home() {
           // the same unit the CSS uses cannot drift.
           //
           // From `lg` up this cap decides the width, not the viewport: the
-          // content box is `100vw - 282px` (a 250px sidebar plus 32px of
-          // `<main>` padding), so 742px at the 1024px breakpoint, already wider
-          // than 42rem at a default root. Below `lg` there is no cap and no
-          // sidebar beside it, so the photo fills the content box.
-          sizes="(min-width: 1024px) 42rem, calc(100vw - 32px)"
+          // content box is `100vw - 32px` -- `<main>`'s padding, and nothing
+          // else since #136 took the 250px rail out -- so 992px at the 1024px
+          // breakpoint, already wider than 42rem at a default root. Below `lg`
+          // there is no cap, so the photo fills the content box.
+          //
+          // Wrapped in `min()` rather than declaring the cap bare. The cap only
+          // wins while it is the smaller of the two, and at a large enough root
+          // font it is not: 42rem passes 992px once the root exceeds about
+          // 23.6px. Below that the `min()` is inert; above it, it keeps the
+          // declaration equal to the rendered width instead of over-declaring.
+          // Removing the rail widened the margin here -- the old threshold, with
+          // a 742px box, was about 17.7px.
+          sizes="(min-width: 1024px) min(42rem, calc(100vw - 32px)), calc(100vw - 32px)"
           className="h-auto w-full"
           priority
         />

@@ -6,9 +6,9 @@ import Link from "next/link";
 import { List } from "@phosphor-icons/react/dist/ssr";
 
 // Referenced by both the toggle's `aria-controls` and the list's `id`, so the
-// two cannot drift apart. Sidebar is rendered once, in the root layout, so a
+// two cannot drift apart. MainNav is rendered once, in the root layout, so a
 // constant is unique on the page.
-const MENU_ID = "sidebar-menu";
+const MENU_ID = "main-nav-menu";
 
 // Which pages are in the nav, and in what order. Up here rather than inline in
 // the list below, where it was 170 lines further down and behind three
@@ -21,7 +21,7 @@ const NAV_ITEMS = [
   { href: "/credits", label: "Credits" },
 ] as const;
 
-const Sidebar = () => {
+const MainNav = () => {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -117,7 +117,7 @@ const Sidebar = () => {
       // viewport narrower than 250px. It is the positioning ancestor the panel
       // and the scrim are placed against, and it outranks the header so the panel
       // is not painted underneath it.
-      className="relative z-40 p-2 text-foreground lg:static lg:z-auto lg:min-w-[250px] lg:max-w-[250px] lg:bg-surface lg:p-4"
+      className="relative z-40 p-2 text-foreground lg:static lg:z-auto lg:bg-surface lg:px-4 lg:py-2"
     >
       {/* A scrim, not a modal backdrop. It carries no role, no handler and no
           name, so it adds nothing to the accessibility tree -- the dismissing
@@ -183,8 +183,8 @@ const Sidebar = () => {
         // again at `lg` activates all three at once.
         className={clsx(
           "absolute left-2 top-full z-10 w-[250px] max-w-[calc(100%-1rem)] rounded bg-surface p-2 shadow-2xl shadow-black",
-          "lg:static lg:w-auto lg:max-w-none lg:rounded-none lg:bg-transparent lg:p-0 lg:shadow-none",
-          "space-y-2 lg:block",
+          "lg:static lg:left-auto lg:top-auto lg:z-auto lg:w-auto lg:max-w-none lg:rounded-none lg:bg-transparent lg:p-0 lg:shadow-none",
+          "space-y-2 lg:flex lg:space-y-0 lg:gap-x-2",
           isOpen ? "block" : "hidden",
         )}
       >
@@ -224,4 +224,4 @@ const Sidebar = () => {
   );
 };
 
-export default Sidebar;
+export default MainNav;

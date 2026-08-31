@@ -98,7 +98,9 @@ export function createFishTankSketch(
     };
 
     // p5.windowWidth is the whole viewport, but from `lg` up the canvas only
-    // has the viewport minus the 250px sidebar and <main>'s 32px of padding.
+    // has the viewport minus <main>'s 32px of padding. It was also minus a 250px
+    // rail until #136 moved the nav under the header, so this box is 250px wider
+    // than the figures further down were measured against.
     // Sizing from the viewport made the canvas overrun <main>, and because
     // <main> is a flexbox child whose min-width defaults to auto it widened to
     // fit rather than clip, pushing the page 232px past the viewport. So
@@ -153,7 +155,9 @@ export function createFishTankSketch(
     // to a "comfortable" 320 does reintroduce #57 — measured at 16px of page
     // overflow on a 320px-wide viewport — so there is an e2e guard at that
     // width. The 1280x1024 overflow guard cannot see it: available width there
-    // is 998 and so is the canvas.
+    // was 998 and so was the canvas. Since #136 the same viewport gives a 1248px
+    // box, so the canvas is larger; the relationship this comment describes is
+    // unchanged, only the number.
     //
     // These stop the crash; they do not make the result look right, and it would
     // be wrong to read them as a "smallest usable tank". Seaweed blades are still

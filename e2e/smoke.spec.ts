@@ -9,7 +9,7 @@ import { test, expect } from "@playwright/test";
  * begun. So each test names a specific element or a specific navigation result.
  */
 
-// The sidebar, named rather than located by tag, so the assertions below survive
+// The main nav, named rather than located by tag, so the assertions below survive
 // the wrapper moving. Defined once so a rename has one place to change -- the
 // tests that call it would all still fail, but only this line needs editing.
 //
@@ -43,9 +43,10 @@ test("the home hero links to every destination it promises", async ({
   await page.goto("/");
 
   // Scoped to <main>, which on this page contains the hero and nothing else --
-  // so "inside main" and "inside the hero" coincide here, and the sidebar's own
+  // so "inside main" and "inside the hero" coincide here, and the nav's own
   // copies of /blog, /animation and /contact cannot supply the answer. The
-  // sidebar <nav> is a sibling of <main> in layout.tsx, which is what makes the
+  // <nav> is a sibling of <main> in layout.tsx -- above it since #136 rather than
+  // beside it, but still a sibling, which is what makes the
   // scoping work at all.
   const links = page.getByRole("main").locator("a[href]");
 
@@ -108,22 +109,23 @@ test("the home hero links to every destination it promises", async ({
  * arithmetic: the attribute's own `calc()` is applied to a probe element and the
  * result compared to the image's real width. To be exact about what that buys,
  * because the first version of this comment overstated it -- a test that hardcoded
- * `(100vw - 282px) / 2` as the expected value would *also* fail when the sidebar
+ * `(100vw - 282px) / 2` as the expected value would *also* fail when the nav
  * changed, since the rendered width moves and the constant does not. What it would
- * additionally do is fail when someone changes the sidebar and updates `sizes`
+ * additionally do is fail when someone changes the nav and updates `sizes`
  * correctly, i.e. exactly when the code is right. Reading the attribute tests the
  * relationship rather than a frozen constant, which is the difference between a
  * test that survives a legitimate change and one that gets muted for crying wolf.
  *
  * Sensitivity changed with #135 and is now 1:1 in the band where the cap does not
- * bind, and 0 where it does. Above `lg` the declared width is the cap, so a sidebar
- * change moves the rendered width not at all until the sidebar grows enough to make
- * the content box narrower than `42rem` -- at which point the two diverge and this
- * fails. The sub-pixel tolerance is kept: it was tightened because a whole pixel of
- * slack passed a 250px -> 252px sidebar back when the column was half the box.
+ * bind, and 0 where it does. Since #136 there is no rail to change: the content box
+ * is `100vw - 32px` at every width, and above `lg` the declared width is the cap, so
+ * the rendered width only moves once the box drops below `42rem`. The `min()` in the
+ * attribute is what keeps the two equal when it does -- at a large root font size.
+ * The sub-pixel tolerance is kept: it was tightened because a whole pixel of slack
+ * passed a 250px -> 252px rail back when the column was half the box.
  *
  * And the limit, since sampling is not proof: this checks the widths listed below.
- * A sidebar width introduced at a breakpoint above the largest of them, or active
+ * A width constraint introduced at a breakpoint above the largest of them, or active
  * only between two of them, still passes. Widening that is a matter of adding
  * widths, not of the test being wrong.
  */
@@ -153,15 +155,54 @@ test("the home hero image declares the width it actually renders", async ({
       if (!sizes) throw new Error("hero image has no sizes attribute");
 
       // Pick the branch that applies right now. Entries are `<media condition>
-      // <size>` with a bare `<size>` last; no comma appears inside either half
-      // of this attribute, so splitting on commas is sufficient here.
+      // <size>` with a bare `<size>` last, separated by TOP-LEVEL commas.
+      //
+      // Splitting on every comma is what this used to do, and the comment used to
+      // justify it by saying no comma appears inside either half. That stopped
+      // being true the moment the size became `min(42rem, calc(100vw - 32px))`,
+      // and the test failed loudly with "declares calc(100vw - 32px)) = 0px" --
+      // a torn fragment measuring zero. Worth keeping the story: the assertion
+      // was strong enough to catch its own parser being outgrown, which is the
+      // opposite of the silent pass a weaker check would have given.
+      //
+      // So track parenthesis depth and split only at depth 0. Media conditions
+      // and CSS math functions both nest, and either can now contain a comma.
+      const entries: string[] = [];
+      let depth = 0;
+      let current = "";
+      for (const ch of sizes) {
+        if (ch === "(") depth += 1;
+        if (ch === ")") depth -= 1;
+        if (ch === "," && depth === 0) {
+          entries.push(current);
+          current = "";
+          continue;
+        }
+        current += ch;
+      }
+      entries.push(current);
+
       let declared: string | null = null;
-      for (const entry of sizes.split(",").map((s) => s.trim())) {
+      for (const entry of entries.map((s) => s.trim())) {
         if (!entry.startsWith("(")) {
           declared = entry;
           break;
         }
-        const close = entry.indexOf(")");
+        // The media condition's own closing paren, found by depth rather than by
+        // the first `)` -- `(min-width: 1024px)` is flat today but a condition
+        // like `(min-width: calc(60rem + 1px))` would not be.
+        let d = 0;
+        let close = -1;
+        for (let i = 0; i < entry.length; i += 1) {
+          if (entry[i] === "(") d += 1;
+          if (entry[i] === ")") {
+            d -= 1;
+            if (d === 0) {
+              close = i;
+              break;
+            }
+          }
+        }
         if (window.matchMedia(entry.slice(0, close + 1)).matches) {
           declared = entry.slice(close + 1).trim();
           break;
@@ -190,8 +231,8 @@ test("the home hero image declares the width it actually renders", async ({
     // can only ever disagree by one unit. It is small enough to be worth having
     // and it holds at every width sampled here, measured, locally and in CI.
     //
-    // The 1px bound this replaces was not worth much: the sidebar's 282px is
-    // halved across two columns, so a 250px -> 252px sidebar and a stray
+    // The 1px bound this replaces was not worth much: back when this was a
+    // half-track of `100vw - 282px`, a 250px -> 252px rail and a stray
     // `lg:gap-0.5` each move the image by exactly 1px and both slipped through.
     // Both now fail. A `lg:gap-8` costs 16px per column and was caught either way.
     //
@@ -209,7 +250,7 @@ test("the home hero image declares the width it actually renders", async ({
 test("/credits attributes all four outbound resources", async ({ page }) => {
   await page.goto("/credits");
 
-  // Scoped to <main> so the sidebar's links cannot pad the count. Nothing else
+  // Scoped to <main> so the nav's links cannot pad the count. Nothing else
   // on *this* page renders an absolute href, so this is exactly the credits
   // list -- the home hero renders two, which is why the scope is per-page and
   // not app-wide.
@@ -685,7 +726,7 @@ test("/blog/create redirects an anonymous visitor away", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("the sidebar client-side navigates between routes", async ({ page }) => {
+test("the nav client-side navigates between routes", async ({ page }) => {
   // Starts on /credits, not /. PUBLIC_ROUTES begins with "/", so starting there
   // made the first iteration assert that clicking Home while already on Home
   // leaves us on Home -- true no matter what that link does, even if its click
@@ -700,23 +741,21 @@ test("the sidebar client-side navigates between routes", async ({ page }) => {
   // unlabelled or icon-only link pass, so the accessible name is asserted to be
   // non-empty without pinning its wording -- the part #7 should strengthen
   // rather than the part it will churn.
-  // Was `complementary`: the sidebar is a named `navigation` landmark now, which
+  // Was `complementary`: the nav is a named `navigation` landmark now, which
   // is the "wrappers are expected to move" case above actually happening. The
   // name is pinned rather than located by tag, so this keeps working if the
   // wrapper moves again and fails if the landmark stops being navigation.
-  const sidebar = mainNav(page);
+  const nav = mainNav(page);
 
   // A full page load would reset this, so its survival is what distinguishes
   // client-side routing from the browser simply following an anchor. The
-  // sidebar is a client component whose entire purpose is soft navigation.
+  // the nav is a client component whose entire purpose is soft navigation.
   await page.evaluate(() => {
     Object.assign(window, { __sameDocument: true });
   });
 
   for (const { path, heading } of PUBLIC_ROUTES) {
-    const link = sidebar
-      .getByRole("link")
-      .and(page.locator(`a[href="${path}"]`));
+    const link = nav.getByRole("link").and(page.locator(`a[href="${path}"]`));
     await expect(link).toHaveAccessibleName(/\S/);
 
     await link.click();
@@ -737,7 +776,7 @@ test("the sidebar client-side navigates between routes", async ({ page }) => {
   // is load-bearing for several other tests in this file, and rewiring that is
   // not a captcha fix.
   await expect(
-    sidebar.getByRole("link").and(page.locator('a[href="/contact"]')),
+    nav.getByRole("link").and(page.locator('a[href="/contact"]')),
   ).toHaveAccessibleName(/\S/);
 });
 
@@ -755,7 +794,7 @@ test("the page exposes one banner and exactly one navigation landmark", async ({
   // Exactly one, not two. The top bar used to be a `nav` holding no links at
   // all, so a screen-reader user could jump to a navigation landmark with
   // nothing navigable in it. This count fails in both directions that matter:
-  // if the sidebar reverts to a non-navigation wrapper, and if a spurious nav
+  // if the nav reverts to a non-navigation wrapper, and if a spurious nav
   // landmark is reintroduced.
   await expect(page.getByRole("navigation")).toHaveCount(1);
   await expect(mainNav(page)).toHaveCount(1);
@@ -831,15 +870,15 @@ test("the header's auth button keeps its label readable", async ({ page }) => {
   expect(hovered).not.toBe(resting);
 });
 
-test("the sidebar toggle reports a truthful expanded state below `lg`", async ({
+test("the nav toggle reports a truthful expanded state below `lg`", async ({
   page,
 }) => {
   // 1023px is one pixel below Tailwind's `lg`, so the disclosure is live here.
   await page.setViewportSize({ width: 1023, height: 800 });
   await page.goto("/credits");
 
-  const sidebar = mainNav(page);
-  const toggle = sidebar.getByRole("button", { name: "Menu" });
+  const nav = mainNav(page);
+  const toggle = nav.getByRole("button", { name: "Menu" });
   await expect(toggle).toBeVisible();
 
   // Two claims, pinned separately: the computed name is exactly "Menu", and it
@@ -900,13 +939,13 @@ test("the sidebar toggle reports a truthful expanded state below `lg`", async ({
   await expect(menu).toBeHidden();
 });
 
-test("the sidebar never announces a collapsed state at `lg` and above", async ({
+test("the nav never announces a collapsed state at `lg` and above", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/credits");
 
-  const sidebar = mainNav(page);
+  const nav = mainNav(page);
 
   // The menu is on screen here whatever `isOpen` says, and the toggle still
   // carries `aria-expanded="false"` in the DOM. That pairing is only honest
@@ -915,7 +954,7 @@ test("the sidebar never announces a collapsed state at `lg` and above", async ({
   // present in the DOM. Asserting only the first would also pass if the toggle
   // were deleted outright, and asserting neither would leave the central claim
   // of this change resting on an inference about how `display: none` behaves.
-  await expect(sidebar.getByRole("link", { name: "Home" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Home" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Menu" })).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Menu", includeHidden: true }),
@@ -925,7 +964,7 @@ test("the sidebar never announces a collapsed state at `lg` and above", async ({
   // visible button hidden from the tree with `aria-hidden`, which would put a
   // stale expanded state on screen while still satisfying them. This is the one
   // that pins it to actually not being rendered.
-  await expect(sidebar.locator("button")).toBeHidden();
+  await expect(nav.locator("button")).toBeHidden();
 });
 
 // Geometry, read off the live layout rather than off class names. A class-name
@@ -947,14 +986,14 @@ const boxes = (page: import("@playwright/test").Page) =>
     };
     return {
       nav: box(document.querySelector('nav[aria-label="Main"]')),
-      menu: box(document.getElementById("sidebar-menu")),
+      menu: box(document.getElementById("main-nav-menu")),
       main: box(document.querySelector("main")),
       scrollWidth: document.documentElement.scrollWidth,
       innerWidth: window.innerWidth,
     };
   });
 
-test("expanding the sidebar below `lg` overlays the content instead of pushing it", async ({
+test("expanding the nav below `lg` overlays the content instead of pushing it", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 375, height: 800 });
@@ -964,7 +1003,7 @@ test("expanding the sidebar below `lg` overlays the content instead of pushing i
   const collapsed = await boxes(page);
 
   await toggle.click();
-  await expect(page.locator("#sidebar-menu")).toBeVisible();
+  await expect(page.locator("#main-nav-menu")).toBeVisible();
   const expanded = await boxes(page);
 
   // The defect this replaces: the list was in flow, so opening it grew the
@@ -987,7 +1026,7 @@ test("expanding the sidebar below `lg` overlays the content instead of pushing i
   expect(expanded.menu!.left).toBeLessThan(expanded.main!.right);
 });
 
-test("the collapsed sidebar below `lg` is no taller than its toggle", async ({
+test("the collapsed nav below `lg` is no taller than its toggle", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 375, height: 800 });
@@ -1007,7 +1046,7 @@ test("the collapsed sidebar below `lg` is no taller than its toggle", async ({
   expect(nav!.height).toBe(toggle + 16);
 });
 
-test("the sidebar does not force a horizontal scrollbar at narrow widths", async ({
+test("the nav does not force a horizontal scrollbar at narrow widths", async ({
   page,
 }) => {
   // 280px is the narrowest viewport any shipping device presents, and 320px the
@@ -1031,7 +1070,7 @@ test("the sidebar does not force a horizontal scrollbar at narrow widths", async
     ).toBeLessThanOrEqual(collapsed.innerWidth);
 
     await mainNav(page).getByRole("button", { name: "Menu" }).click();
-    await expect(page.locator("#sidebar-menu")).toBeVisible();
+    await expect(page.locator("#main-nav-menu")).toBeVisible();
 
     // Asserted open as well as closed, and on the panel's own right edge as well
     // as on the document: the panel is out of flow, and an out-of-flow box that
@@ -1056,14 +1095,14 @@ test("the sidebar does not force a horizontal scrollbar at narrow widths", async
   }
 });
 
-test("the sidebar overlay is dismissible by Escape and by a click elsewhere", async ({
+test("the nav overlay is dismissible by Escape and by a click elsewhere", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 375, height: 800 });
   await page.goto("/credits");
 
   const toggle = mainNav(page).getByRole("button", { name: "Menu" });
-  const menu = page.locator("#sidebar-menu");
+  const menu = page.locator("#main-nav-menu");
 
   await toggle.click();
   await expect(menu).toBeVisible();
@@ -1100,24 +1139,24 @@ test("the sidebar overlay is dismissible by Escape and by a click elsewhere", as
   await expect(toggle).toBeFocused();
 });
 
-test("the sidebar overlay does not trap focus", async ({ page }) => {
+test("the nav overlay does not trap focus", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 800 });
   await page.goto("/credits");
 
-  const sidebar = mainNav(page);
-  await sidebar.getByRole("button", { name: "Menu" }).click();
-  await expect(page.locator("#sidebar-menu")).toBeVisible();
+  const nav = mainNav(page);
+  await nav.getByRole("button", { name: "Menu" }).click();
+  await expect(page.locator("#main-nav-menu")).toBeVisible();
 
   // The absence of `role="dialog"` and of `[inert]` is asserted elsewhere, but
   // those are attributes: a focus trap written in JavaScript would leave every one
   // of them untouched. This walks out of the panel instead. Tabbing off the last
   // link has to leave the landmark, which is the whole behavioural difference
   // between the disclosure this is and the modal it is not.
-  const links = sidebar.getByRole("link");
+  const links = nav.getByRole("link");
   await links.nth((await links.count()) - 1).focus();
   await page.keyboard.press("Tab");
 
-  await expect(page.locator("#sidebar-menu")).toBeVisible();
+  await expect(page.locator("#main-nav-menu")).toBeVisible();
   expect(
     await page.evaluate(
       () =>
@@ -1135,78 +1174,114 @@ test("the overlay adds no dialog semantics and no second control", async ({
   await page.setViewportSize({ width: 375, height: 800 });
   await page.goto("/credits");
 
-  const sidebar = mainNav(page);
-  await sidebar.getByRole("button", { name: "Menu" }).click();
-  await expect(page.locator("#sidebar-menu")).toBeVisible();
+  const nav = mainNav(page);
+  await nav.getByRole("button", { name: "Menu" }).click();
+  await expect(page.locator("#main-nav-menu")).toBeVisible();
 
   // This is a disclosure. The scrim behind the panel is presentational, and the
   // dismissing click is caught on the document rather than on it, so nothing new
   // should have reached the accessibility tree while the panel is open -- which
   // is also what keeps the `lg`-and-above test above able to assert on a single
   // button in this landmark.
-  await expect(sidebar.locator("button")).toHaveCount(1);
+  await expect(nav.locator("button")).toHaveCount(1);
   await expect(page.getByRole("navigation")).toHaveCount(1);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.locator("[aria-modal], [inert]")).toHaveCount(0);
 });
 
-test("the sidebar column at `lg` is unaffected by the overlay styling", async ({
+test("the nav band at `lg` is unaffected by the overlay styling", async ({
   page,
 }) => {
   // The component renders in the root layout, so it is on every page and a
   // regression here would be site-wide. The overlay is expressed as unprefixed
   // utilities with prefixed desktop counterparts, which is exactly the
-  // arrangement where a missing prefix leaks downward-styling into this column.
+  // arrangement where a missing prefix leaks the overlay's styling into the band.
+  //
+  // This replaced a version asserting a 250px column at `left: 0` with `<main>`
+  // starting at x=250. #136 moved the nav under the header, so those literals
+  // described a layout that no longer exists. Same job, different geometry: the
+  // band spans the viewport and `<main>` is below it rather than beside it.
   await page.setViewportSize({ width: 1024, height: 800 });
   await page.goto("/credits");
 
   const { nav, menu, main } = await boxes(page);
 
-  // Pinned as literals, not as a relationship: these are the numbers the desktop
-  // layout has always produced, and the point is that they did not move.
-  expect(nav).toMatchObject({ left: 0, width: 250 });
-  expect(main!.left).toBe(250);
-  // 250px of column minus 16px of padding on each side.
-  expect(menu).toMatchObject({ left: 16, width: 218 });
+  // Full bleed, and `<main>` stacked under it. `main.left` is the assertion that
+  // actually fails if the row axis comes back: a column layout would put main at
+  // x=250 again and leave the nav 250 wide.
+  expect(nav).toMatchObject({ left: 0, width: 1024 });
+  expect(main!.left).toBe(0);
+  expect(main!.top).toBeGreaterThanOrEqual(nav!.top + nav!.height);
+
+  // The band is a band and not a tall panel. Asserted as an upper bound rather
+  // than a literal because the height follows the link font metrics, which a font
+  // change may legitimately move -- but a return to a full-height column could
+  // not pass this.
+  expect(nav!.height).toBeLessThan(100);
+
+  // The list is horizontal and on one line. `space-y-2` stacks it below the
+  // breakpoint and needs an explicit desktop reset; without that reset every link
+  // after the first inherits a top margin and the row grows. Comparing the `y` of
+  // every link is what catches it, and also catches wrapping.
+  const rows = await page.evaluate(() => {
+    const items = [
+      ...document.querySelectorAll('nav[aria-label="Main"] a'),
+    ] as HTMLElement[];
+    return {
+      count: items.length,
+      distinctTops: new Set(
+        items.map((a) => Math.round(a.getBoundingClientRect().top)),
+      ).size,
+    };
+  });
+  expect(rows.count).toBe(5);
+  expect(rows.distinctTops).toBe(1);
 
   const computed = await page.evaluate(() => {
     const el = document.querySelector('nav[aria-label="Main"]')!;
-    const list = document.getElementById("sidebar-menu")!;
+    const list = document.getElementById("main-nav-menu")!;
     return {
       position: getComputedStyle(el).position,
-      padding: getComputedStyle(el).padding,
       background: getComputedStyle(el).backgroundColor,
       listPosition: getComputedStyle(list).position,
+      listDisplay: getComputedStyle(list).display,
     };
   });
-  // The four properties the overlay sets below the breakpoint, each asserted back
-  // at its desktop value. A geometry-only check would pass on a column that had
-  // been made a positioning context or lost its fill.
+  // The properties the overlay sets below the breakpoint, each asserted back at
+  // its desktop value. A geometry-only check would pass on a band that had been
+  // made a positioning context or lost its fill. `padding` is deliberately not
+  // pinned here -- it differs on the two axes now, and the box measurements above
+  // already constrain it.
   expect(computed).toEqual({
     position: "static",
-    padding: "16px",
     background: "rgb(39, 39, 42)",
     listPosition: "static",
+    listDisplay: "flex",
   });
+
+  // The list must not be left holding the overlay's own width cap. It is a
+  // percentage of the strip, so at desktop it would silently pin the band's
+  // content to 250px and nothing above would notice.
+  expect(menu!.width).toBeGreaterThan(250);
 });
 
-test("the sidebar marks exactly the current page, and follows the route", async ({
+test("the nav marks exactly the current page, and follows the route", async ({
   page,
 }) => {
   await page.goto("/credits");
-  const sidebar = mainNav(page);
+  const nav = mainNav(page);
 
   // `aria-current` is queried across the whole landmark rather than on the link
   // expected to carry it, because the defect worth catching is more than one
   // link claiming to be current -- which a check on a single link cannot see.
-  const current = sidebar.locator("[aria-current]");
+  const current = nav.locator("[aria-current]");
   await expect(current).toHaveCount(1);
   await expect(current).toHaveAttribute("aria-current", "page");
   await expect(current).toHaveAttribute("href", "/credits");
 
   // Soft navigation, so the mark has to move. A server-rendered-only attribute
   // would satisfy the assertions above and then go stale on the first click.
-  await sidebar.getByRole("link", { name: "Animation" }).click();
+  await nav.getByRole("link", { name: "Animation" }).click();
   await expect(page).toHaveURL("/animation");
   await expect(current).toHaveCount(1);
   await expect(current).toHaveAttribute("href", "/animation");
@@ -1272,11 +1347,17 @@ test.skip(
  * bug is present, and asserting at the default would be no guard at all.
  *
  * 1280x1024 is 1.25, which takes the width-led branch. That branch sized the
- * canvas from `p5.windowWidth`, ignoring the 250px sidebar and <main>'s 32px of
- * padding, and `<main>` is a flex item whose `min-width` defaults to `auto`, so
- * it widened to fit the oversized canvas instead of clipping it. The page ended
- * up 232px wider than the window at this size, and at 1024x768, 1024x900 and
- * 1440x900 too.
+ * canvas from `p5.windowWidth`, ignoring the 250px rail of the day and <main>'s
+ * 32px of padding, and `<main>` is a flex item whose `min-width` defaults to
+ * `auto`, so it widened to fit the oversized canvas instead of clipping it. The
+ * page ended up 232px wider than the window at this size, and at 1024x768,
+ * 1024x900 and 1440x900 too.
+ *
+ * #136 removed the rail, so the box this branch ignores is now 250px wider and the
+ * same arithmetic overflows by 250px less. That makes the original defect smaller
+ * rather than absent -- the branch still ignores `<main>`'s padding -- so this
+ * guard is kept at the viewport that exercises it. Measured after the move: no
+ * horizontal overflow at 1024x800, 1440x900 or 1920x1080.
  */
 test("the p5 canvas does not push the page wider than the viewport", async ({
   page,

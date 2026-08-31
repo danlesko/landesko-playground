@@ -4,14 +4,24 @@
 //
 // It replaces a 600px min-width floor paired with a half-width, which was wrong
 // at both ends. The floor beat the half-width, so the column stayed 600px until
-// its parent reached 1200px -- a 1482px viewport, given the 250px sidebar and
+// its parent reached 1200px -- a 1482px viewport, given the 250px rail of the day and
 // 32px of padding -- and only then began to track the viewport, with nothing
 // capping it after that. Measured against the old rule:
 //
-// Widths below are for the ordinary routes, which sit beside the 250px sidebar.
-// `global-error.tsx` renders its own document with no sidebar, so its parent is
-// the full body width and these numbers do not describe it -- the cap still
-// applies, it just starts from a wider parent.
+// The `parent` column below is `100vw - 282px`, which is what it was when this
+// was written: a 250px left rail plus 32px of `<main>` padding. #136 moved the nav
+// to a band under the header, so the parent is now `100vw - 32px` and every figure
+// in that column is 250px larger -- 992 / 1248 / 1504 / 1888 / 2528.
+//
+// The table is kept as it stands because it is a record of the comparison that
+// chose 672, and that comparison was made against these numbers. The conclusion
+// survives the change and in fact strengthens: the cap bound at every desktop
+// width already, since 672 < 742, and it binds by a wider margin against 992. What
+// no longer holds is the "never NARROWER than it was" calibration below, which was
+// measured against the old parents.
+//
+// `global-error.tsx` renders its own document with no nav at all, so it always had
+// the full body width and these numbers never described it.
 //
 //   viewport   parent   old      new
 //   1024        742     600      672
