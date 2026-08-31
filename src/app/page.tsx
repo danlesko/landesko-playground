@@ -18,8 +18,9 @@ export default async function Home() {
     // 1920px viewport -- a 1888x2516 render
     // of a 1286x1714 portrait. The cap also puts the paragraph on the same measure
     // as the cards and forms, which is what `layout.ts` calls the one content
-    // measure. Not every route: /credits is uncapped and /animation deliberately
-    // sizes itself differently.
+    // measure -- which #138 then put on every page's own wrapper, so this is no
+    // longer the exception it was. /animation's canvas is the only thing that opts
+    // out, and deliberately.
     <div className={contentColumnClasses}>
       <PageHeading>Welcome to Landesko's Playground</PageHeading>
       <p className="text-lg mt-2">

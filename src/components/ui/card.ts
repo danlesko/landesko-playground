@@ -23,7 +23,8 @@
 // Width is not decided here. Every page now carries the shared measure on its own
 // top-level wrapper (#138), so a card fills the column it is in. It used to append
 // `contentColumnClasses` itself, which
-// the two forms, the create skeleton and the blog list's heading row share, so
+// the two forms, the create skeleton and the blog list's heading row USED to share
+// -- #138 took it off all of them and put it on each page instead -- so
 // the column has one measure rather than four opinions. The min-width floor and
 // half-width pair this used to carry, and the contradiction between them, are
 // gone -- see ./layout.ts for what replaced them and why.

@@ -199,8 +199,11 @@ const MainNav = () => {
           // two share a left edge instead of the nav hugging the viewport while
           // the content is centred. Taken from the shared constant rather than
           // restated, so it cannot drift from what the pages use. It also
-          // replaces `lg:max-w-none`, which was only here to reset the overlay's
-          // own cap -- the measure resets it and sets the column in one value.
+          // replaces the desktop max-width reset that was only here to undo the
+          // overlay's own cap -- the measure undoes it and sets the column in one
+          // value. That utility is described rather than named: it no longer appears
+          // in any class string here, so spelling it out would keep emitting its rule
+          // from this comment alone (#133).
           contentColumnClasses,
           "space-y-2 lg:flex lg:space-y-0 lg:gap-x-2",
           isOpen ? "block" : "hidden",

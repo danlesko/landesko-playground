@@ -15,8 +15,13 @@ export default function Animation() {
           and that is the one deliberate exception on the site. The canvas sizes
           itself from its container, so capping it at 42rem would take it from
           1390px to 672px at a 1440px viewport -- `ui/layout.ts` says not to cap it
-          and this is why. Both are centred, so they share a centre line even
-          though they do not share an edge. */}
+          and this is why.
+          
+          They do not share a left edge, and they are not meant to. They DO share a
+          centre line, but only because the canvas centres itself in its own wrapper
+          -- see ProcessingDrawing. Without that it sat at the content box's left
+          edge and the two centres were 9px apart, which is what an earlier version
+          of this comment wrongly described as already centred. */}
       <div className={contentColumnClasses}>
         <PageHeading>Animation</PageHeading>
         <p className="text-lg mt-2">

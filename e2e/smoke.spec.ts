@@ -1248,7 +1248,6 @@ test("the nav band at `lg` is unaffected by the overlay styling", async ({
       padY:
         Math.round(parseFloat(cs.paddingTop)) +
         Math.round(parseFloat(cs.paddingBottom)),
-      listWidth: Math.round(list.getBoundingClientRect().width),
       // Asserted as a property, not inferred from the current labels fitting.
       flexWrap: getComputedStyle(list).flexWrap,
     };
@@ -1310,17 +1309,25 @@ test("the nav band at `lg` is unaffected by the overlay styling", async ({
     // route now carries. Located structurally rather than by class, so the class
     // name is free to change without silently making this vacuous.
     const content = document.querySelector("main > *") as HTMLElement;
+    const firstLink = list.querySelector("a") as HTMLElement;
     const l = list.getBoundingClientRect();
     const c = content.getBoundingClientRect();
     return {
       listLeft: Math.round(l.left),
       listRight: Math.round(l.right),
+      firstLinkLeft: Math.round(firstLink.getBoundingClientRect().left),
       contentLeft: Math.round(c.left),
       contentRight: Math.round(c.right),
     };
   });
   expect(column.listLeft).toBe(column.contentLeft);
   expect(column.listRight).toBe(column.contentRight);
+
+  // And the first LINK, not just the list box. Matching list edges is not enough:
+  // horizontal padding on the list would move every link while both of its own edges
+  // still matched the page. An earlier version of this test compared the link and
+  // then lost that when the box comparison replaced it.
+  expect(column.firstLinkLeft).toBe(column.contentLeft);
 
   // And the overlay's own 250px cap is not left on the list at desktop. Implied by
   // the column match above once the measure is wider than 250px, but asserted
