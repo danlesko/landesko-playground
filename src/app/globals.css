@@ -10,7 +10,7 @@
 :root {
   --background: #18181b; /* zinc-900 */
   --foreground: #d4d4d8; /* zinc-300  11.99:1 */
-  --surface: #27272a; /* zinc-800  — sidebar, inputs, modals */
+  --surface: #27272a; /* zinc-800  — nav band, inputs, modals */
   --muted: #a1a1aa; /* zinc-400   6.91:1, 5.81:1 on --surface */
   /* The card hairline. White measured 17.72:1 — brighter than --foreground's
      11.99:1, so the outline was the highest-contrast thing on the page and read

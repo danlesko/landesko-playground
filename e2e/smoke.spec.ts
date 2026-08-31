@@ -167,6 +167,19 @@ test("the home hero image declares the width it actually renders", async ({
       //
       // So track parenthesis depth and split only at depth 0. Media conditions
       // and CSS math functions both nest, and either can now contain a comma.
+      //
+      // SCOPE, since this is not a `sizes` parser and should not be mistaken for
+      // one. It handles the grammar this attribute actually uses: entries that are
+      // either a bare size or a single parenthesised media condition followed by a
+      // size. It does NOT handle a compound condition
+      // (`(min-width: 1024px) and (orientation: landscape) 42rem`), a condition
+      // opening with a media type or `not` (`screen and (min-width: 1024px) 42rem`,
+      // which would be misread as an unconditional size because it does not start
+      // with a paren), or the `auto` keyword, which has no width to probe. All three
+      // are legal and all three would be mis-parsed rather than rejected. If the
+      // attribute ever grows one, this needs to grow with it -- and the failure mode
+      // is a wrong number rather than an error, so it would look like a real
+      // mismatch.
       const entries: string[] = [];
       let depth = 0;
       let current = "";
@@ -1213,11 +1226,45 @@ test("the nav band at `lg` is unaffected by the overlay styling", async ({
   expect(main!.left).toBe(0);
   expect(main!.top).toBeGreaterThanOrEqual(nav!.top + nav!.height);
 
-  // The band is a band and not a tall panel. Asserted as an upper bound rather
-  // than a literal because the height follows the link font metrics, which a font
-  // change may legitimately move -- but a return to a full-height column could
-  // not pass this.
-  expect(nav!.height).toBeLessThan(100);
+  // The band is a band and not a tall panel. Two assertions, because one is not
+  // enough and I got that wrong twice.
+  //
+  // `height < 100` was the first attempt and was too weak -- a 99px band full of
+  // blank space passed. The second was `height === list + verticalPadding`, which
+  // is exact but INTERNALLY consistent: adding padding grows both sides, so a
+  // `lg:pb-16` satisfied it. Mutation-tested, and that is how it was caught.
+  //
+  // So: the equality pins that nothing OTHER than the list and the padding
+  // contributes height, and the ratio bound pins the padding itself from growing
+  // without anyone noticing. The bound is relative to the list rather than a pixel
+  // literal, so a font change moves both together and does not fail it.
+  const bandBox = await page.evaluate(() => {
+    const nav = document.querySelector('nav[aria-label="Main"]') as HTMLElement;
+    const list = document.getElementById("main-nav-menu") as HTMLElement;
+    const cs = getComputedStyle(nav);
+    return {
+      navHeight: Math.round(nav.getBoundingClientRect().height),
+      listHeight: Math.round(list.getBoundingClientRect().height),
+      padY:
+        Math.round(parseFloat(cs.paddingTop)) +
+        Math.round(parseFloat(cs.paddingBottom)),
+      // The list must fill the nav's content box, not sit in a corner of it. This
+      // is what the old `menu.width > 250` bound was reaching for -- and 251px
+      // would have satisfied that while pinning the band's content to nothing.
+      navContentWidth: Math.round(
+        nav.getBoundingClientRect().width -
+          parseFloat(cs.paddingLeft) -
+          parseFloat(cs.paddingRight),
+      ),
+      listWidth: Math.round(list.getBoundingClientRect().width),
+      // Asserted as a property, not inferred from the current labels fitting.
+      flexWrap: getComputedStyle(list).flexWrap,
+    };
+  });
+  expect(bandBox.navHeight).toBe(bandBox.listHeight + bandBox.padY);
+  expect(bandBox.navHeight).toBeLessThan(bandBox.listHeight * 2);
+  expect(bandBox.listWidth).toBe(bandBox.navContentWidth);
+  expect(bandBox.flexWrap).toBe("nowrap");
 
   // The list is horizontal and on one line. `space-y-2` stacks it below the
   // breakpoint and needs an explicit desktop reset; without that reset every link
@@ -1259,9 +1306,25 @@ test("the nav band at `lg` is unaffected by the overlay styling", async ({
     listDisplay: "flex",
   });
 
-  // The list must not be left holding the overlay's own width cap. It is a
-  // percentage of the strip, so at desktop it would silently pin the band's
-  // content to 250px and nothing above would notice.
+  // The shared content edge, which is the assertion this test was missing: the
+  // band's first link and the route's own first element must start at the same x.
+  // `nav.left === 0` and `main.left === 0` compare OUTER boxes and say nothing
+  // about it, so a padding drift between the nav and `<main>` stayed green.
+  const edges = await page.evaluate(() => {
+    const firstLink = document.querySelector(
+      'nav[aria-label="Main"] a',
+    ) as HTMLElement;
+    const firstContent = document.querySelector("main *") as HTMLElement;
+    return {
+      link: Math.round(firstLink.getBoundingClientRect().left),
+      content: Math.round(firstContent.getBoundingClientRect().left),
+    };
+  });
+  expect(edges.link).toBe(edges.content);
+
+  // And the overlay's width cap is not left on the list at desktop -- covered by
+  // the list-fills-its-content-box assertion above, since a 250px cap could not
+  // equal a ~992px content box.
   expect(menu!.width).toBeGreaterThan(250);
 });
 
@@ -1353,10 +1416,24 @@ test.skip(
  * page ended up 232px wider than the window at this size, and at 1024x768,
  * 1024x900 and 1440x900 too.
  *
- * #136 removed the rail, so the box this branch ignores is now 250px wider and the
- * same arithmetic overflows by 250px less. That makes the original defect smaller
- * rather than absent -- the branch still ignores `<main>`'s padding -- so this
- * guard is kept at the viewport that exercises it. Measured after the move: no
+ * #136 removed the rail, and that made this guard INSENSITIVE to the defect it was
+ * written for. Measured, not reasoned: deleting `measureAvailableWidth()` from the
+ * tall branch leaves this test passing.
+ *
+ * The arithmetic is why. The tall branch is `min(windowWidth - 50, container)`, and
+ * the container is now `windowWidth - 32`. Since the 50px reserve exceeds the 32px
+ * of padding, the unclamped expression is already narrower than the box and the
+ * clamp cannot change the result. Beside a 250px rail the container was
+ * `windowWidth - 282`, so the unclamped expression exceeded it by 232px -- which is
+ * exactly the overflow recorded above. The wide branch reserves 300px and is
+ * likewise past the 32px padding.
+ *
+ * So `measureAvailableWidth()` is now defence in depth rather than load-bearing, and
+ * nothing in this suite would notice its removal. The test is kept because "the page
+ * is never wider than the viewport" is still worth asserting end to end, and it would
+ * catch a NEW way of overflowing -- but it is no longer evidence that the clamp
+ * works. Restoring that sensitivity needs a viewport where the two expressions
+ * disagree, and with the rail gone there is none. Measured after the move: no
  * horizontal overflow at 1024x800, 1440x900 or 1920x1080.
  */
 test("the p5 canvas does not push the page wider than the viewport", async ({
@@ -1438,7 +1515,8 @@ test("the p5 canvas survives a window shorter than the reserved height", async (
  * 320px wide is what makes this checkable, and the existing overflow guard
  * cannot substitute for it. Measured against a build with the width floor raised
  * to 320: here the page overflows by 16px (canvas 320 in a 288px container),
- * while at that guard's 1280x1024 the canvas is 998 in a 998px container and
+ * while at that guard's 1280x1024 the canvas was 998 in a 998px container. Since
+ * #136 the same viewport gives 1230 in a 1248px container, and
  * nothing overflows at all. An assertion that the canvas fits its container
  * would pass there too, so the *viewport* is the load-bearing part, not the
  * assertion. Same blind spot as 1280x720 in the guard above -- and 320px is a

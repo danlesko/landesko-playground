@@ -29,7 +29,7 @@ export default async function Home() {
       <p className="mt-2 text-sm text-muted">
         Master's from Johns Hopkins University.
       </p>
-      {/* A plain list rather than a second `<nav>` landmark: the sidebar is
+      {/* A plain list rather than a second `<nav>` landmark: the main nav is
           this site's navigation, and a landmark here would compete with it for
           the same job. The list still gives a screen reader the count. */}
       <ul className="mt-6 flex flex-wrap gap-x-6 gap-y-2 text-lg">

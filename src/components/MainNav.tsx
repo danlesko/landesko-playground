@@ -176,11 +176,20 @@ const MainNav = () => {
         // overflow by the scrollbar's own width.
         //
         // The desktop line restores a property default for each overlay value it
-        // faces, with three deliberate exceptions: the two insets and the
-        // z-index have no counterpart, because `lg:static` leaves all three
-        // inoperative -- insets and z-index do nothing on a static box. They are
-        // still declared at desktop, so anything that makes this box positioned
-        // again at `lg` activates all three at once.
+        // faces. The two insets and the z-index used to be the exceptions -- they
+        // had no counterpart, because `lg:static` leaves all three inoperative on
+        // a static box -- and #136 added `lg:left-auto lg:top-auto lg:z-auto`
+        // anyway. Those three are therefore INERT today, and deliberately so:
+        // anything that makes this box positioned again, or its parent a flex or
+        // grid container, would otherwise reactivate all three at once with no
+        // reset in the file to stop it.
+        //
+        // One value genuinely has no counterpart and is not worth adding one for:
+        // `shadow-black` sets a colour that survives to desktop, where
+        // `lg:shadow-none` removes the shadow it would have coloured. So "a
+        // counterpart for every overlay value" is the intent rather than a literal
+        // property of the string -- worth stating, because an earlier version of
+        // this comment claimed the literal.
         className={clsx(
           "absolute left-2 top-full z-10 w-[250px] max-w-[calc(100%-1rem)] rounded bg-surface p-2 shadow-2xl shadow-black",
           "lg:static lg:left-auto lg:top-auto lg:z-auto lg:w-auto lg:max-w-none lg:rounded-none lg:bg-transparent lg:p-0 lg:shadow-none",
