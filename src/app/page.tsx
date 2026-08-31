@@ -61,30 +61,36 @@ export default async function Home() {
           </a>
         </li>
       </ul>
-      {/* An unconditional top margin. It used to be paired with a desktop
-          override that zeroed it -- "space them while stacked, don't while side
-          by side" -- and with one column that override would remove the gap
-          exactly where it is now needed. The override is described rather than
-          named for the same reason as the grid utilities above. */}
-      <div className="mt-6">
+      {/* An unconditional top margin. It used to be paired with a desktop override
+          that zeroed it -- "space them while stacked, don't while side by side" --
+          and with one column that override would remove the gap exactly where it is
+          now needed. The override is described rather than named for the same reason
+          as the grid utilities above.
+
+          The photo keeps its own narrower cap while the text column widened to
+          64rem. This is a portrait: at the column's full width it renders 1024x1364,
+          taller than the viewport, and it pushed everything else off the first
+          screen. 42rem holds it exactly where it was before the column grew, so the
+          text gains the width and the photo does not.
+
+          A per-element width, which the rest of this codebase deliberately avoids --
+          but the reason it avoids them is siblings disagreeing about their measure,
+          and an image is a leaf. It starts at the same left edge as the text and is
+          simply narrower, which is an ordinary thing for a figure in a text column
+          to be. */}
+      <div className="mt-6 max-w-2xl">
         <Image
           src="/danPool.jpeg"
           alt="Lan Playing Pool"
           width="1286"
           height="1714"
-          // `42rem`, and deliberately not `672px`. The cap is a rem value, so it
-          // is 672px only while the root font size is 16px -- under text-only
-          // zoom, or a changed browser default, the rendered width grows and a
-          // px figure here would UNDER-declare and fetch a candidate too small
-          // for the box, which is the direction that actually shows. Declaring
-          // the same unit the CSS uses cannot drift.
-          //
-          // Three terms, and each one is load-bearing.
-          //
-          // EVERY TERM IS IN rem, which is the part of this worth keeping. The
-          // photo's box is the column: `min(42rem, 100vw - 2rem)` -- its cap, or
-          // what `<main>`'s `p-4` leaves it, whichever is smaller. Below `lg` the
-          // cap does not apply, so it is just `100vw - 2rem`.
+          // ONE TERM, NO MEDIA QUERY. The photo's box is its own 42rem cap or what
+          // `<main>`'s `p-4` leaves it, whichever is smaller -- the column's 64rem
+          // never binds first, because 42 < 64. There is no breakpoint in it because
+          // neither cap has one; the attribute used to carry a
+          // `(min-width: 1024px)` branch purely to mirror a `lg:`-prefixed column,
+          // and that prefix was removed because it made the content JUMP WIDER by
+          // 319px when the window was dragged narrower across 1024px.
           //
           // `2rem` and not `32px`, and that distinction cost two rounds. `p-4` is
           // `1rem` a side; the two coincide at a 16px root and diverge at every
@@ -93,13 +99,13 @@ export default async function Home() {
           // throughout, so a px figure standing in for one of its utilities is only
           // ever accidentally right.
           //
-          // There was briefly a third term here, `- 4rem`, for a horizontal inset
-          // the column carried while it painted a panel background. That went with
-          // the panel; if the column ever gains padding again this needs it back.
+          // There was briefly a third term, `- 4rem`, for an inset the column carried
+          // while it painted a panel background. That went with the panel; if the
+          // column ever gains padding again this needs it back.
           //
           // The e2e test varies the root font size as well as the viewport, which is
           // the only reason either mistake was visible.
-          sizes="(min-width: 1024px) min(42rem, calc(100vw - 2rem)), calc(100vw - 2rem)"
+          sizes="min(42rem, calc(100vw - 2rem))"
           className="h-auto w-full"
           priority
         />

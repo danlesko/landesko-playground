@@ -488,13 +488,22 @@ test("the home page LCP image loads eagerly at a declared size", async ({
   // until layout -- the exact regression this guards.
   expect(await image.getAttribute("loading")).not.toBe("lazy");
 
-  // Without `sizes` the browser assumes 100vw and picks a candidate far wider
-  // than the capped column this sits in. Both the tag and the preload hint have
-  // to carry it, or the preload races the tag for a different candidate.
-  await expect(image).toHaveAttribute("sizes", /min-width/);
+  // Without `sizes` the browser assumes 100vw and picks a candidate far wider than the
+  // capped column this sits in. Both the tag and the preload hint have to carry it, or
+  // the preload races the tag for a different candidate.
+  //
+  // Asserted as "present, not the 100vw default, and identical on both" rather than by
+  // matching `min-width`. That pattern was the first version and it encoded an
+  // assumption rather than the requirement: the attribute only contained a media
+  // condition while the column's cap was `lg:`-prefixed, and it stopped as soon as the
+  // cap became unprefixed and the breakpoint went away. The requirement was never that
+  // there be a breakpoint.
+  const declaredSizes = await image.getAttribute("sizes");
+  expect(declaredSizes).toBeTruthy();
+  expect(declaredSizes).not.toBe("100vw");
   await expect(
     page.locator('head link[rel="preload"][as="image"]'),
-  ).toHaveAttribute("imagesizes", /min-width/);
+  ).toHaveAttribute("imagesizes", declaredSizes!);
 
   // The declared intrinsic size, which is what reserves the box before the
   // bytes arrive. This is a separate guarantee from the rendered ratio below:
@@ -1354,7 +1363,14 @@ test("the nav band at `lg` is unaffected by the overlay styling", async ({
       ),
       contentLeft: Math.round(c.left),
       contentRight: Math.round(c.right),
-      viewport: window.innerWidth,
+      // `<main>`'s content-box left edge: where a left-aligned child must start.
+      mainContentLeft: (() => {
+        const main = document.querySelector("main") as HTMLElement;
+        const r = main.getBoundingClientRect();
+        return Math.round(
+          r.left + parseFloat(getComputedStyle(main).paddingLeft),
+        );
+      })(),
       // The widest gap between adjacent links. The band spans the viewport, so
       // "first link at the left edge" and "all on one row" are both satisfied by a
       // `justify-between` row with the links flung apart -- which is not the
@@ -1386,12 +1402,44 @@ test("the nav band at `lg` is unaffected by the overlay styling", async ({
   // in both directions on this branch.
   expect(column.contentLeft).toBe(column.firstLinkLeft);
 
-  // The content is NOT centred: its right edge stops short of the viewport rather than
-  // mirroring its left. Without this the test would pass on a centred layout whose
-  // nav happened to be centred with it.
-  expect(column.viewport - column.contentRight).toBeGreaterThan(
-    column.contentLeft,
-  );
+  // The content is LEFT-ALIGNED, asserted against `<main>`'s own content edge rather
+  // than by comparing gutters. The gutter comparison was the first attempt and it broke
+  // as soon as the column's cap stopped binding at this viewport: the column then fills
+  // the available width, both gutters are `<main>`'s padding, and "right gap exceeds
+  // left" is false for a layout that is not centred at all.
+  expect(column.contentLeft).toBe(column.mainContentLeft);
+
+  // AND AGAIN AT A WIDTH WHERE THE CAP BINDS, which is the part that actually has
+  // teeth. At 1024px the column is 992px in a 992px box, so it fills either way and
+  // centring it is a no-op -- mutation-tested, and adding an auto-margin passed. The
+  // 64rem cap only binds above about 1056px, so the check has to be repeated somewhere
+  // wider or it is asserting nothing about alignment at all.
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const wide = await page.evaluate(() => {
+    const main = document.querySelector("main") as HTMLElement;
+    const content = document.querySelector("main > *") as HTMLElement;
+    const firstLink = document.querySelector(
+      'nav[aria-label="Main"] a',
+    ) as HTMLElement;
+    const mainBox = main.getBoundingClientRect();
+    return {
+      contentLeft: Math.round(content.getBoundingClientRect().left),
+      contentWidth: Math.round(content.getBoundingClientRect().width),
+      mainContentLeft: Math.round(
+        mainBox.left + parseFloat(getComputedStyle(main).paddingLeft),
+      ),
+      mainContentWidth: Math.round(
+        mainBox.width -
+          parseFloat(getComputedStyle(main).paddingLeft) -
+          parseFloat(getComputedStyle(main).paddingRight),
+      ),
+      firstLinkLeft: Math.round(firstLink.getBoundingClientRect().left),
+    };
+  });
+  // The cap must actually be binding here, or this repeats the vacuous check.
+  expect(wide.contentWidth).toBeLessThan(wide.mainContentWidth);
+  expect(wide.contentLeft).toBe(wide.mainContentLeft);
+  expect(wide.contentLeft).toBe(wide.firstLinkLeft);
 
   // The links are a group at that edge, not spread across the band.
   expect(column.widestGap).toBeLessThan(24);

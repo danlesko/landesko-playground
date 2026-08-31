@@ -13,9 +13,9 @@ export default function Animation() {
     <>
       {/* The text gets the shared measure; `<ProcessingDrawing />` below does NOT,
           and that is the one deliberate exception on the site. The canvas sizes
-          itself from its container, so capping it at 42rem would take it from
-          1390px to 672px at a 1440px viewport -- `ui/layout.ts` says not to cap it
-          and this is why.
+          itself from its container, so capping it would shrink the drawing rather
+          than a line length -- at a 1440px viewport it would go from 1390px to the
+          column's 1024px. `ui/layout.ts` says not to cap it and this is why.
           
           They do not share a left edge, and they are not meant to. They DO share a
           centre line, but only because the canvas centres itself in its own wrapper
