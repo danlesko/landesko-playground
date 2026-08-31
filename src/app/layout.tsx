@@ -127,10 +127,17 @@ export default async function RootLayout({
             <MainNav />
 
             {/* Main Content */}
-            {/* `lg:bg-backdrop`, not `bg-backdrop`: the gutters only exist from `lg` up,
-                where the content column is capped and centred. Below that the column
-                fills the width and there is nothing to darken, so the page keeps
-                --background and mobile is unchanged. */}
+            {/* Prefixed, deliberately: the darker fill applies from `lg` up only, because
+                that is where the column is capped and the space either side of it
+                appears. Below that the column fills the width and there is nothing to
+                darken, so the page keeps --background and mobile is unchanged. The
+                unprefixed form of this utility is described rather than written,
+                since nothing uses it and naming it would emit its rule from this
+                comment alone.
+                
+                Note the fill is not only in the side gutters: `<main>` is full
+                height, and the column is only as tall as its content, so a short
+                route shows it below the panel too. */}
             <main className="flex-1 bg-background p-4 text-foreground lg:bg-backdrop">
               {children}
             </main>

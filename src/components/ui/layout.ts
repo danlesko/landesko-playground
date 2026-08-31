@@ -60,17 +60,31 @@
 //
 // THE VERTICAL PADDING IS NOT DECORATION, and this is the one to leave alone.
 // Painting a background here made axe unable to evaluate the contrast of the first
-// heading on every desktop route: it reported `elmPartiallyObscured`, because the
-// column's top edge sat exactly on the heading's and axe could not establish that
-// the background contains the text. Nothing overlapped it -- checked -- the boxes
-// were merely coincident. `lg:py-6` gives strict containment and the check resolves
-// again.
+// heading on four desktop routes -- /, /credits, /contact and /animation, the ones
+// the a11y matrix covers -- reporting `elmPartiallyObscured`.
 //
-// So removing it would not just tighten the spacing; it would take the first
-// heading of every route back out of the contrast gate, silently, while the suite
-// stayed green on `violations`. The a11y suite asserts the known-unevaluable set,
-// so it does fail -- that is how this was found -- but the failure names axe rather
-// than this line, which is why it is written down here.
+// The mechanism, read out of axe-core rather than guessed: for the first background
+// -painting element in the stack it requires
+// `bgElmStyle.display !== "inline" && fullyEncompasses(bgElm, textRects)`, and gives
+// up with this flag when that fails. The test is against the TEXT rects, not the
+// element's box. With no vertical padding the heading's text rects were not fully
+// inside this column, so the check bailed. Nothing overlapped it -- every element's
+// box was compared against the heading's and none intersected.
+//
+// An earlier version of this comment blamed exactly-coincident edges. That was
+// wrong: the containment comparison is inclusive, so coincident edges pass on their
+// own. What `lg:py-6` supplies is slack around the text rects, which is a different
+// thing and fragile in a different way -- shrink it far enough and the flag comes
+// back.
+//
+// Established by bisecting the three changes against axe directly: dropping
+// `lg:bg-background` cleared the flag, dropping the backdrop or the horizontal inset
+// did not.
+//
+// So removing this would not just tighten the spacing; it would take those headings
+// back out of the contrast gate while `violations` stayed empty. The a11y suite does
+// fail, because it asserts the known-unevaluable set rather than only violations --
+// but it names axe rather than this line, which is why this is written down here.
 //
 // `lg:`-prefixed, matching every rule it replaces. Those were all `lg:`-only, so
 // below 1024px the column was unconstrained and filled its parent. An unprefixed

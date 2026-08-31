@@ -79,20 +79,31 @@ export default async function Home() {
           // for the box, which is the direction that actually shows. Declaring
           // the same unit the CSS uses cannot drift.
           //
-          // From `lg` up this cap decides the width, not the viewport: the
-          // content box is `100vw - 32px` -- `<main>`'s padding, and nothing
-          // else since #136 took the 250px rail out -- so 992px at the 1024px
-          // breakpoint, already wider than 42rem at a default root. Below `lg`
-          // there is no cap, so the photo fills the content box.
+          // Three terms, and each one is load-bearing.
           //
-          // Wrapped in `min()` rather than declaring the cap bare. The cap only
-          // wins while it is the smaller of the two, and at a large enough root
-          // font it is not: 42rem passes 992px once the root exceeds about
-          // 23.6px. Below that the `min()` is inert; above it, it keeps the
-          // declaration equal to the rendered width instead of over-declaring.
-          // Removing the rail widened the margin here -- the old threshold, with
-          // a 742px box, was about 17.7px.
-          sizes="(min-width: 1024px) min(42rem, calc(100vw - 32px)), calc(100vw - 32px)"
+          // EVERY TERM IS IN rem, and that is the correction that mattered. The
+          // column is `min(46rem, 100vw - 2rem)` -- its own cap, or what
+          // `<main>`'s `p-4` leaves it, whichever is smaller -- and it spends
+          // `4rem` on its own inset, so the photo's box is
+          // `min(42rem, 100vw - 6rem)`.
+          //
+          // Two rounds of getting this wrong, both found by measuring at a
+          // non-default root size rather than by reading it:
+          //
+          //   - the `- 4rem` for the column's inset was missing entirely, so this
+          //     over-declared whenever the viewport constrained the column rather
+          //     than its cap.
+          //   - `<main>`'s padding was then written as `32px`. It is `p-4`, which
+          //     is `1rem` a side. Those coincide at a 16px root and diverge at any
+          //     other: at a 24px root and a 1024px viewport the padding is 48px,
+          //     the box is 880px, and a `32px` term claimed 896px.
+          //
+          // Tailwind's spacing scale is rem throughout, so a px figure standing in
+          // for one of its utilities is only ever accidentally right.
+          //
+          // Below `lg` the column has neither the cap nor the inset, so the photo
+          // fills `100vw - 2rem`.
+          sizes="(min-width: 1024px) min(42rem, calc(100vw - 6rem)), calc(100vw - 2rem)"
           className="h-auto w-full"
           priority
         />

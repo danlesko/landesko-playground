@@ -143,8 +143,32 @@ test("the home hero image declares the width it actually renders", async ({
   // 1281 is deliberately odd. It no longer lands on a half pixel now the column is
   // not a half track, but an odd width is still the cheapest guard against an
   // arithmetic change that only misbehaves off even numbers.
-  for (const width of [1280, 1281, 1600, 1024, 1023, 768, 390]) {
+  // Viewport width AND root font size, because the second dimension is where this
+  // attribute has actually been wrong. Twice: once with the column's own inset missing
+  // from the expression, and once with `<main>`'s padding written as `32px` when it is
+  // `p-4` -- `1rem` a side, which only equals 32px at a 16px root. Both were invisible
+  // at 16px and both showed immediately at 24px.
+  //
+  // 20px and 24px stand in for a reader who has raised their browser's default text
+  // size, which is a setting rather than an edge case. Full-page zoom is NOT the same
+  // thing and would not have caught either bug: it scales the CSS pixel, so every rem
+  // and every px term moves together and the arithmetic stays consistent while wrong.
+  for (const [width, rootPx] of [
+    [1280, 16],
+    [1281, 16],
+    [1600, 16],
+    [1024, 16],
+    [1023, 16],
+    [768, 16],
+    [390, 16],
+    [1440, 24],
+    [1024, 24],
+    [1024, 20],
+  ] as const) {
     await page.setViewportSize({ width, height: 900 });
+    await page.evaluate((px) => {
+      document.documentElement.style.fontSize = `${px}px`;
+    }, rootPx);
 
     const measured = await page.evaluate(() => {
       const img = document.querySelector<HTMLImageElement>(
@@ -255,7 +279,7 @@ test("the home hero image declares the width it actually renders", async ({
     // here as a plain mismatch, with the message below naming both numbers.
     expect(
       Math.abs(measured.actualPx - measured.declaredPx),
-      `at ${width}px wide, sizes declares ${measured.declared} = ${measured.declaredPx}px but the image renders ${measured.actualPx}px`,
+      `at ${width}px wide with a ${rootPx}px root, sizes declares ${measured.declared} = ${measured.declaredPx}px but the image renders ${measured.actualPx}px`,
     ).toBeLessThan(0.02);
   }
 });
@@ -1330,6 +1354,21 @@ test("the nav band at `lg` is unaffected by the overlay styling", async ({
       contentLeft: Math.round(c.left),
       contentRight: Math.round(c.right),
       viewport: window.innerWidth,
+      // The widest gap between adjacent links. The band spans the viewport, so
+      // "first link at the left edge" and "all on one row" are both satisfied by a
+      // `justify-between` row with the links flung apart -- which is not the
+      // arrangement anyone asked for. `gap-x-2` is 8px, and a distributed layout at
+      // this width would leave well over 100px between each pair, so a bound here
+      // separates the two cleanly without pinning the exact gap.
+      widestGap: Math.max(
+        ...[...list.querySelectorAll("a")]
+          .map((a) => a.getBoundingClientRect())
+          .slice(1)
+          .map((r, i) => {
+            const previous = [...list.querySelectorAll("a")][i] as HTMLElement;
+            return Math.round(r.left - previous.getBoundingClientRect().right);
+          }),
+      ),
     };
   });
 
@@ -1348,6 +1387,9 @@ test("the nav band at `lg` is unaffected by the overlay styling", async ({
   // And the two are genuinely different columns. Without this the test would pass on a
   // layout that had quietly put them back on the same measure.
   expect(column.firstLinkLeft).toBeLessThan(column.contentLeft);
+
+  // The links are a group at that edge, not spread across the band.
+  expect(column.widestGap).toBeLessThan(24);
 });
 
 test("the nav marks exactly the current page, and follows the route", async ({
