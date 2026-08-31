@@ -81,29 +81,25 @@ export default async function Home() {
           //
           // Three terms, and each one is load-bearing.
           //
-          // EVERY TERM IS IN rem, and that is the correction that mattered. The
-          // column is `min(46rem, 100vw - 2rem)` -- its own cap, or what
-          // `<main>`'s `p-4` leaves it, whichever is smaller -- and it spends
-          // `4rem` on its own inset, so the photo's box is
-          // `min(42rem, 100vw - 6rem)`.
+          // EVERY TERM IS IN rem, which is the part of this worth keeping. The
+          // photo's box is the column: `min(42rem, 100vw - 2rem)` -- its cap, or
+          // what `<main>`'s `p-4` leaves it, whichever is smaller. Below `lg` the
+          // cap does not apply, so it is just `100vw - 2rem`.
           //
-          // Two rounds of getting this wrong, both found by measuring at a
-          // non-default root size rather than by reading it:
+          // `2rem` and not `32px`, and that distinction cost two rounds. `p-4` is
+          // `1rem` a side; the two coincide at a 16px root and diverge at every
+          // other. At a 24px root and a 1024px viewport the padding is 48px, so a
+          // `32px` term over-declared by 16px. Tailwind's spacing scale is rem
+          // throughout, so a px figure standing in for one of its utilities is only
+          // ever accidentally right.
           //
-          //   - the `- 4rem` for the column's inset was missing entirely, so this
-          //     over-declared whenever the viewport constrained the column rather
-          //     than its cap.
-          //   - `<main>`'s padding was then written as `32px`. It is `p-4`, which
-          //     is `1rem` a side. Those coincide at a 16px root and diverge at any
-          //     other: at a 24px root and a 1024px viewport the padding is 48px,
-          //     the box is 880px, and a `32px` term claimed 896px.
+          // There was briefly a third term here, `- 4rem`, for a horizontal inset
+          // the column carried while it painted a panel background. That went with
+          // the panel; if the column ever gains padding again this needs it back.
           //
-          // Tailwind's spacing scale is rem throughout, so a px figure standing in
-          // for one of its utilities is only ever accidentally right.
-          //
-          // Below `lg` the column has neither the cap nor the inset, so the photo
-          // fills `100vw - 2rem`.
-          sizes="(min-width: 1024px) min(42rem, calc(100vw - 6rem)), calc(100vw - 2rem)"
+          // The e2e test varies the root font size as well as the viewport, which is
+          // the only reason either mistake was visible.
+          sizes="(min-width: 1024px) min(42rem, calc(100vw - 2rem)), calc(100vw - 2rem)"
           className="h-auto w-full"
           priority
         />

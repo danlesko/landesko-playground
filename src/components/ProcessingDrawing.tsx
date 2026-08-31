@@ -46,18 +46,8 @@ const ProcessingDrawing = () => {
   // A new sketch identity on toggle is the point, not a missed memoisation:
   // ReactP5Wrapper responds by tearing the instance down and building it again,
   // which is what applies the change without a reload.
-  // Centred, not left-anchored. The canvas is deliberately not on the site's content
-  // measure -- capping it would take it from 1390px to 672px at a 1440px viewport --
-  // but that left it starting at the content box's left edge while the page's text is
-  // centred, so the two had centre lines 9px apart. Centring here fixes the alignment
-  // without touching the canvas's dimensions.
-  //
-  // Safe for the sizing logic: `measureAvailableWidth` reads THIS element's
-  // `clientWidth`, and a full-width flex container has the same width as the block it
-  // replaces. The canvas is sized by p5 rather than by the layout, so it is a flex
-  // item that shrinks to its own content instead of stretching.
   return (
-    <div ref={wrapperRef} className="flex justify-center">
+    <div ref={wrapperRef}>
       <ReactP5Wrapper
         sketch={createFishTankSketch(wrapperRef, prefersReducedMotion)}
       />

@@ -14,7 +14,6 @@ export default {
       // one place to retune the palette.
       colors: {
         background: "var(--background)",
-        backdrop: "var(--backdrop)",
         foreground: "var(--foreground)",
         surface: "var(--surface)",
         muted: "var(--muted)",

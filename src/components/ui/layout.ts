@@ -50,41 +50,19 @@
 // at 1280x1024, and neither lands where a 672px cap and an 855px request meet.
 // So the canvas needs its own decision, and it would not fail loudly first.
 //
-// THE MEASURE IS STILL 42rem, which is worth being explicit about because the
-// max-width no longer says so. The column paints --background over the darker
-// --backdrop gutters, and text flush against that panel edge looks wrong, so it
-// carries `lg:px-8` -- 2rem each side. The cap is therefore 46rem and the CONTENT
-// box is 46 - 4 = 42rem, unchanged. Change one of those two numbers without the
-// other and the measure moves silently; the hero's `sizes` attribute declares
-// 42rem and its e2e test is what would catch it.
+// LEFT-ALIGNED, not centred, and with no fill of its own. Both were tried: the
+// column was briefly centred with an auto-margin utility, and the space either side
+// was given a
+// darker `--backdrop` while the column painted the page colour back over it as a
+// panel. Both utilities are described rather than named -- neither appears in a class
+// string now, and Tailwind reads a comment as a source of class candidates, so writing
+// them would keep emitting rules nothing uses (#133). The owner's call is that neither reads well here, so the column is a plain
+// cap again and the page is one colour.
 //
-// THE VERTICAL PADDING IS NOT DECORATION, and this is the one to leave alone.
-// Painting a background here made axe unable to evaluate the contrast of the first
-// heading on four desktop routes -- /, /credits, /contact and /animation, the ones
-// the a11y matrix covers -- reporting `elmPartiallyObscured`.
-//
-// The mechanism, read out of axe-core rather than guessed: for the first background
-// -painting element in the stack it requires
-// `bgElmStyle.display !== "inline" && fullyEncompasses(bgElm, textRects)`, and gives
-// up with this flag when that fails. The test is against the TEXT rects, not the
-// element's box. With no vertical padding the heading's text rects were not fully
-// inside this column, so the check bailed. Nothing overlapped it -- every element's
-// box was compared against the heading's and none intersected.
-//
-// An earlier version of this comment blamed exactly-coincident edges. That was
-// wrong: the containment comparison is inclusive, so coincident edges pass on their
-// own. What `lg:py-6` supplies is slack around the text rects, which is a different
-// thing and fragile in a different way -- shrink it far enough and the flag comes
-// back.
-//
-// Established by bisecting the three changes against axe directly: dropping
-// `lg:bg-background` cleared the flag, dropping the backdrop or the horizontal inset
-// did not.
-//
-// So removing this would not just tighten the spacing; it would take those headings
-// back out of the contrast gate while `violations` stayed empty. The a11y suite does
-// fail, because it asserts the known-unevaluable set rather than only violations --
-// but it names axe rather than this line, which is why this is written down here.
+// Two things are kept from that round because they were right independently. The
+// measure sits on each PAGE's top-level wrapper rather than on individual widgets --
+// which is what stops a heading and the form beneath it disagreeing about width -- and
+// the hero's `sizes` attribute is expressed entirely in rem.
 //
 // `lg:`-prefixed, matching every rule it replaces. Those were all `lg:`-only, so
 // below 1024px the column was unconstrained and filled its parent. An unprefixed
@@ -92,5 +70,4 @@
 // 768px tablet -- which is a change nobody asked for and which the measurements
 // above do not cover. Keeping the prefix makes the claim exact: nothing below
 // `lg` moves.
-export const contentColumnClasses =
-  "lg:mx-auto lg:max-w-[46rem] lg:bg-background lg:px-8 lg:py-6";
+export const contentColumnClasses = "lg:max-w-2xl";

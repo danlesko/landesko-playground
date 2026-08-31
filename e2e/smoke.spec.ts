@@ -1320,16 +1320,17 @@ test("the nav band at `lg` is unaffected by the overlay styling", async ({
     listDisplay: "flex",
   });
 
-  // The band's links start at the BAND's own left edge, and the page's content is
-  // centred. Those are two different columns on purpose, and this asserts both halves
-  // so neither drifts into the other.
+  // The band's links and the page's content share a left edge. Both sit against
+  // `<main>`'s padding: the nav is full-bleed with its own inset, the content column is
+  // a plain cap, and neither is centred.
   //
-  // This assertion has been inverted once already. When the pages were first centred
-  // the nav was put on the same measure so the two shared a column, and this test
-  // asserted that. The owner's call is the opposite -- nav against the viewport,
-  // content centred -- so it now asserts the separation rather than the match. Worth
-  // recording, because "the test agrees with the code" is only worth something if the
-  // test says which arrangement is intended.
+  // This assertion has now been written three ways, which is the useful part of its
+  // history. It matched edges; then the pages were centred and the nav put on the same
+  // measure, so it asserted a shared COLUMN; then the nav came off the measure and the
+  // content was centred, so it asserted the two were separate. The layout is now back
+  // to both left-aligned and so is this. Spelled out because "the test agrees with the
+  // code" is worth nothing unless the test says which arrangement is intended -- and
+  // this one has been each of the three.
   const column = await page.evaluate(() => {
     const nav = document.querySelector('nav[aria-label="Main"]') as HTMLElement;
     const list = document.getElementById("main-nav-menu") as HTMLElement;
@@ -1380,13 +1381,17 @@ test("the nav band at `lg` is unaffected by the overlay styling", async ({
   expect(column.listWidth).toBe(column.navContentWidth);
   expect(menu!.width).toBeGreaterThan(250);
 
-  // The content, meanwhile, IS centred: equal gutters either side. Asserted as a
-  // relationship rather than a pixel figure so it holds at any viewport width.
-  expect(column.contentLeft).toBe(column.viewport - column.contentRight);
+  // The content starts at the same x as the first link. This is the check that fails
+  // if either the nav or the pages are centred without the other, which has happened
+  // in both directions on this branch.
+  expect(column.contentLeft).toBe(column.firstLinkLeft);
 
-  // And the two are genuinely different columns. Without this the test would pass on a
-  // layout that had quietly put them back on the same measure.
-  expect(column.firstLinkLeft).toBeLessThan(column.contentLeft);
+  // The content is NOT centred: its right edge stops short of the viewport rather than
+  // mirroring its left. Without this the test would pass on a centred layout whose
+  // nav happened to be centred with it.
+  expect(column.viewport - column.contentRight).toBeGreaterThan(
+    column.contentLeft,
+  );
 
   // The links are a group at that edge, not spread across the band.
   expect(column.widestGap).toBeLessThan(24);
