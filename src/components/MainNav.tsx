@@ -5,6 +5,8 @@ import clsx from "clsx";
 import Link from "next/link";
 import { List } from "@phosphor-icons/react/dist/ssr";
 
+import { contentColumnClasses } from "@/components/ui/layout";
+
 // Referenced by both the toggle's `aria-controls` and the list's `id`, so the
 // two cannot drift apart. MainNav is rendered once, in the root layout, so a
 // constant is unique on the page.
@@ -192,7 +194,14 @@ const MainNav = () => {
         // this comment claimed the literal.
         className={clsx(
           "absolute left-2 top-full z-10 w-[250px] max-w-[calc(100%-1rem)] rounded bg-surface p-2 shadow-2xl shadow-black",
-          "lg:static lg:left-auto lg:top-auto lg:z-auto lg:w-auto lg:max-w-none lg:rounded-none lg:bg-transparent lg:p-0 lg:shadow-none",
+          "lg:static lg:left-auto lg:top-auto lg:z-auto lg:w-auto lg:rounded-none lg:bg-transparent lg:p-0 lg:shadow-none",
+          // The band's links sit on the same measure as the page content, so the
+          // two share a left edge instead of the nav hugging the viewport while
+          // the content is centred. Taken from the shared constant rather than
+          // restated, so it cannot drift from what the pages use. It also
+          // replaces `lg:max-w-none`, which was only here to reset the overlay's
+          // own cap -- the measure resets it and sets the column in one value.
+          contentColumnClasses,
           "space-y-2 lg:flex lg:space-y-0 lg:gap-x-2",
           isOpen ? "block" : "hidden",
         )}

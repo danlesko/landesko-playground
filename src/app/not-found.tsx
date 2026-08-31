@@ -1,12 +1,13 @@
 import PageHeading from "@/components/ui/PageHeading";
 import TextLink from "@/components/ui/TextLink";
 import { cardClasses } from "@/components/ui/card";
+import { contentColumnClasses } from "@/components/ui/layout";
 
 // Also what `notFound()` renders for a missing or private blog post, since
 // there is no closer boundary, hence the link to the post list as well as home.
 export default function NotFound() {
   return (
-    <div>
+    <div className={contentColumnClasses}>
       <PageHeading>Page Not Found</PageHeading>
       <div className={`${cardClasses} min-h-32`}>
         <p>

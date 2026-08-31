@@ -16,7 +16,6 @@ import {
   formSuccessClasses,
 } from "@/components/ui/form";
 import { primaryButtonClasses } from "@/components/ui/button";
-import { contentColumnClasses } from "@/components/ui/layout";
 
 // Read once, at module scope, because `NEXT_PUBLIC_*` is substituted by the
 // compiler rather than looked up at runtime: this is a build-time constant in
@@ -166,7 +165,7 @@ const ContactForm = () => {
 
   return (
     <form
-      className={`text-lg mt-2 ${contentColumnClasses} h-1/2`}
+      className="text-lg mt-2 h-1/2"
       onSubmit={handleSubmit}
       aria-describedby={
         recaptchaSiteKey ? undefined : `${fieldId}-recaptcha-missing`

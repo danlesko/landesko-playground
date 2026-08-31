@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
 import BlogList, { BlogListSkeleton } from "./BlogList";
+import { contentColumnClasses } from "@/components/ui/layout";
 
 export const metadata: Metadata = {
   title: "Landesko's Playground - Blog",
@@ -23,7 +24,7 @@ export default function Blog({
   searchParams: Promise<{ page?: string | string[] }>;
 }) {
   return (
-    <div>
+    <div className={contentColumnClasses}>
       <Suspense fallback={<BlogListSkeleton />}>
         <BlogList searchParams={searchParams} />
       </Suspense>

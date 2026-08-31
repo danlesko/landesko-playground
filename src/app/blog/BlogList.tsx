@@ -8,7 +8,6 @@ import { BLOG_PAGE_SIZE, fetchBlogPage } from "@/lib/data";
 import { parseBlogPageParam } from "@/lib/blogPage";
 import Pagination from "@/components/ui/Pagination";
 import { cardClasses } from "@/components/ui/card";
-import { contentColumnClasses } from "@/components/ui/layout";
 
 // Reads BLOG_PAGE_SIZE rather than repeating it, so the skeleton cannot drift
 // from the page it stands in for -- that drift is a layout shift.
@@ -59,9 +58,7 @@ export default async function BlogList({
 
   return (
     <>
-      <div
-        className={`flex justify-between items-center ${contentColumnClasses}`}
-      >
+      <div className="flex justify-between items-center">
         <PageHeading>Blog Posts</PageHeading>
         {session?.user && (
           <TextLink href="/blog/create" className="font-bold">

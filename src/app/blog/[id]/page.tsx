@@ -4,6 +4,7 @@ import BackLink from "@/components/ui/BackLink";
 import PageHeading from "@/components/ui/PageHeading";
 import { getSession, loadBlog } from "./loaders";
 import { cardClasses } from "@/components/ui/card";
+import { contentColumnClasses } from "@/components/ui/layout";
 
 export async function generateMetadata(props: {
   params: Promise<{ id: string }>;
@@ -45,7 +46,7 @@ export default async function Blog(props: { params: Promise<{ id: string }> }) {
   }
 
   return (
-    <div>
+    <div className={contentColumnClasses}>
       <PageHeading>{blog.title}</PageHeading>
       <BackLink />
       <div key={blog.title} className={`${cardClasses} min-h-32 overflow-auto`}>

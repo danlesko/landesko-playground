@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import ProcessingDrawing from "@/components/ProcessingDrawing";
 import PageHeading from "@/components/ui/PageHeading";
+import { contentColumnClasses } from "@/components/ui/layout";
 
 export const metadata: Metadata = {
   title: "Landesko's Playground - Animation",
@@ -10,23 +11,31 @@ export const metadata: Metadata = {
 export default function Animation() {
   return (
     <>
-      <PageHeading>Animation</PageHeading>
-      <p className="text-lg mt-2 lg:w-3/4">
-        The very first class I ever took in computer science at UNC Asheville
-        introduced me to Processing.js where I first learned to code. Being a
-        graphic design class, we learned how to create art with code. Here's an
-        animation I created in Processing.js. Maybe I'll make some more over
-        time!
-      </p>
+      {/* The text gets the shared measure; `<ProcessingDrawing />` below does NOT,
+          and that is the one deliberate exception on the site. The canvas sizes
+          itself from its container, so capping it at 42rem would take it from
+          1390px to 672px at a 1440px viewport -- `ui/layout.ts` says not to cap it
+          and this is why. Both are centred, so they share a centre line even
+          though they do not share an edge. */}
+      <div className={contentColumnClasses}>
+        <PageHeading>Animation</PageHeading>
+        <p className="text-lg mt-2">
+          The very first class I ever took in computer science at UNC Asheville
+          introduced me to Processing.js where I first learned to code. Being a
+          graphic design class, we learned how to create art with code. Here's
+          an animation I created in Processing.js. Maybe I'll make some more
+          over time!
+        </p>
 
-      <h2 className="text-2xl font-semibold mt-6">Fish Tank</h2>
-      <p className="text-lg mt-2 lg:w-3/4">
-        This animation was modeled after my first project in processing.js. It's
-        a simple fish tank simulation. Click to blow bubbles, let the goldfish
-        follow your mouse, watch as the purple fish tries to avoid it! I did my
-        best attempt to allow it to scale for mobile but there is some
-        wonkiness.
-      </p>
+        <h2 className="text-2xl font-semibold mt-6">Fish Tank</h2>
+        <p className="text-lg mt-2">
+          This animation was modeled after my first project in processing.js.
+          It's a simple fish tank simulation. Click to blow bubbles, let the
+          goldfish follow your mouse, watch as the purple fish tries to avoid
+          it! I did my best attempt to allow it to scale for mobile but there is
+          some wonkiness.
+        </p>
+      </div>
       <ProcessingDrawing />
     </>
   );

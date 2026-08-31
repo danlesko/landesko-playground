@@ -56,4 +56,4 @@
 // 768px tablet -- which is a change nobody asked for and which the measurements
 // above do not cover. Keeping the prefix makes the claim exact: nothing below
 // `lg` moves.
-export const contentColumnClasses = "lg:max-w-2xl";
+export const contentColumnClasses = "lg:max-w-2xl lg:mx-auto";

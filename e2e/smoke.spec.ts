@@ -1248,14 +1248,6 @@ test("the nav band at `lg` is unaffected by the overlay styling", async ({
       padY:
         Math.round(parseFloat(cs.paddingTop)) +
         Math.round(parseFloat(cs.paddingBottom)),
-      // The list must fill the nav's content box, not sit in a corner of it. This
-      // is what the old `menu.width > 250` bound was reaching for -- and 251px
-      // would have satisfied that while pinning the band's content to nothing.
-      navContentWidth: Math.round(
-        nav.getBoundingClientRect().width -
-          parseFloat(cs.paddingLeft) -
-          parseFloat(cs.paddingRight),
-      ),
       listWidth: Math.round(list.getBoundingClientRect().width),
       // Asserted as a property, not inferred from the current labels fitting.
       flexWrap: getComputedStyle(list).flexWrap,
@@ -1263,7 +1255,6 @@ test("the nav band at `lg` is unaffected by the overlay styling", async ({
   });
   expect(bandBox.navHeight).toBe(bandBox.listHeight + bandBox.padY);
   expect(bandBox.navHeight).toBeLessThan(bandBox.listHeight * 2);
-  expect(bandBox.listWidth).toBe(bandBox.navContentWidth);
   expect(bandBox.flexWrap).toBe("nowrap");
 
   // The list is horizontal and on one line. `space-y-2` stacks it below the
@@ -1306,25 +1297,34 @@ test("the nav band at `lg` is unaffected by the overlay styling", async ({
     listDisplay: "flex",
   });
 
-  // The shared content edge, which is the assertion this test was missing: the
-  // band's first link and the route's own first element must start at the same x.
-  // `nav.left === 0` and `main.left === 0` compare OUTER boxes and say nothing
-  // about it, so a padding drift between the nav and `<main>` stayed green.
-  const edges = await page.evaluate(() => {
-    const firstLink = document.querySelector(
-      'nav[aria-label="Main"] a',
-    ) as HTMLElement;
-    const firstContent = document.querySelector("main *") as HTMLElement;
+  // The band's links and the page's content occupy the SAME column. This is the
+  // assertion the test was missing, and it is what actually failed when the pages
+  // were centred and the band was not -- content at x=176, links still at x=16.
+  //
+  // Both edges, not just the left one: matching lefts with different widths would
+  // still leave the band and the content disagreeing about the column. `nav.left`
+  // and `main.left` above compare OUTER boxes and say nothing about either.
+  const column = await page.evaluate(() => {
+    const list = document.getElementById("main-nav-menu") as HTMLElement;
+    // The page's own measure wrapper: `<main>`'s first element child, which every
+    // route now carries. Located structurally rather than by class, so the class
+    // name is free to change without silently making this vacuous.
+    const content = document.querySelector("main > *") as HTMLElement;
+    const l = list.getBoundingClientRect();
+    const c = content.getBoundingClientRect();
     return {
-      link: Math.round(firstLink.getBoundingClientRect().left),
-      content: Math.round(firstContent.getBoundingClientRect().left),
+      listLeft: Math.round(l.left),
+      listRight: Math.round(l.right),
+      contentLeft: Math.round(c.left),
+      contentRight: Math.round(c.right),
     };
   });
-  expect(edges.link).toBe(edges.content);
+  expect(column.listLeft).toBe(column.contentLeft);
+  expect(column.listRight).toBe(column.contentRight);
 
-  // And the overlay's width cap is not left on the list at desktop -- covered by
-  // the list-fills-its-content-box assertion above, since a 250px cap could not
-  // equal a ~992px content box.
+  // And the overlay's own 250px cap is not left on the list at desktop. Implied by
+  // the column match above once the measure is wider than 250px, but asserted
+  // separately because that implication would disappear if the measure ever shrank.
   expect(menu!.width).toBeGreaterThan(250);
 });
 

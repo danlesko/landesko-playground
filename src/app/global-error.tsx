@@ -6,6 +6,7 @@ import useErrorRetry from "./useErrorRetry";
 // would emit nothing without this import.
 import "./globals.css";
 import { cardClasses } from "@/components/ui/card";
+import { contentColumnClasses } from "@/components/ui/layout";
 
 // Catches errors thrown by the root layout itself, which `error.tsx` cannot:
 // that boundary renders *inside* the layout. Hence the <html>/<body> here, and
@@ -35,42 +36,48 @@ export default function GlobalError({
         {/* Written inline rather than through a heading primitive: with the
             layout gone this is the document's only heading, so its level must
             not be changeable by an edit in another file. */}
-        <h1 className="text-4xl font-bold text-danger">Something Went Wrong</h1>
-        <div className={`${cardClasses} min-h-32 overflow-auto`}>
-          <p>
-            This site could not be loaded. If the problem is temporary, trying
-            again may help.
-          </p>
-          {/* `aria-busy`, not `aria-disabled`: the control stays operable while the
+        <div className={contentColumnClasses}>
+          <h1 className="text-4xl font-bold text-danger">
+            Something Went Wrong
+          </h1>
+          <div className={`${cardClasses} min-h-32 overflow-auto`}>
+            <p>
+              This site could not be loaded. If the problem is temporary, trying
+              again may help.
+            </p>
+            {/* `aria-busy`, not `aria-disabled`: the control stays operable while the
               retry runs, and a second click escalates to a full reload. Neither is
               `disabled`, which would drop focus to the body in some browsers. */}
-          <button
-            type="button"
-            onClick={retry}
-            aria-busy={retrying}
-            className="mt-4 px-4 py-2 rounded font-bold bg-surface text-accent hover:text-accent-hover aria-[busy=true]:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
-          >
-            Try again
-          </button>
-          {/* Mounted empty rather than conditionally: a live region that appears
+            <button
+              type="button"
+              onClick={retry}
+              aria-busy={retrying}
+              className="mt-4 px-4 py-2 rounded font-bold bg-surface text-accent hover:text-accent-hover aria-[busy=true]:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+            >
+              Try again
+            </button>
+            {/* Mounted empty rather than conditionally: a live region that appears
               at the same moment as its text is often not announced at all. */}
-          <p
-            role="status"
-            aria-atomic="true"
-            className="mt-2 min-h-5 text-sm text-muted"
-          >
-            {retrying ? "Retrying... click Try again to reload the page." : ""}
-          </p>
-          <p className="mt-4">
-            <TextLink href="/" className="font-bold">
-              Home
-            </TextLink>
-          </p>
-          {error.digest && (
-            <p className="mt-4 text-sm text-muted">
-              Error digest: <code>{error.digest}</code>
+            <p
+              role="status"
+              aria-atomic="true"
+              className="mt-2 min-h-5 text-sm text-muted"
+            >
+              {retrying
+                ? "Retrying... click Try again to reload the page."
+                : ""}
             </p>
-          )}
+            <p className="mt-4">
+              <TextLink href="/" className="font-bold">
+                Home
+              </TextLink>
+            </p>
+            {error.digest && (
+              <p className="mt-4 text-sm text-muted">
+                Error digest: <code>{error.digest}</code>
+              </p>
+            )}
+          </div>
         </div>
       </body>
     </html>

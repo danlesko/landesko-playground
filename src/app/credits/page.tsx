@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import PageHeading from "@/components/ui/PageHeading";
 import { textLinkClasses } from "@/components/ui/TextLink";
+import { contentColumnClasses } from "@/components/ui/layout";
 
 export const metadata: Metadata = {
   title: "Landesko's Playground - Credits",
@@ -32,7 +33,7 @@ const credits = [
 
 export default function Credits() {
   return (
-    <>
+    <div className={contentColumnClasses}>
       <PageHeading>Credits</PageHeading>
       <p className="text-lg mt-2">
         Thanks to the following resources for helping me build this site:
@@ -50,6 +51,6 @@ export default function Credits() {
           </li>
         ))}
       </ul>
-    </>
+    </div>
   );
 }
