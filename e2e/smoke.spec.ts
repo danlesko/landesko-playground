@@ -1296,43 +1296,58 @@ test("the nav band at `lg` is unaffected by the overlay styling", async ({
     listDisplay: "flex",
   });
 
-  // The band's links and the page's content occupy the SAME column. This is the
-  // assertion the test was missing, and it is what actually failed when the pages
-  // were centred and the band was not -- content at x=176, links still at x=16.
+  // The band's links start at the BAND's own left edge, and the page's content is
+  // centred. Those are two different columns on purpose, and this asserts both halves
+  // so neither drifts into the other.
   //
-  // Both edges, not just the left one: matching lefts with different widths would
-  // still leave the band and the content disagreeing about the column. `nav.left`
-  // and `main.left` above compare OUTER boxes and say nothing about either.
+  // This assertion has been inverted once already. When the pages were first centred
+  // the nav was put on the same measure so the two shared a column, and this test
+  // asserted that. The owner's call is the opposite -- nav against the viewport,
+  // content centred -- so it now asserts the separation rather than the match. Worth
+  // recording, because "the test agrees with the code" is only worth something if the
+  // test says which arrangement is intended.
   const column = await page.evaluate(() => {
+    const nav = document.querySelector('nav[aria-label="Main"]') as HTMLElement;
     const list = document.getElementById("main-nav-menu") as HTMLElement;
     // The page's own measure wrapper: `<main>`'s first element child, which every
-    // route now carries. Located structurally rather than by class, so the class
-    // name is free to change without silently making this vacuous.
+    // route carries. Located structurally rather than by class, so the class name is
+    // free to change without silently making this vacuous.
     const content = document.querySelector("main > *") as HTMLElement;
     const firstLink = list.querySelector("a") as HTMLElement;
-    const l = list.getBoundingClientRect();
+    const navCs = getComputedStyle(nav);
+    const navBox = nav.getBoundingClientRect();
     const c = content.getBoundingClientRect();
     return {
-      listLeft: Math.round(l.left),
-      listRight: Math.round(l.right),
       firstLinkLeft: Math.round(firstLink.getBoundingClientRect().left),
+      // Where the band's own content starts: its left edge plus its padding.
+      navContentLeft: Math.round(navBox.left + parseFloat(navCs.paddingLeft)),
+      listWidth: Math.round(list.getBoundingClientRect().width),
+      navContentWidth: Math.round(
+        navBox.width -
+          parseFloat(navCs.paddingLeft) -
+          parseFloat(navCs.paddingRight),
+      ),
       contentLeft: Math.round(c.left),
       contentRight: Math.round(c.right),
+      viewport: window.innerWidth,
     };
   });
-  expect(column.listLeft).toBe(column.contentLeft);
-  expect(column.listRight).toBe(column.contentRight);
 
-  // And the first LINK, not just the list box. Matching list edges is not enough:
-  // horizontal padding on the list would move every link while both of its own edges
-  // still matched the page. An earlier version of this test compared the link and
-  // then lost that when the box comparison replaced it.
-  expect(column.firstLinkLeft).toBe(column.contentLeft);
+  // The first link sits at the band's own content edge, not on the page measure.
+  expect(column.firstLinkLeft).toBe(column.navContentLeft);
 
-  // And the overlay's own 250px cap is not left on the list at desktop. Implied by
-  // the column match above once the measure is wider than 250px, but asserted
-  // separately because that implication would disappear if the measure ever shrank.
+  // And the list spans the band rather than being capped -- which is also what stops
+  // the overlay's 250px percentage cap surviving to desktop.
+  expect(column.listWidth).toBe(column.navContentWidth);
   expect(menu!.width).toBeGreaterThan(250);
+
+  // The content, meanwhile, IS centred: equal gutters either side. Asserted as a
+  // relationship rather than a pixel figure so it holds at any viewport width.
+  expect(column.contentLeft).toBe(column.viewport - column.contentRight);
+
+  // And the two are genuinely different columns. Without this the test would pass on a
+  // layout that had quietly put them back on the same measure.
+  expect(column.firstLinkLeft).toBeLessThan(column.contentLeft);
 });
 
 test("the nav marks exactly the current page, and follows the route", async ({

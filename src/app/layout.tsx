@@ -127,7 +127,11 @@ export default async function RootLayout({
             <MainNav />
 
             {/* Main Content */}
-            <main className="flex-1 bg-background p-4 text-foreground">
+            {/* `lg:bg-backdrop`, not `bg-backdrop`: the gutters only exist from `lg` up,
+                where the content column is capped and centred. Below that the column
+                fills the width and there is nothing to darken, so the page keeps
+                --background and mobile is unchanged. */}
+            <main className="flex-1 bg-background p-4 text-foreground lg:bg-backdrop">
               {children}
             </main>
           </div>

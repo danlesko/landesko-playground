@@ -50,10 +50,33 @@
 // at 1280x1024, and neither lands where a 672px cap and an 855px request meet.
 // So the canvas needs its own decision, and it would not fail loudly first.
 //
+// THE MEASURE IS STILL 42rem, which is worth being explicit about because the
+// max-width no longer says so. The column paints --background over the darker
+// --backdrop gutters, and text flush against that panel edge looks wrong, so it
+// carries `lg:px-8` -- 2rem each side. The cap is therefore 46rem and the CONTENT
+// box is 46 - 4 = 42rem, unchanged. Change one of those two numbers without the
+// other and the measure moves silently; the hero's `sizes` attribute declares
+// 42rem and its e2e test is what would catch it.
+//
+// THE VERTICAL PADDING IS NOT DECORATION, and this is the one to leave alone.
+// Painting a background here made axe unable to evaluate the contrast of the first
+// heading on every desktop route: it reported `elmPartiallyObscured`, because the
+// column's top edge sat exactly on the heading's and axe could not establish that
+// the background contains the text. Nothing overlapped it -- checked -- the boxes
+// were merely coincident. `lg:py-6` gives strict containment and the check resolves
+// again.
+//
+// So removing it would not just tighten the spacing; it would take the first
+// heading of every route back out of the contrast gate, silently, while the suite
+// stayed green on `violations`. The a11y suite asserts the known-unevaluable set,
+// so it does fail -- that is how this was found -- but the failure names axe rather
+// than this line, which is why it is written down here.
+//
 // `lg:`-prefixed, matching every rule it replaces. Those were all `lg:`-only, so
 // below 1024px the column was unconstrained and filled its parent. An unprefixed
 // cap would have quietly narrowed the 705-1023px band -- 736px to 672px on a
 // 768px tablet -- which is a change nobody asked for and which the measurements
 // above do not cover. Keeping the prefix makes the claim exact: nothing below
 // `lg` moves.
-export const contentColumnClasses = "lg:max-w-2xl lg:mx-auto";
+export const contentColumnClasses =
+  "lg:mx-auto lg:max-w-[46rem] lg:bg-background lg:px-8 lg:py-6";

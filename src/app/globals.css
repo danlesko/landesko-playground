@@ -9,6 +9,12 @@
    Contrast ratios are against --background unless noted. */
 :root {
   --background: #18181b; /* zinc-900 */
+  /* One step below --background on the same scale, for the gutters either side of the
+     centred content column from `lg` up. Nothing renders TEXT on this: every route's
+     content sits inside the column, which paints --background over it, and the only
+     thing outside the column is the p5 canvas, which brings its own fill. So there is
+     no contrast ratio to state here -- if that ever stops being true, this needs one. */
+  --backdrop: #09090b; /* zinc-950 */
   --foreground: #d4d4d8; /* zinc-300  11.99:1 */
   --surface: #27272a; /* zinc-800  — nav band, inputs, modals */
   --muted: #a1a1aa; /* zinc-400   6.91:1, 5.81:1 on --surface */

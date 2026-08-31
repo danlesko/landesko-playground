@@ -5,8 +5,6 @@ import clsx from "clsx";
 import Link from "next/link";
 import { List } from "@phosphor-icons/react/dist/ssr";
 
-import { contentColumnClasses } from "@/components/ui/layout";
-
 // Referenced by both the toggle's `aria-controls` and the list's `id`, so the
 // two cannot drift apart. MainNav is rendered once, in the root layout, so a
 // constant is unique on the page.
@@ -194,17 +192,16 @@ const MainNav = () => {
         // this comment claimed the literal.
         className={clsx(
           "absolute left-2 top-full z-10 w-[250px] max-w-[calc(100%-1rem)] rounded bg-surface p-2 shadow-2xl shadow-black",
-          "lg:static lg:left-auto lg:top-auto lg:z-auto lg:w-auto lg:rounded-none lg:bg-transparent lg:p-0 lg:shadow-none",
-          // The band's links sit on the same measure as the page content, so the
-          // two share a left edge instead of the nav hugging the viewport while
-          // the content is centred. Taken from the shared constant rather than
-          // restated, so it cannot drift from what the pages use. It also
-          // replaces the desktop max-width reset that was only here to undo the
-          // overlay's own cap -- the measure undoes it and sets the column in one
-          // value. That utility is described rather than named: it no longer appears
-          // in any class string here, so spelling it out would keep emitting its rule
-          // from this comment alone (#133).
-          contentColumnClasses,
+          "lg:static lg:left-auto lg:top-auto lg:z-auto lg:w-auto lg:max-w-none lg:rounded-none lg:bg-transparent lg:p-0 lg:shadow-none",
+          // The links stay at the band's own left edge and are deliberately NOT put
+          // on the content measure. They were briefly, so that the nav and the page
+          // shared a column; the owner's call is that the nav reads better against
+          // the viewport while the content is centred. The band's fill spans the
+          // width, so the links sit at its start rather than floating in the middle
+          // of it.
+          //
+          // `lg:max-w-none` is what undoes the overlay's own percentage cap, which
+          // would otherwise pin the desktop band's content to 250px.
           "space-y-2 lg:flex lg:space-y-0 lg:gap-x-2",
           isOpen ? "block" : "hidden",
         )}
