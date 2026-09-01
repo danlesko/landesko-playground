@@ -45,35 +45,37 @@ export default async function Home() {
             copy is authored; if user-supplied text ever lands in this track, it will.
             */}
         <div className="lg:min-w-0 lg:flex-1">
-          {/* A READING MEASURE on the paragraphs, not on the track. The track is the
-              flex remainder, which at a 1990px viewport is 1203px, and the first
-              paragraph was setting a 135-character line in it with a five-character
-              orphan under it. Typographic guidance is 45-75 characters and the
-              classic target is 66.
+          {/* NO READING MEASURE on this copy, and that is a decision rather than an
+              omission -- it was added and then removed on the owner's call. Worth the
+              paragraph because the line length here looks like an obvious thing to
+              "fix", and fixing it costs more than it buys.
 
-              38rem is derived, not chosen. Measured on this typeface at `text-lg`:
-              820px of line held 90 characters, so 9.11px a character; 66 characters
-              is 601px, which is 37.6rem. In rem rather than px so it tracks a reader
-              who has enlarged their default text -- the whole point of a measure is
-              the character count, and that is what stays fixed when both sides scale.
+              The lines ARE long: measured, the first paragraph sets 90 characters at a
+              1440px viewport and 135 at 1990px, against the usual 45-75 guidance.
 
-              On the PARAGRAPHS so the link row below is free to use the full track.
-              The links are a wrapping row of short labels, not prose; holding them to
-              a reading measure would wrap them earlier for no benefit.
+              A 38rem cap fixed that -- 70 characters everywhere -- and made the page
+              look worse. The track is the flex remainder, so capping the text does not
+              shrink the track; the text just stops short and leaves a hole between it
+              and the photo. Measured: 244px at 1440x900 and 627px at 1990x1000. A gap
+              in the middle of the composition reads as breakage in a way a long line
+              does not.
 
-              Unprefixed, because a constant cap cannot cause the failure a prefixed
-              one did in #138 -- it never grows as the viewport shrinks. It first
-              binds around a 700px-wide viewport and does nothing below that. */}
-          <div className="max-w-[38rem]">
-            <p className="text-lg">
-              I'm a full-stack software engineer. This is my portfolio and blog
-              — a place to experiment with new technologies and write about what
-              I find.
-            </p>
-            <p className="mt-2 text-sm text-muted">
-              Master's from Johns Hopkins University.
-            </p>
-          </div>
+              The real constraint is that this is roughly 170px of copy in a 1760px row,
+              so the empty space exists under any arrangement and the only question is
+              where it goes. Filling the track puts it outside the content instead of
+              inside it.
+
+              If this comes back, the thing that would ACTUALLY fix it is more copy in
+              this track -- the space is the problem, not the measure. Capping the text
+              without also closing the gap just moves the defect. */}
+          <p className="text-lg">
+            I'm a full-stack software engineer. This is my portfolio and blog —
+            a place to experiment with new technologies and write about what I
+            find.
+          </p>
+          <p className="mt-2 text-sm text-muted">
+            Master's from Johns Hopkins University.
+          </p>
           {/* A plain list rather than a second `<nav>` landmark: the main nav is
               this site's navigation, and a landmark here would compete with it for
               the same job. The list still gives a screen reader the count. */}

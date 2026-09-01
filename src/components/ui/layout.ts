@@ -66,6 +66,15 @@
 // lines matter more, the fix is a narrower measure for LONG-FORM PROSE specifically,
 // applied inside this column rather than by shrinking it.
 //
+// That was tried on the home page's hero copy and REVERTED, which is the useful part of
+// the story. A 38rem cap brought the first line from 135 characters to 70 -- and looked
+// worse, because the hero's prose sits in a flex track that keeps its width whether the
+// text uses it or not. The text stopped short and left 627px of nothing between it and
+// the photo at a 1990px viewport. So a reading measure is only an improvement where
+// narrowing the text also narrows its container, or where there is enough copy that the
+// leftover space is not conspicuous. Neither holds for a three-line hero blurb. It would
+// hold for a blog post body.
+//
 // The hero photo already does exactly that, and it is worth knowing WHY its cap is not a
 // fixed measure. It is a 1286x1714 portrait, so at the column's full width it rendered
 // 1766px tall at a 1440px viewport -- twice a fold. Its cap is therefore derived from a
