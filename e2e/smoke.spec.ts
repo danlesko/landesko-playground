@@ -190,6 +190,17 @@ test("the home hero image declares the width it actually renders", async ({
     [1440, 600, 16],
     [2560, 4000, 16],
     [2560, 4000, 24],
+    // #140 made the photo's width rule differ across `lg`, so the pair either side of
+    // the breakpoint now matters for a second reason and both proportions of it are
+    // needed. The `40%` prose floor and the height cap swap over with the viewport's
+    // SHAPE rather than its size: at 1024x900 and 1280x900 the floor binds, at
+    // 1024x600 and 1280x800 the cap does. A case that only ever sampled one of the
+    // two would pass with the other term missing from the attribute entirely.
+    [1024, 900, 16],
+    [1024, 600, 16],
+    [1023, 900, 16],
+    [1280, 900, 16],
+    [1024, 900, 24],
   ] as const) {
     await page.setViewportSize({ width, height });
     await page.evaluate((px) => {
