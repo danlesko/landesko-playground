@@ -11,17 +11,20 @@ export const metadata: Metadata = {
 export default function Animation() {
   return (
     <>
-      {/* The text gets the shared measure; `<ProcessingDrawing />` below does NOT,
-          and that is the one deliberate exception on the site. The canvas sizes
-          itself from its container, so capping it would shrink the drawing rather
-          than a line length -- at a 1440px viewport it would go from 1390px to the
-          column's 1024px. `ui/layout.ts` says not to cap it and this is why.
-          
-          They do not share a left edge, and they are not meant to. They DO share a
-          centre line, but only because the canvas centres itself in its own wrapper
-          -- see ProcessingDrawing. Without that it sat at the content box's left
-          edge and the two centres were 9px apart, which is what an earlier version
-          of this comment wrongly described as already centred. */}
+      {/* The canvas is inside the shared measure, same as the text. The reason for
+          the old exception changed rather than the reasoning having been wrong: the
+          column was a fixed 64rem, so capping the canvas took it from 1390px to 1024px
+          at a 1440px viewport, which was too much to pay for alignment.
+
+          The column is now 92% of the viewport, so the same cap costs 65px -- 1390 to
+          1325 -- and buys a shared left edge with everything above it. It was 42px out
+          before, which is exactly the sort of near-miss that reads as a mistake rather
+          than a decision.
+
+          Note the canvas does not always track the column: its wide branch is bound by
+          viewport HEIGHT, so at 1920x900 it is 1145px inside a 1760px column and the
+          cap is not what limits it. Alignment still holds, because the wrapper carries
+          the measure rather than the canvas. */}
       <div className={contentColumnClasses}>
         <PageHeading>Animation</PageHeading>
         <p className="text-lg mt-2">
@@ -41,7 +44,9 @@ export default function Animation() {
           some wonkiness.
         </p>
       </div>
-      <ProcessingDrawing />
+      <div className={contentColumnClasses}>
+        <ProcessingDrawing />
+      </div>
     </>
   );
 }
