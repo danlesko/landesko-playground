@@ -1092,6 +1092,43 @@ test("the collapsed nav below `lg` is no taller than its toggle", async ({
   expect(nav!.height).toBe(toggle + 16);
 });
 
+// /contact rather than /credits, and at 320px, because this is the route with the
+// longest unbreakable string on the site: the no-key notice names
+// `NEXT_PUBLIC_REACT_APP_SITE_KEY_RECAPTCHA`, one token 359px wide. In a 288px column
+// it overflowed the document by 55px until the notice was allowed to break words --
+// a WCAG 1.4.10 reflow failure, and one the nav's own overflow test could not see
+// because it visits a page without that text.
+//
+// This only bites where the key is ABSENT, which is exactly CI, so the check is
+// meaningful here and vacuous on a machine with a key configured. Worth knowing before
+// concluding from a local pass.
+test("/contact reflows at 320px without a horizontal scrollbar", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto("/contact");
+
+  const overflow = await page.evaluate(() => ({
+    document:
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+    // The notice's own box, because a text run that overflows its block does not
+    // always grow the document's scrollWidth -- checking only the document would miss
+    // a differently-contained version of the same defect.
+    widest: Math.max(
+      ...[...document.querySelectorAll("main *")].map(
+        (e) => e.scrollWidth - e.clientWidth,
+      ),
+    ),
+  }));
+
+  expect(overflow.document, "the document scrolls sideways at 320px").toBe(0);
+  expect(
+    overflow.widest,
+    "an element's content overflows its own box at 320px",
+  ).toBeLessThanOrEqual(0);
+});
+
 test("the nav does not force a horizontal scrollbar at narrow widths", async ({
   page,
 }) => {
@@ -1329,31 +1366,29 @@ test("the nav band at `lg` is unaffected by the overlay styling", async ({
     listDisplay: "flex",
   });
 
-  // The band's links and the page's content share a left edge. Both sit against
-  // `<main>`'s padding: the nav is full-bleed with its own inset, the content column is
-  // a plain cap, and neither is centred.
+  // The band's links sit at the BAND's own left edge; the page's content is CENTRED.
+  // Two different columns, deliberately, and this asserts both halves plus the fact
+  // that they differ.
   //
-  // This assertion has now been written three ways, which is the useful part of its
-  // history. It matched edges; then the pages were centred and the nav put on the same
-  // measure, so it asserted a shared COLUMN; then the nav came off the measure and the
-  // content was centred, so it asserted the two were separate. The layout is now back
-  // to both left-aligned and so is this. Spelled out because "the test agrees with the
-  // code" is worth nothing unless the test says which arrangement is intended -- and
-  // this one has been each of the three.
+  // Fourth form of this assertion, and the history is the useful part. It matched the
+  // two elements' left edges; then the pages were centred and the nav put on the same
+  // measure, so it asserted a shared COLUMN; then the nav came off the measure and it
+  // asserted they were SEPARATE; then the body was reverted to left-aligned and it
+  // matched edges again. The body is centred once more, so it is back to separate.
+  //
+  // Spelled out because a test that only ever agrees with the code is worth nothing,
+  // and this one has been every arrangement in turn. Its job is to state which one is
+  // intended, so that changing the layout has to change the claim.
   const column = await page.evaluate(() => {
     const nav = document.querySelector('nav[aria-label="Main"]') as HTMLElement;
     const list = document.getElementById("main-nav-menu") as HTMLElement;
-    // The page's own measure wrapper: `<main>`'s first element child, which every
-    // route carries. Located structurally rather than by class, so the class name is
-    // free to change without silently making this vacuous.
     const content = document.querySelector("main > *") as HTMLElement;
-    const firstLink = list.querySelector("a") as HTMLElement;
+    const links = [...list.querySelectorAll("a")] as HTMLElement[];
     const navCs = getComputedStyle(nav);
     const navBox = nav.getBoundingClientRect();
     const c = content.getBoundingClientRect();
     return {
-      firstLinkLeft: Math.round(firstLink.getBoundingClientRect().left),
-      // Where the band's own content starts: its left edge plus its padding.
+      firstLinkLeft: Math.round(links[0]!.getBoundingClientRect().left),
       navContentLeft: Math.round(navBox.left + parseFloat(navCs.paddingLeft)),
       listWidth: Math.round(list.getBoundingClientRect().width),
       navContentWidth: Math.round(
@@ -1363,86 +1398,65 @@ test("the nav band at `lg` is unaffected by the overlay styling", async ({
       ),
       contentLeft: Math.round(c.left),
       contentRight: Math.round(c.right),
-      // `<main>`'s content-box left edge: where a left-aligned child must start.
-      mainContentLeft: (() => {
-        const main = document.querySelector("main") as HTMLElement;
-        const r = main.getBoundingClientRect();
-        return Math.round(
-          r.left + parseFloat(getComputedStyle(main).paddingLeft),
-        );
-      })(),
-      // The widest gap between adjacent links. The band spans the viewport, so
-      // "first link at the left edge" and "all on one row" are both satisfied by a
-      // `justify-between` row with the links flung apart -- which is not the
-      // arrangement anyone asked for. `gap-x-2` is 8px, and a distributed layout at
-      // this width would leave well over 100px between each pair, so a bound here
-      // separates the two cleanly without pinning the exact gap.
+      viewport: window.innerWidth,
       widestGap: Math.max(
-        ...[...list.querySelectorAll("a")]
-          .map((a) => a.getBoundingClientRect())
+        ...links
           .slice(1)
-          .map((r, i) => {
-            const previous = [...list.querySelectorAll("a")][i] as HTMLElement;
-            return Math.round(r.left - previous.getBoundingClientRect().right);
-          }),
+          .map((a, i) =>
+            Math.round(
+              a.getBoundingClientRect().left -
+                links[i]!.getBoundingClientRect().right,
+            ),
+          ),
       ),
     };
   });
 
-  // The first link sits at the band's own content edge, not on the page measure.
+  // The first link is at the band's own content edge, not on the page's measure.
   expect(column.firstLinkLeft).toBe(column.navContentLeft);
 
-  // And the list spans the band rather than being capped -- which is also what stops
-  // the overlay's 250px percentage cap surviving to desktop.
+  // The list spans the band rather than being capped, which is also what stops the
+  // overlay's 250px percentage cap surviving to desktop.
   expect(column.listWidth).toBe(column.navContentWidth);
   expect(menu!.width).toBeGreaterThan(250);
 
-  // The content starts at the same x as the first link. This is the check that fails
-  // if either the nav or the pages are centred without the other, which has happened
-  // in both directions on this branch.
-  expect(column.contentLeft).toBe(column.firstLinkLeft);
+  // The content is centred: equal gutters. A relationship rather than a pixel figure.
+  expect(column.contentLeft).toBe(column.viewport - column.contentRight);
 
-  // The content is LEFT-ALIGNED, asserted against `<main>`'s own content edge rather
-  // than by comparing gutters. The gutter comparison was the first attempt and it broke
-  // as soon as the column's cap stopped binding at this viewport: the column then fills
-  // the available width, both gutters are `<main>`'s padding, and "right gap exceeds
-  // left" is false for a layout that is not centred at all.
-  expect(column.contentLeft).toBe(column.mainContentLeft);
+  // And its gutter is larger than `<main>`'s own padding, or "centred" would be
+  // vacuous: a column that fills its parent has equal gutters whether it is centred or
+  // not, and an earlier version of this test passed a centred-column mutant for exactly
+  // that reason.
+  expect(column.contentLeft).toBeGreaterThan(16);
 
-  // AND AGAIN AT A WIDTH WHERE THE CAP BINDS, which is the part that actually has
-  // teeth. At 1024px the column is 992px in a 992px box, so it fills either way and
-  // centring it is a no-op -- mutation-tested, and adding an auto-margin passed. The
-  // 64rem cap only binds above about 1056px, so the check has to be repeated somewhere
-  // wider or it is asserting nothing about alignment at all.
-  await page.setViewportSize({ width: 1440, height: 900 });
+  // The two are different columns. Without this the test would pass on a layout that
+  // had quietly put them back on the same measure.
+  expect(column.firstLinkLeft).toBeLessThan(column.contentLeft);
+
+  // The links are a group at that edge, not spread across the band.
+  expect(column.widestGap).toBeLessThan(24);
+
+  // AND AGAIN WIDER, because the gutter is proportional -- `4vw` a side. One viewport
+  // cannot tell a proportional gutter from a fixed one, and that difference is the
+  // whole point of the current rule.
+  await page.setViewportSize({ width: 1920, height: 900 });
   const wide = await page.evaluate(() => {
-    const main = document.querySelector("main") as HTMLElement;
     const content = document.querySelector("main > *") as HTMLElement;
     const firstLink = document.querySelector(
       'nav[aria-label="Main"] a',
     ) as HTMLElement;
-    const mainBox = main.getBoundingClientRect();
+    const c = content.getBoundingClientRect();
     return {
-      contentLeft: Math.round(content.getBoundingClientRect().left),
-      contentWidth: Math.round(content.getBoundingClientRect().width),
-      mainContentLeft: Math.round(
-        mainBox.left + parseFloat(getComputedStyle(main).paddingLeft),
-      ),
-      mainContentWidth: Math.round(
-        mainBox.width -
-          parseFloat(getComputedStyle(main).paddingLeft) -
-          parseFloat(getComputedStyle(main).paddingRight),
-      ),
+      left: Math.round(c.left),
+      right: Math.round(window.innerWidth - c.right),
       firstLinkLeft: Math.round(firstLink.getBoundingClientRect().left),
     };
   });
-  // The cap must actually be binding here, or this repeats the vacuous check.
-  expect(wide.contentWidth).toBeLessThan(wide.mainContentWidth);
-  expect(wide.contentLeft).toBe(wide.mainContentLeft);
-  expect(wide.contentLeft).toBe(wide.firstLinkLeft);
-
-  // The links are a group at that edge, not spread across the band.
-  expect(column.widestGap).toBeLessThan(24);
+  expect(wide.left).toBe(wide.right);
+  // The gutter grew with the viewport rather than staying put, which a proportional
+  // rule does and a fixed one does not.
+  expect(wide.left).toBeGreaterThan(column.contentLeft);
+  expect(wide.firstLinkLeft).toBeLessThan(wide.left);
 });
 
 test("the nav marks exactly the current page, and follows the route", async ({

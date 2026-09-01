@@ -84,13 +84,17 @@ export default async function Home() {
           alt="Lan Playing Pool"
           width="1286"
           height="1714"
-          // ONE TERM, NO MEDIA QUERY. The photo's box is its own 42rem cap or what
-          // `<main>`'s `p-4` leaves it, whichever is smaller -- the column's 64rem
-          // never binds first, because 42 < 64. There is no breakpoint in it because
-          // neither cap has one; the attribute used to carry a
-          // `(min-width: 1024px)` branch purely to mirror a `lg:`-prefixed column,
-          // and that prefix was removed because it made the content JUMP WIDER by
-          // 319px when the window was dragged narrower across 1024px.
+          // NO MEDIA QUERY, because neither this cap nor the column's has a
+          // breakpoint. The photo's box is its own 42rem cap or the column, whichever
+          // is smaller. The column is `<main>`'s box less a `max(0px, 4vw - 1rem)`
+          // gutter a side, which is what the second half of this expression
+          // restates. The column's own 110rem ceiling never binds first, since 42rem
+          // is always the smaller of the two.
+          //
+          // The attribute used to carry a `(min-width: 1024px)` branch purely to
+          // mirror a `lg:`-prefixed column. That prefix was removed because it made
+          // the content JUMP WIDER by 319px when the window was dragged narrower
+          // across 1024px, and the branch went with it.
           //
           // `2rem` and not `32px`, and that distinction cost two rounds. `p-4` is
           // `1rem` a side; the two coincide at a 16px root and diverge at every
@@ -105,7 +109,7 @@ export default async function Home() {
           //
           // The e2e test varies the root font size as well as the viewport, which is
           // the only reason either mistake was visible.
-          sizes="min(42rem, calc(100vw - 2rem))"
+          sizes="min(42rem, calc(100vw - 2rem - 2*max(0px, 4vw - 1rem)))"
           className="h-auto w-full"
           priority
         />

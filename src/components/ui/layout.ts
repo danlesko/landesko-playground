@@ -7,35 +7,58 @@
 // The p5 canvas on /animation is the one deliberate exception. It sizes itself from its
 // container, so capping it shrinks the drawing rather than the line length.
 //
-// UNPREFIXED, AND THAT IS THE POINT. Prefixing it with `lg:` produced a discontinuity
-// that reads as a bug rather than a decision: below the breakpoint the column filled the
-// viewport, and at 1024px it snapped to the cap. Measured on /contact beforehand --
+// CENTRED, WITH PROPORTIONAL GUTTERS. Three utilities, and each is doing something the
+// others cannot.
+//
+// THE GUTTER IS PROPORTIONAL, which is the whole trick. A fixed cap leaves the gutters
+// to be whatever remains, so they GROW as the screen does -- a 64rem column left 208px
+// either side at 1440px and 448px at 1920px, which is the opposite of what a wide screen
+// should do. Here the gutter is `4vw` a side, so the content takes MORE of the screen the
+// larger it gets, not less.
+//
+// `max(0px, 4vw - 1rem)` and not a flat percentage, and the `max()` is the part that
+// matters. `<main>` already contributes `1rem` a side, so a flat `92%` would stack a
+// second gutter on top of it and narrow phones -- measured, 358px to 329px at a 390px
+// viewport, a change nobody asked for. Subtracting that `1rem` means this contributes
+// nothing until `4vw` exceeds it, which is a 400px viewport, and below that the column
+// fills `<main>`'s box exactly as it did before.
+//
+// `mx-auto` centres it. `max-w-[110rem]` is a ceiling for ultrawide displays and only
+// binds above roughly a 2100px viewport.
+//
+// MONOTONIC AND CONTINUOUS, which is the property this must not lose. Below the 400px
+// crossover the width is `100vw - 2rem`; above it the two `1rem` terms cancel and it is
+// exactly `0.92 * 100vw`. Both are non-decreasing in the viewport and they agree at the
+// crossover -- 368px either way at 400px -- so there is no step and it cannot get wider
+// as the window gets smaller.
+//
+// That was not true before. The cap used to be `lg:`-prefixed, so below 1024px the
+// column filled the viewport and at 1024px it snapped to 672px -- dragging a window
+// narrower across that line made the content suddenly 319px WIDER. Measured on
+// /contact at the time:
 //
 //   viewport   content   % of viewport
 //     390px      358px      92%
-//     768px      736px      96%
 //    1023px      991px      97%
-//    1024px      672px      66%   <- collapses by 319px
+//    1024px      672px      66%   <- collapsed by 319px
 //    1440px      672px      47%
 //    2560px      672px      26%
 //
-// so dragging a window narrower across 1024px made the content suddenly WIDER by 319px.
-// Unprefixed, the width is `min(cap, 100vw - 2rem)` everywhere, which is monotonic by
-// construction and cannot grow as the viewport shrinks.
+// Any change here should be checked against that: pick a few widths either side of
+// every breakpoint involved and confirm the width never decreases as the viewport
+// grows. The e2e suite asserts alignment but not this, because a sweep is the wrong
+// shape for it.
 //
-// 64rem is chosen rather than picked. Continuity needs the cap to be at least the
-// content box at the old breakpoint -- 1024 - 2rem = 992px -- so anything smaller either
-// reintroduces a step or narrows the widths below it. 64rem is the smallest standard
-// step at or above 992px, which means every width below 1024px is unchanged (the
-// viewport constrains the column there, not the cap) while 1440px goes from 47% to 71%.
+// WHAT IT COSTS, and it is the thing to revisit rather than the proportion: prose lines
+// are long. An earlier version of this file argued against exactly that, calling a
+// 1139px line the over-long-measure problem, and this is wider than that on any large
+// screen. The tension is real and not resolvable by choosing a different percentage --
+// filling the screen and keeping a 65-75 character measure are different goals. If the
+// lines matter more, the fix is a narrower measure for LONG-FORM PROSE specifically,
+// applied inside this column rather than by shrinking it.
 //
-// WHAT IT COSTS, and this is the part to revisit if anything: prose lines get longer.
-// An earlier version of this file argued against exactly that, calling a 1139px line the
-// over-long-measure problem, and 1024px at 18px text is about 114 characters where 65-75
-// is the usual guidance. That argument was not wrong -- it is in tension with a
-// continuous column, because continuity forces at least 992px at a 1024px viewport. If
-// the long lines matter more than the fill, the fix is a narrower measure for LONG-FORM
-// PROSE specifically, not a smaller cap here, which would bring the step back.
+// The hero photo already does exactly that: it carries its own 42rem cap, because a
+// portrait at the column's full width rendered taller than the viewport.
 //
 // HISTORY, because two earlier shapes are worth not re-deriving:
 //
@@ -53,4 +76,5 @@
 //
 // `global-error.tsx` renders its own document with no layout, so it carries the measure
 // itself and its parent is the full body width rather than `<main>`'s content box.
-export const contentColumnClasses = "max-w-5xl";
+export const contentColumnClasses =
+  "mx-auto w-[calc(100%-2*max(0px,4vw-1rem))] max-w-[110rem]";
