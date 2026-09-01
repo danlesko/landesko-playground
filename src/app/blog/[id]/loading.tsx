@@ -1,6 +1,7 @@
 import BackLink from "@/components/ui/BackLink";
 import PageHeading from "@/components/ui/PageHeading";
 import { cardClasses } from "@/components/ui/card";
+import { contentColumnClasses } from "@/components/ui/layout";
 
 const LoadingSkeletons = () => {
   return (
@@ -14,7 +15,7 @@ const LoadingSkeletons = () => {
 
 export default function Loading() {
   return (
-    <>
+    <div className={contentColumnClasses}>
       {/* The real heading is the post title, which isn't known yet. */}
       <PageHeading>
         <span className="sr-only">Loading blog post</span>
@@ -25,6 +26,6 @@ export default function Loading() {
       </PageHeading>
       <BackLink />
       <LoadingSkeletons />
-    </>
+    </div>
   );
 }

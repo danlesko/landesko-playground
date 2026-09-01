@@ -3,6 +3,7 @@ import BackLink from "@/components/ui/BackLink";
 import PageHeading from "@/components/ui/PageHeading";
 import useErrorRetry from "../../useErrorRetry";
 import { cardClasses } from "@/components/ui/card";
+import { contentColumnClasses } from "@/components/ui/layout";
 
 export default function Error({
   error,
@@ -14,7 +15,7 @@ export default function Error({
   const { retrying, retry } = useErrorRetry(reset);
 
   return (
-    <div>
+    <div className={contentColumnClasses}>
       <PageHeading>
         <span className="text-danger">Error Fetching Blog</span>
       </PageHeading>

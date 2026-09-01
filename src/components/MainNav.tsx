@@ -6,9 +6,9 @@ import Link from "next/link";
 import { List } from "@phosphor-icons/react/dist/ssr";
 
 // Referenced by both the toggle's `aria-controls` and the list's `id`, so the
-// two cannot drift apart. Sidebar is rendered once, in the root layout, so a
+// two cannot drift apart. MainNav is rendered once, in the root layout, so a
 // constant is unique on the page.
-const MENU_ID = "sidebar-menu";
+const MENU_ID = "main-nav-menu";
 
 // Which pages are in the nav, and in what order. Up here rather than inline in
 // the list below, where it was 170 lines further down and behind three
@@ -21,7 +21,7 @@ const NAV_ITEMS = [
   { href: "/credits", label: "Credits" },
 ] as const;
 
-const Sidebar = () => {
+const MainNav = () => {
   const pathname = usePathname();
   const [isOpen, setIsOpen] = useState(false);
   const toggleRef = useRef<HTMLButtonElement>(null);
@@ -117,7 +117,7 @@ const Sidebar = () => {
       // viewport narrower than 250px. It is the positioning ancestor the panel
       // and the scrim are placed against, and it outranks the header so the panel
       // is not painted underneath it.
-      className="relative z-40 p-2 text-foreground lg:static lg:z-auto lg:min-w-[250px] lg:max-w-[250px] lg:bg-surface lg:p-4"
+      className="relative z-40 p-2 text-foreground lg:static lg:z-auto lg:bg-surface lg:px-4 lg:py-2"
     >
       {/* A scrim, not a modal backdrop. It carries no role, no handler and no
           name, so it adds nothing to the accessibility tree -- the dismissing
@@ -176,15 +176,33 @@ const Sidebar = () => {
         // overflow by the scrollbar's own width.
         //
         // The desktop line restores a property default for each overlay value it
-        // faces, with three deliberate exceptions: the two insets and the
-        // z-index have no counterpart, because `lg:static` leaves all three
-        // inoperative -- insets and z-index do nothing on a static box. They are
-        // still declared at desktop, so anything that makes this box positioned
-        // again at `lg` activates all three at once.
+        // faces. The two insets and the z-index used to be the exceptions -- they
+        // had no counterpart, because `lg:static` leaves all three inoperative on
+        // a static box -- and #136 added `lg:left-auto lg:top-auto lg:z-auto`
+        // anyway. Those three are therefore INERT today, and deliberately so:
+        // anything that makes this box positioned again, or its parent a flex or
+        // grid container, would otherwise reactivate all three at once with no
+        // reset in the file to stop it.
+        //
+        // One value genuinely has no counterpart and is not worth adding one for:
+        // `shadow-black` sets a colour that survives to desktop, where
+        // `lg:shadow-none` removes the shadow it would have coloured. So "a
+        // counterpart for every overlay value" is the intent rather than a literal
+        // property of the string -- worth stating, because an earlier version of
+        // this comment claimed the literal.
         className={clsx(
           "absolute left-2 top-full z-10 w-[250px] max-w-[calc(100%-1rem)] rounded bg-surface p-2 shadow-2xl shadow-black",
-          "lg:static lg:w-auto lg:max-w-none lg:rounded-none lg:bg-transparent lg:p-0 lg:shadow-none",
-          "space-y-2 lg:block",
+          "lg:static lg:left-auto lg:top-auto lg:z-auto lg:w-auto lg:max-w-none lg:rounded-none lg:bg-transparent lg:p-0 lg:shadow-none",
+          // The links stay at the band's own left edge and are deliberately NOT put
+          // on the content measure. They were briefly, so that the nav and the page
+          // shared a column; the owner's call is that the nav reads better against
+          // the viewport while the content is centred. The band's fill spans the
+          // width, so the links sit at its start rather than floating in the middle
+          // of it.
+          //
+          // `lg:max-w-none` is what undoes the overlay's own percentage cap, which
+          // would otherwise pin the desktop band's content to 250px.
+          "space-y-2 lg:flex lg:space-y-0 lg:gap-x-2",
           isOpen ? "block" : "hidden",
         )}
       >
@@ -224,4 +242,4 @@ const Sidebar = () => {
   );
 };
 
-export default Sidebar;
+export default MainNav;

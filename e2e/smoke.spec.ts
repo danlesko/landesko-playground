@@ -9,7 +9,7 @@ import { test, expect } from "@playwright/test";
  * begun. So each test names a specific element or a specific navigation result.
  */
 
-// The sidebar, named rather than located by tag, so the assertions below survive
+// The main nav, named rather than located by tag, so the assertions below survive
 // the wrapper moving. Defined once so a rename has one place to change -- the
 // tests that call it would all still fail, but only this line needs editing.
 //
@@ -43,9 +43,10 @@ test("the home hero links to every destination it promises", async ({
   await page.goto("/");
 
   // Scoped to <main>, which on this page contains the hero and nothing else --
-  // so "inside main" and "inside the hero" coincide here, and the sidebar's own
+  // so "inside main" and "inside the hero" coincide here, and the nav's own
   // copies of /blog, /animation and /contact cannot supply the answer. The
-  // sidebar <nav> is a sibling of <main> in layout.tsx, which is what makes the
+  // <nav> is a sibling of <main> in layout.tsx -- above it since #136 rather than
+  // beside it, but still a sibling, which is what makes the
   // scoping work at all.
   const links = page.getByRole("main").locator("a[href]");
 
@@ -87,8 +88,15 @@ test("the home hero links to every destination it promises", async ({
 });
 
 /**
- * The `sizes` contract that #10 warned about in as many words. The hero is a single
- * column as of #135, capped at `42rem` from `lg` up, and if the page structure or
+ * The `sizes` contract that #10 warned about in as many words. Since #138 the photo is
+ * bounded by HEIGHT rather than by a fixed measure -- `70vh` converted to the width
+ * that produces it -- and since #140 it shares a row with the prose from `lg` up, so
+ * the attribute has two branches:
+ *
+ *   at `lg`+  `min(height cap, 40% of the content column)`
+ *   below     `min(height cap, 110rem, the content column's own width)`
+ *
+ * If the page structure or
  * the cap changes without that attribute being updated the browser is left choosing
  * a candidate against a width the image no longer has -- and nothing about the
  * layout changes to announce it. Declare too large and the cost is bytes nobody
@@ -108,25 +116,144 @@ test("the home hero links to every destination it promises", async ({
  * arithmetic: the attribute's own `calc()` is applied to a probe element and the
  * result compared to the image's real width. To be exact about what that buys,
  * because the first version of this comment overstated it -- a test that hardcoded
- * `(100vw - 282px) / 2` as the expected value would *also* fail when the sidebar
+ * `(100vw - 282px) / 2` as the expected value would *also* fail when the nav
  * changed, since the rendered width moves and the constant does not. What it would
- * additionally do is fail when someone changes the sidebar and updates `sizes`
+ * additionally do is fail when someone changes the nav and updates `sizes`
  * correctly, i.e. exactly when the code is right. Reading the attribute tests the
  * relationship rather than a frozen constant, which is the difference between a
  * test that survives a legitimate change and one that gets muted for crying wolf.
  *
- * Sensitivity changed with #135 and is now 1:1 in the band where the cap does not
- * bind, and 0 where it does. Above `lg` the declared width is the cap, so a sidebar
- * change moves the rendered width not at all until the sidebar grows enough to make
- * the content box narrower than `42rem` -- at which point the two diverge and this
- * fails. The sub-pixel tolerance is kept: it was tightened because a whole pixel of
- * slack passed a 250px -> 252px sidebar back when the column was half the box.
+ * Sensitivity is 1:1 in whichever term is binding and 0 in the others, which is why
+ * the cases below have to span all of them -- a term can be missing from the attribute
+ * entirely and still pass every sample that does not bind on it. Since #136 there is no
+ * rail; since #138 the column is `100vw - 2rem` less a `max(0px, 4vw - 1rem)` gutter
+ * a side, capped at `110rem`. The `min()` in the attribute is what keeps declared and
+ * rendered equal as the binding term changes hands.
+ *
+ * ONE KNOWN DIVERGENCE, so nobody re-derives it as a bug: `100vw` includes the width of
+ * a classic space-consuming scrollbar and the containing block does not. On a platform
+ * with those, every term derived from `100vw` over-declares by the scrollbar width --
+ * about 17px on the row, so about 7px on the photo once 40% is taken. The CI browser
+ * uses overlay scrollbars so the suite does not see it. It is left alone deliberately:
+ * over-declaring costs bytes and never softness, and the alternative is to stop
+ * mirroring the CSS, which is the property that makes this test worth having.
+ * The sub-pixel tolerance is kept: it was tightened because a whole pixel of slack
+ * passed a 250px -> 252px rail back when the column was half the box.
+ *
+ * One thing this test established that is worth not re-deriving: the image must be
+ * sized by CSS, not left to its intrinsic size. An earlier form of #138 capped the
+ * image's height and left its width automatic, which makes a replaced element take
+ * its width from the selected candidate's density-corrected size -- i.e. from
+ * whatever `sizes` evaluated to. Measured in that form at a 720px height: candidate
+ * `w:384`, natural 378x504, rendered 378x504. The attribute was then describing a
+ * length it had produced, and this test cannot check a tautology. It failed anyway,
+ * with a 283.59px render against a 472.67px declaration, and that specific pair never
+ * reproduced under a sweep of settle times -- so the lesson on record is the
+ * circularity, not the number.
  *
  * And the limit, since sampling is not proof: this checks the widths listed below.
- * A sidebar width introduced at a breakpoint above the largest of them, or active
+ * A width constraint introduced at a breakpoint above the largest of them, or active
  * only between two of them, still passes. Widening that is a matter of adding
  * widths, not of the test being wrong.
  */
+/**
+ * #140 asked for two tracks on desktop and one on mobile, and nothing in this suite
+ * asserted either. Every existing home-page test passes with the row collapsed back to
+ * a single column: the `sizes` test only compares a declared width to a rendered one,
+ * and both move together when the layout changes. So deleting `lg:flex` -- or its gap,
+ * or the height cap -- is a silent visual regression.
+ *
+ * What this pins, and why each part:
+ *
+ *   - SIDE BY SIDE at `lg`, by geometry rather than by class name. The photo's box must
+ *     start after the prose track ends horizontally and share its top edge. A class
+ *     assertion would pass on `lg:flex` while some other rule stopped it applying.
+ *   - THE GAP between them is non-zero and is the `2rem` the row declares. Measured
+ *     rather than assumed, because a gap utility is exactly the kind of thing that gets
+ *     dropped in a reformat and looks fine in isolation.
+ *   - A SHARED TOP EDGE, which is the assertion that would have caught the defect this
+ *     change actually shipped with: the heading's bottom margin sat on the first
+ *     paragraph, so the photo started 8px above the prose. That is a hairline at a 16px
+ *     root and 12px at 24px -- visible, and nothing else here would have failed.
+ *   - STACKED below `lg`, so the mobile arrangement the owner asked to keep is pinned
+ *     too. 1023 and 1024 rather than round numbers, since that is where it changes.
+ *
+ * Deliberately NOT asserted: the 40%-vs-height-cap split, or any particular photo
+ * width. Those are the `sizes` test's job and duplicating them here would mean two
+ * places to update for one legitimate change.
+ *
+ * Verified by mutation rather than claimed. Killed: collapsing the row to one track;
+ * dropping the track gap; failing to reset the stacked top margin at `lg`; removing the
+ * prose floor (that one fails the `sizes` test instead, which is the right place); and
+ * moving the heading's gap back onto the first paragraph, which fails here with "the
+ * photo and the first line of prose are 8px apart vertically".
+ *
+ * One hole found the same way and left open: removing the heading's gap ENTIRELY passes
+ * everything. Both tracks lose it together, so nothing misaligns and no width moves --
+ * the page just loses 8px under the heading. That is a spacing regression no assertion
+ * here would catch, and it is not this test's subject.
+ */
+test("the home hero puts prose beside the photo at `lg` and stacks below it", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  for (const [width, height, sideBySide] of [
+    [1024, 900, true],
+    [1440, 900, true],
+    [1920, 1080, true],
+    [1023, 900, false],
+    [390, 844, false],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+
+    const measured = await page.evaluate(() => {
+      const img = document.querySelector<HTMLImageElement>(
+        'img[alt="Lan Playing Pool"]',
+      );
+      if (!img) throw new Error("hero image not found");
+      const photo = img.parentElement!;
+      const row = photo.parentElement!;
+      const prose = row.firstElementChild!;
+      if (prose === photo)
+        throw new Error("the row has no separate prose track");
+      // The first paragraph rather than the track box, because the track's box top and
+      // its first line of text are exactly what came apart last time.
+      const firstLine = prose.querySelector("p");
+      if (!firstLine) throw new Error("prose track has no paragraph");
+
+      const p = prose.getBoundingClientRect();
+      const i = photo.getBoundingClientRect();
+      return {
+        gap: i.left - p.right,
+        topDelta: Math.abs(firstLine.getBoundingClientRect().top - i.top),
+        photoBelowProse: i.top >= p.bottom,
+        rowGap: getComputedStyle(row).columnGap,
+      };
+    });
+
+    const at = `${width}x${height}`;
+    if (sideBySide) {
+      expect(
+        measured.gap,
+        `${at}: photo does not start after the prose`,
+      ).toBeGreaterThan(0);
+      // The `2rem` the row declares. Asserted as a computed length so a dropped gap
+      // utility fails here rather than merely looking cramped.
+      expect(measured.rowGap, `${at}: the track gap is not 2rem`).toBe("32px");
+      expect(
+        measured.topDelta,
+        `${at}: the photo and the first line of prose are ${measured.topDelta}px apart vertically`,
+      ).toBeLessThan(1);
+    } else {
+      expect(
+        measured.photoBelowProse,
+        `${at}: the photo should be stacked under the prose, not beside it`,
+      ).toBe(true);
+    }
+  }
+});
+
 test("the home hero image declares the width it actually renders", async ({
   page,
 }) => {
@@ -141,8 +268,56 @@ test("the home hero image declares the width it actually renders", async ({
   // 1281 is deliberately odd. It no longer lands on a half pixel now the column is
   // not a half track, but an odd width is still the cheapest guard against an
   // arithmetic change that only misbehaves off even numbers.
-  for (const width of [1280, 1281, 1600, 1024, 1023, 768, 390]) {
-    await page.setViewportSize({ width, height: 900 });
+  // Viewport width AND root font size, because the second dimension is where this
+  // attribute has actually been wrong. Twice: once with the column's own inset missing
+  // from the expression, and once with `<main>`'s padding written as `32px` when it is
+  // `p-4` -- `1rem` a side, which only equals 32px at a 16px root. Both were invisible
+  // at 16px and both showed immediately at 24px.
+  //
+  // 20px and 24px stand in for a reader who has raised their browser's default text
+  // size, which is a setting rather than an edge case. Full-page zoom is NOT the same
+  // thing and would not have caught either bug: it scales the CSS pixel, so every rem
+  // and every px term moves together and the arithmetic stays consistent while wrong.
+  // VIEWPORT HEIGHT is a third dimension now, and it was missing. Every case here used
+  // to be 900px tall, which meant the `70vh` term -- the one that decides the width at
+  // most sizes -- was only ever evaluated at a single height. A height-independent
+  // mistake in it would have passed all ten. 600 and 4000 are the two that matter:
+  // 600 is a short laptop where the height cap is the binding term by a wide margin,
+  // and 4000 is tall enough that the cap stops binding and the column's `110rem`
+  // ceiling takes over. That last case is the one that catches an omitted ceiling
+  // term: without `110rem` in the expression it declares 2101px against a rendered
+  // 1760px.
+  for (const [width, height, rootPx] of [
+    [1280, 900, 16],
+    [1281, 900, 16],
+    [1600, 900, 16],
+    [1024, 900, 16],
+    [1023, 900, 16],
+    [768, 900, 16],
+    [390, 900, 16],
+    [1440, 900, 24],
+    [1024, 900, 24],
+    [1024, 900, 20],
+    [1440, 600, 16],
+    [2560, 4000, 16],
+    [2560, 4000, 24],
+    // #140 made the photo's width rule differ across `lg`, so the pair either side of
+    // the breakpoint now matters for a second reason and both proportions of it are
+    // needed. The `40%` prose floor and the height cap swap over with the viewport's
+    // SHAPE rather than its size: at 1024x900 and 1280x900 the floor binds, at
+    // 1024x600 and 1280x800 the cap does. A case that only ever sampled one of the
+    // two would pass with the other term missing from the attribute entirely.
+    [1024, 900, 16],
+    [1024, 600, 16],
+    [1023, 900, 16],
+    [1280, 900, 16],
+    [1280, 800, 16],
+    [1024, 900, 24],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    await page.evaluate((px) => {
+      document.documentElement.style.fontSize = `${px}px`;
+    }, rootPx);
 
     const measured = await page.evaluate(() => {
       const img = document.querySelector<HTMLImageElement>(
@@ -153,15 +328,67 @@ test("the home hero image declares the width it actually renders", async ({
       if (!sizes) throw new Error("hero image has no sizes attribute");
 
       // Pick the branch that applies right now. Entries are `<media condition>
-      // <size>` with a bare `<size>` last; no comma appears inside either half
-      // of this attribute, so splitting on commas is sufficient here.
+      // <size>` with a bare `<size>` last, separated by TOP-LEVEL commas.
+      //
+      // Splitting on every comma is what this used to do, and the comment used to
+      // justify it by saying no comma appears inside either half. That stopped
+      // being true the moment the size became `min(42rem, calc(100vw - 32px))`,
+      // and the test failed loudly with "declares calc(100vw - 32px)) = 0px" --
+      // a torn fragment measuring zero. Worth keeping the story: the assertion
+      // was strong enough to catch its own parser being outgrown, which is the
+      // opposite of the silent pass a weaker check would have given.
+      //
+      // So track parenthesis depth and split only at depth 0. Media conditions
+      // and CSS math functions both nest, and either can now contain a comma.
+      //
+      // SCOPE, since this is not a `sizes` parser and should not be mistaken for
+      // one. It handles the grammar this attribute actually uses: entries that are
+      // either a bare size or a single parenthesised media condition followed by a
+      // size. It does NOT handle a compound condition
+      // (`(min-width: 1024px) and (orientation: landscape) 42rem`), a condition
+      // opening with a media type or `not` (`screen and (min-width: 1024px) 42rem`,
+      // which would be misread as an unconditional size because it does not start
+      // with a paren), or the `auto` keyword, which has no width to probe. All three
+      // are legal and all three would be mis-parsed rather than rejected. If the
+      // attribute ever grows one, this needs to grow with it -- and the failure mode
+      // is a wrong number rather than an error, so it would look like a real
+      // mismatch.
+      const entries: string[] = [];
+      let depth = 0;
+      let current = "";
+      for (const ch of sizes) {
+        if (ch === "(") depth += 1;
+        if (ch === ")") depth -= 1;
+        if (ch === "," && depth === 0) {
+          entries.push(current);
+          current = "";
+          continue;
+        }
+        current += ch;
+      }
+      entries.push(current);
+
       let declared: string | null = null;
-      for (const entry of sizes.split(",").map((s) => s.trim())) {
+      for (const entry of entries.map((s) => s.trim())) {
         if (!entry.startsWith("(")) {
           declared = entry;
           break;
         }
-        const close = entry.indexOf(")");
+        // The media condition's own closing paren, found by depth rather than by
+        // the first `)` -- `(min-width: 1024px)` is flat today but a condition
+        // like `(min-width: calc(60rem + 1px))` would not be.
+        let d = 0;
+        let close = -1;
+        for (let i = 0; i < entry.length; i += 1) {
+          if (entry[i] === "(") d += 1;
+          if (entry[i] === ")") {
+            d -= 1;
+            if (d === 0) {
+              close = i;
+              break;
+            }
+          }
+        }
         if (window.matchMedia(entry.slice(0, close + 1)).matches) {
           declared = entry.slice(close + 1).trim();
           break;
@@ -190,8 +417,8 @@ test("the home hero image declares the width it actually renders", async ({
     // can only ever disagree by one unit. It is small enough to be worth having
     // and it holds at every width sampled here, measured, locally and in CI.
     //
-    // The 1px bound this replaces was not worth much: the sidebar's 282px is
-    // halved across two columns, so a 250px -> 252px sidebar and a stray
+    // The 1px bound this replaces was not worth much: back when this was a
+    // half-track of `100vw - 282px`, a 250px -> 252px rail and a stray
     // `lg:gap-0.5` each move the image by exactly 1px and both slipped through.
     // Both now fail. A `lg:gap-8` costs 16px per column and was caught either way.
     //
@@ -201,7 +428,7 @@ test("the home hero image declares the width it actually renders", async ({
     // here as a plain mismatch, with the message below naming both numbers.
     expect(
       Math.abs(measured.actualPx - measured.declaredPx),
-      `at ${width}px wide, sizes declares ${measured.declared} = ${measured.declaredPx}px but the image renders ${measured.actualPx}px`,
+      `at ${width}x${height} with a ${rootPx}px root, sizes declares ${measured.declared} = ${measured.declaredPx}px but the image renders ${measured.actualPx}px`,
     ).toBeLessThan(0.02);
   }
 });
@@ -209,7 +436,7 @@ test("the home hero image declares the width it actually renders", async ({
 test("/credits attributes all four outbound resources", async ({ page }) => {
   await page.goto("/credits");
 
-  // Scoped to <main> so the sidebar's links cannot pad the count. Nothing else
+  // Scoped to <main> so the nav's links cannot pad the count. Nothing else
   // on *this* page renders an absolute href, so this is exactly the credits
   // list -- the home hero renders two, which is why the scope is per-page and
   // not app-wide.
@@ -410,13 +637,22 @@ test("the home page LCP image loads eagerly at a declared size", async ({
   // until layout -- the exact regression this guards.
   expect(await image.getAttribute("loading")).not.toBe("lazy");
 
-  // Without `sizes` the browser assumes 100vw and picks a candidate far wider
-  // than the capped column this sits in. Both the tag and the preload hint have
-  // to carry it, or the preload races the tag for a different candidate.
-  await expect(image).toHaveAttribute("sizes", /min-width/);
+  // Without `sizes` the browser assumes 100vw and picks a candidate far wider than the
+  // capped column this sits in. Both the tag and the preload hint have to carry it, or
+  // the preload races the tag for a different candidate.
+  //
+  // Asserted as "present, not the 100vw default, and identical on both" rather than by
+  // matching `min-width`. That pattern was the first version and it encoded an
+  // assumption rather than the requirement: the attribute only contained a media
+  // condition while the column's cap was `lg:`-prefixed, and it stopped as soon as the
+  // cap became unprefixed and the breakpoint went away. The requirement was never that
+  // there be a breakpoint.
+  const declaredSizes = await image.getAttribute("sizes");
+  expect(declaredSizes).toBeTruthy();
+  expect(declaredSizes).not.toBe("100vw");
   await expect(
     page.locator('head link[rel="preload"][as="image"]'),
-  ).toHaveAttribute("imagesizes", /min-width/);
+  ).toHaveAttribute("imagesizes", declaredSizes!);
 
   // The declared intrinsic size, which is what reserves the box before the
   // bytes arrive. This is a separate guarantee from the rendered ratio below:
@@ -685,7 +921,7 @@ test("/blog/create redirects an anonymous visitor away", async ({ page }) => {
   ).toBeVisible();
 });
 
-test("the sidebar client-side navigates between routes", async ({ page }) => {
+test("the nav client-side navigates between routes", async ({ page }) => {
   // Starts on /credits, not /. PUBLIC_ROUTES begins with "/", so starting there
   // made the first iteration assert that clicking Home while already on Home
   // leaves us on Home -- true no matter what that link does, even if its click
@@ -700,23 +936,21 @@ test("the sidebar client-side navigates between routes", async ({ page }) => {
   // unlabelled or icon-only link pass, so the accessible name is asserted to be
   // non-empty without pinning its wording -- the part #7 should strengthen
   // rather than the part it will churn.
-  // Was `complementary`: the sidebar is a named `navigation` landmark now, which
+  // Was `complementary`: the nav is a named `navigation` landmark now, which
   // is the "wrappers are expected to move" case above actually happening. The
   // name is pinned rather than located by tag, so this keeps working if the
   // wrapper moves again and fails if the landmark stops being navigation.
-  const sidebar = mainNav(page);
+  const nav = mainNav(page);
 
   // A full page load would reset this, so its survival is what distinguishes
   // client-side routing from the browser simply following an anchor. The
-  // sidebar is a client component whose entire purpose is soft navigation.
+  // the nav is a client component whose entire purpose is soft navigation.
   await page.evaluate(() => {
     Object.assign(window, { __sameDocument: true });
   });
 
   for (const { path, heading } of PUBLIC_ROUTES) {
-    const link = sidebar
-      .getByRole("link")
-      .and(page.locator(`a[href="${path}"]`));
+    const link = nav.getByRole("link").and(page.locator(`a[href="${path}"]`));
     await expect(link).toHaveAccessibleName(/\S/);
 
     await link.click();
@@ -737,7 +971,7 @@ test("the sidebar client-side navigates between routes", async ({ page }) => {
   // is load-bearing for several other tests in this file, and rewiring that is
   // not a captcha fix.
   await expect(
-    sidebar.getByRole("link").and(page.locator('a[href="/contact"]')),
+    nav.getByRole("link").and(page.locator('a[href="/contact"]')),
   ).toHaveAccessibleName(/\S/);
 });
 
@@ -755,7 +989,7 @@ test("the page exposes one banner and exactly one navigation landmark", async ({
   // Exactly one, not two. The top bar used to be a `nav` holding no links at
   // all, so a screen-reader user could jump to a navigation landmark with
   // nothing navigable in it. This count fails in both directions that matter:
-  // if the sidebar reverts to a non-navigation wrapper, and if a spurious nav
+  // if the nav reverts to a non-navigation wrapper, and if a spurious nav
   // landmark is reintroduced.
   await expect(page.getByRole("navigation")).toHaveCount(1);
   await expect(mainNav(page)).toHaveCount(1);
@@ -831,15 +1065,15 @@ test("the header's auth button keeps its label readable", async ({ page }) => {
   expect(hovered).not.toBe(resting);
 });
 
-test("the sidebar toggle reports a truthful expanded state below `lg`", async ({
+test("the nav toggle reports a truthful expanded state below `lg`", async ({
   page,
 }) => {
   // 1023px is one pixel below Tailwind's `lg`, so the disclosure is live here.
   await page.setViewportSize({ width: 1023, height: 800 });
   await page.goto("/credits");
 
-  const sidebar = mainNav(page);
-  const toggle = sidebar.getByRole("button", { name: "Menu" });
+  const nav = mainNav(page);
+  const toggle = nav.getByRole("button", { name: "Menu" });
   await expect(toggle).toBeVisible();
 
   // Two claims, pinned separately: the computed name is exactly "Menu", and it
@@ -900,13 +1134,13 @@ test("the sidebar toggle reports a truthful expanded state below `lg`", async ({
   await expect(menu).toBeHidden();
 });
 
-test("the sidebar never announces a collapsed state at `lg` and above", async ({
+test("the nav never announces a collapsed state at `lg` and above", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 800 });
   await page.goto("/credits");
 
-  const sidebar = mainNav(page);
+  const nav = mainNav(page);
 
   // The menu is on screen here whatever `isOpen` says, and the toggle still
   // carries `aria-expanded="false"` in the DOM. That pairing is only honest
@@ -915,7 +1149,7 @@ test("the sidebar never announces a collapsed state at `lg` and above", async ({
   // present in the DOM. Asserting only the first would also pass if the toggle
   // were deleted outright, and asserting neither would leave the central claim
   // of this change resting on an inference about how `display: none` behaves.
-  await expect(sidebar.getByRole("link", { name: "Home" })).toBeVisible();
+  await expect(nav.getByRole("link", { name: "Home" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Menu" })).toHaveCount(0);
   await expect(
     page.getByRole("button", { name: "Menu", includeHidden: true }),
@@ -925,7 +1159,7 @@ test("the sidebar never announces a collapsed state at `lg` and above", async ({
   // visible button hidden from the tree with `aria-hidden`, which would put a
   // stale expanded state on screen while still satisfying them. This is the one
   // that pins it to actually not being rendered.
-  await expect(sidebar.locator("button")).toBeHidden();
+  await expect(nav.locator("button")).toBeHidden();
 });
 
 // Geometry, read off the live layout rather than off class names. A class-name
@@ -947,14 +1181,14 @@ const boxes = (page: import("@playwright/test").Page) =>
     };
     return {
       nav: box(document.querySelector('nav[aria-label="Main"]')),
-      menu: box(document.getElementById("sidebar-menu")),
+      menu: box(document.getElementById("main-nav-menu")),
       main: box(document.querySelector("main")),
       scrollWidth: document.documentElement.scrollWidth,
       innerWidth: window.innerWidth,
     };
   });
 
-test("expanding the sidebar below `lg` overlays the content instead of pushing it", async ({
+test("expanding the nav below `lg` overlays the content instead of pushing it", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 375, height: 800 });
@@ -964,7 +1198,7 @@ test("expanding the sidebar below `lg` overlays the content instead of pushing i
   const collapsed = await boxes(page);
 
   await toggle.click();
-  await expect(page.locator("#sidebar-menu")).toBeVisible();
+  await expect(page.locator("#main-nav-menu")).toBeVisible();
   const expanded = await boxes(page);
 
   // The defect this replaces: the list was in flow, so opening it grew the
@@ -987,7 +1221,7 @@ test("expanding the sidebar below `lg` overlays the content instead of pushing i
   expect(expanded.menu!.left).toBeLessThan(expanded.main!.right);
 });
 
-test("the collapsed sidebar below `lg` is no taller than its toggle", async ({
+test("the collapsed nav below `lg` is no taller than its toggle", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 375, height: 800 });
@@ -1007,7 +1241,44 @@ test("the collapsed sidebar below `lg` is no taller than its toggle", async ({
   expect(nav!.height).toBe(toggle + 16);
 });
 
-test("the sidebar does not force a horizontal scrollbar at narrow widths", async ({
+// /contact rather than /credits, and at 320px, because this is the route with the
+// longest unbreakable string on the site: the no-key notice names
+// `NEXT_PUBLIC_REACT_APP_SITE_KEY_RECAPTCHA`, one token 359px wide. In a 288px column
+// it overflowed the document by 55px until the notice was allowed to break words --
+// a WCAG 1.4.10 reflow failure, and one the nav's own overflow test could not see
+// because it visits a page without that text.
+//
+// This only bites where the key is ABSENT, which is exactly CI, so the check is
+// meaningful here and vacuous on a machine with a key configured. Worth knowing before
+// concluding from a local pass.
+test("/contact reflows at 320px without a horizontal scrollbar", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 320, height: 568 });
+  await page.goto("/contact");
+
+  const overflow = await page.evaluate(() => ({
+    document:
+      document.documentElement.scrollWidth -
+      document.documentElement.clientWidth,
+    // The notice's own box, because a text run that overflows its block does not
+    // always grow the document's scrollWidth -- checking only the document would miss
+    // a differently-contained version of the same defect.
+    widest: Math.max(
+      ...[...document.querySelectorAll("main *")].map(
+        (e) => e.scrollWidth - e.clientWidth,
+      ),
+    ),
+  }));
+
+  expect(overflow.document, "the document scrolls sideways at 320px").toBe(0);
+  expect(
+    overflow.widest,
+    "an element's content overflows its own box at 320px",
+  ).toBeLessThanOrEqual(0);
+});
+
+test("the nav does not force a horizontal scrollbar at narrow widths", async ({
   page,
 }) => {
   // 280px is the narrowest viewport any shipping device presents, and 320px the
@@ -1031,7 +1302,7 @@ test("the sidebar does not force a horizontal scrollbar at narrow widths", async
     ).toBeLessThanOrEqual(collapsed.innerWidth);
 
     await mainNav(page).getByRole("button", { name: "Menu" }).click();
-    await expect(page.locator("#sidebar-menu")).toBeVisible();
+    await expect(page.locator("#main-nav-menu")).toBeVisible();
 
     // Asserted open as well as closed, and on the panel's own right edge as well
     // as on the document: the panel is out of flow, and an out-of-flow box that
@@ -1056,14 +1327,14 @@ test("the sidebar does not force a horizontal scrollbar at narrow widths", async
   }
 });
 
-test("the sidebar overlay is dismissible by Escape and by a click elsewhere", async ({
+test("the nav overlay is dismissible by Escape and by a click elsewhere", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 375, height: 800 });
   await page.goto("/credits");
 
   const toggle = mainNav(page).getByRole("button", { name: "Menu" });
-  const menu = page.locator("#sidebar-menu");
+  const menu = page.locator("#main-nav-menu");
 
   await toggle.click();
   await expect(menu).toBeVisible();
@@ -1100,24 +1371,24 @@ test("the sidebar overlay is dismissible by Escape and by a click elsewhere", as
   await expect(toggle).toBeFocused();
 });
 
-test("the sidebar overlay does not trap focus", async ({ page }) => {
+test("the nav overlay does not trap focus", async ({ page }) => {
   await page.setViewportSize({ width: 375, height: 800 });
   await page.goto("/credits");
 
-  const sidebar = mainNav(page);
-  await sidebar.getByRole("button", { name: "Menu" }).click();
-  await expect(page.locator("#sidebar-menu")).toBeVisible();
+  const nav = mainNav(page);
+  await nav.getByRole("button", { name: "Menu" }).click();
+  await expect(page.locator("#main-nav-menu")).toBeVisible();
 
   // The absence of `role="dialog"` and of `[inert]` is asserted elsewhere, but
   // those are attributes: a focus trap written in JavaScript would leave every one
   // of them untouched. This walks out of the panel instead. Tabbing off the last
   // link has to leave the landmark, which is the whole behavioural difference
   // between the disclosure this is and the modal it is not.
-  const links = sidebar.getByRole("link");
+  const links = nav.getByRole("link");
   await links.nth((await links.count()) - 1).focus();
   await page.keyboard.press("Tab");
 
-  await expect(page.locator("#sidebar-menu")).toBeVisible();
+  await expect(page.locator("#main-nav-menu")).toBeVisible();
   expect(
     await page.evaluate(
       () =>
@@ -1135,78 +1406,225 @@ test("the overlay adds no dialog semantics and no second control", async ({
   await page.setViewportSize({ width: 375, height: 800 });
   await page.goto("/credits");
 
-  const sidebar = mainNav(page);
-  await sidebar.getByRole("button", { name: "Menu" }).click();
-  await expect(page.locator("#sidebar-menu")).toBeVisible();
+  const nav = mainNav(page);
+  await nav.getByRole("button", { name: "Menu" }).click();
+  await expect(page.locator("#main-nav-menu")).toBeVisible();
 
   // This is a disclosure. The scrim behind the panel is presentational, and the
   // dismissing click is caught on the document rather than on it, so nothing new
   // should have reached the accessibility tree while the panel is open -- which
   // is also what keeps the `lg`-and-above test above able to assert on a single
   // button in this landmark.
-  await expect(sidebar.locator("button")).toHaveCount(1);
+  await expect(nav.locator("button")).toHaveCount(1);
   await expect(page.getByRole("navigation")).toHaveCount(1);
   await expect(page.getByRole("dialog")).toHaveCount(0);
   await expect(page.locator("[aria-modal], [inert]")).toHaveCount(0);
 });
 
-test("the sidebar column at `lg` is unaffected by the overlay styling", async ({
+test("the nav band at `lg` is unaffected by the overlay styling", async ({
   page,
 }) => {
   // The component renders in the root layout, so it is on every page and a
   // regression here would be site-wide. The overlay is expressed as unprefixed
   // utilities with prefixed desktop counterparts, which is exactly the
-  // arrangement where a missing prefix leaks downward-styling into this column.
+  // arrangement where a missing prefix leaks the overlay's styling into the band.
+  //
+  // This replaced a version asserting a 250px column at `left: 0` with `<main>`
+  // starting at x=250. #136 moved the nav under the header, so those literals
+  // described a layout that no longer exists. Same job, different geometry: the
+  // band spans the viewport and `<main>` is below it rather than beside it.
   await page.setViewportSize({ width: 1024, height: 800 });
   await page.goto("/credits");
 
   const { nav, menu, main } = await boxes(page);
 
-  // Pinned as literals, not as a relationship: these are the numbers the desktop
-  // layout has always produced, and the point is that they did not move.
-  expect(nav).toMatchObject({ left: 0, width: 250 });
-  expect(main!.left).toBe(250);
-  // 250px of column minus 16px of padding on each side.
-  expect(menu).toMatchObject({ left: 16, width: 218 });
+  // Full bleed, and `<main>` stacked under it. `main.left` is the assertion that
+  // actually fails if the row axis comes back: a column layout would put main at
+  // x=250 again and leave the nav 250 wide.
+  expect(nav).toMatchObject({ left: 0, width: 1024 });
+  expect(main!.left).toBe(0);
+  expect(main!.top).toBeGreaterThanOrEqual(nav!.top + nav!.height);
+
+  // The band is a band and not a tall panel. Two assertions, because one is not
+  // enough and I got that wrong twice.
+  //
+  // `height < 100` was the first attempt and was too weak -- a 99px band full of
+  // blank space passed. The second was `height === list + verticalPadding`, which
+  // is exact but INTERNALLY consistent: adding padding grows both sides, so a
+  // `lg:pb-16` satisfied it. Mutation-tested, and that is how it was caught.
+  //
+  // So: the equality pins that nothing OTHER than the list and the padding
+  // contributes height, and the ratio bound pins the padding itself from growing
+  // without anyone noticing. The bound is relative to the list rather than a pixel
+  // literal, so a font change moves both together and does not fail it.
+  const bandBox = await page.evaluate(() => {
+    const nav = document.querySelector('nav[aria-label="Main"]') as HTMLElement;
+    const list = document.getElementById("main-nav-menu") as HTMLElement;
+    const cs = getComputedStyle(nav);
+    return {
+      navHeight: Math.round(nav.getBoundingClientRect().height),
+      listHeight: Math.round(list.getBoundingClientRect().height),
+      padY:
+        Math.round(parseFloat(cs.paddingTop)) +
+        Math.round(parseFloat(cs.paddingBottom)),
+      // Asserted as a property, not inferred from the current labels fitting.
+      flexWrap: getComputedStyle(list).flexWrap,
+    };
+  });
+  expect(bandBox.navHeight).toBe(bandBox.listHeight + bandBox.padY);
+  expect(bandBox.navHeight).toBeLessThan(bandBox.listHeight * 2);
+  expect(bandBox.flexWrap).toBe("nowrap");
+
+  // The list is horizontal and on one line. `space-y-2` stacks it below the
+  // breakpoint and needs an explicit desktop reset; without that reset every link
+  // after the first inherits a top margin and the row grows. Comparing the `y` of
+  // every link is what catches it, and also catches wrapping.
+  const rows = await page.evaluate(() => {
+    const items = [
+      ...document.querySelectorAll('nav[aria-label="Main"] a'),
+    ] as HTMLElement[];
+    return {
+      count: items.length,
+      distinctTops: new Set(
+        items.map((a) => Math.round(a.getBoundingClientRect().top)),
+      ).size,
+    };
+  });
+  expect(rows.count).toBe(5);
+  expect(rows.distinctTops).toBe(1);
 
   const computed = await page.evaluate(() => {
     const el = document.querySelector('nav[aria-label="Main"]')!;
-    const list = document.getElementById("sidebar-menu")!;
+    const list = document.getElementById("main-nav-menu")!;
     return {
       position: getComputedStyle(el).position,
-      padding: getComputedStyle(el).padding,
       background: getComputedStyle(el).backgroundColor,
       listPosition: getComputedStyle(list).position,
+      listDisplay: getComputedStyle(list).display,
     };
   });
-  // The four properties the overlay sets below the breakpoint, each asserted back
-  // at its desktop value. A geometry-only check would pass on a column that had
-  // been made a positioning context or lost its fill.
+  // The properties the overlay sets below the breakpoint, each asserted back at
+  // its desktop value. A geometry-only check would pass on a band that had been
+  // made a positioning context or lost its fill. `padding` is deliberately not
+  // pinned here -- it differs on the two axes now, and the box measurements above
+  // already constrain it.
   expect(computed).toEqual({
     position: "static",
-    padding: "16px",
     background: "rgb(39, 39, 42)",
     listPosition: "static",
+    listDisplay: "flex",
   });
+
+  // The band's links sit at the BAND's own left edge; the page's content is CENTRED.
+  // Two different columns, deliberately, and this asserts both halves plus the fact
+  // that they differ.
+  //
+  // Fourth form of this assertion, and the history is the useful part. It matched the
+  // two elements' left edges; then the pages were centred and the nav put on the same
+  // measure, so it asserted a shared COLUMN; then the nav came off the measure and it
+  // asserted they were SEPARATE; then the body was reverted to left-aligned and it
+  // matched edges again. The body is centred once more, so it is back to separate.
+  //
+  // Spelled out because a test that only ever agrees with the code is worth nothing,
+  // and this one has been every arrangement in turn. Its job is to state which one is
+  // intended, so that changing the layout has to change the claim.
+  const column = await page.evaluate(() => {
+    const nav = document.querySelector('nav[aria-label="Main"]') as HTMLElement;
+    const list = document.getElementById("main-nav-menu") as HTMLElement;
+    const content = document.querySelector("main > *") as HTMLElement;
+    const links = [...list.querySelectorAll("a")] as HTMLElement[];
+    const navCs = getComputedStyle(nav);
+    const navBox = nav.getBoundingClientRect();
+    const c = content.getBoundingClientRect();
+    return {
+      firstLinkLeft: Math.round(links[0]!.getBoundingClientRect().left),
+      navContentLeft: Math.round(navBox.left + parseFloat(navCs.paddingLeft)),
+      listWidth: Math.round(list.getBoundingClientRect().width),
+      navContentWidth: Math.round(
+        navBox.width -
+          parseFloat(navCs.paddingLeft) -
+          parseFloat(navCs.paddingRight),
+      ),
+      contentLeft: Math.round(c.left),
+      contentRight: Math.round(c.right),
+      viewport: window.innerWidth,
+      widestGap: Math.max(
+        ...links
+          .slice(1)
+          .map((a, i) =>
+            Math.round(
+              a.getBoundingClientRect().left -
+                links[i]!.getBoundingClientRect().right,
+            ),
+          ),
+      ),
+    };
+  });
+
+  // The first link is at the band's own content edge, not on the page's measure.
+  expect(column.firstLinkLeft).toBe(column.navContentLeft);
+
+  // The list spans the band rather than being capped, which is also what stops the
+  // overlay's 250px percentage cap surviving to desktop.
+  expect(column.listWidth).toBe(column.navContentWidth);
+  expect(menu!.width).toBeGreaterThan(250);
+
+  // The content is centred: equal gutters. A relationship rather than a pixel figure.
+  expect(column.contentLeft).toBe(column.viewport - column.contentRight);
+
+  // And its gutter is larger than `<main>`'s own padding, or "centred" would be
+  // vacuous: a column that fills its parent has equal gutters whether it is centred or
+  // not, and an earlier version of this test passed a centred-column mutant for exactly
+  // that reason.
+  expect(column.contentLeft).toBeGreaterThan(16);
+
+  // The two are different columns. Without this the test would pass on a layout that
+  // had quietly put them back on the same measure.
+  expect(column.firstLinkLeft).toBeLessThan(column.contentLeft);
+
+  // The links are a group at that edge, not spread across the band.
+  expect(column.widestGap).toBeLessThan(24);
+
+  // AND AGAIN WIDER, because the gutter is proportional -- `4vw` a side. One viewport
+  // cannot tell a proportional gutter from a fixed one, and that difference is the
+  // whole point of the current rule.
+  await page.setViewportSize({ width: 1920, height: 900 });
+  const wide = await page.evaluate(() => {
+    const content = document.querySelector("main > *") as HTMLElement;
+    const firstLink = document.querySelector(
+      'nav[aria-label="Main"] a',
+    ) as HTMLElement;
+    const c = content.getBoundingClientRect();
+    return {
+      left: Math.round(c.left),
+      right: Math.round(window.innerWidth - c.right),
+      firstLinkLeft: Math.round(firstLink.getBoundingClientRect().left),
+    };
+  });
+  expect(wide.left).toBe(wide.right);
+  // The gutter grew with the viewport rather than staying put, which a proportional
+  // rule does and a fixed one does not.
+  expect(wide.left).toBeGreaterThan(column.contentLeft);
+  expect(wide.firstLinkLeft).toBeLessThan(wide.left);
 });
 
-test("the sidebar marks exactly the current page, and follows the route", async ({
+test("the nav marks exactly the current page, and follows the route", async ({
   page,
 }) => {
   await page.goto("/credits");
-  const sidebar = mainNav(page);
+  const nav = mainNav(page);
 
   // `aria-current` is queried across the whole landmark rather than on the link
   // expected to carry it, because the defect worth catching is more than one
   // link claiming to be current -- which a check on a single link cannot see.
-  const current = sidebar.locator("[aria-current]");
+  const current = nav.locator("[aria-current]");
   await expect(current).toHaveCount(1);
   await expect(current).toHaveAttribute("aria-current", "page");
   await expect(current).toHaveAttribute("href", "/credits");
 
   // Soft navigation, so the mark has to move. A server-rendered-only attribute
   // would satisfy the assertions above and then go stale on the first click.
-  await sidebar.getByRole("link", { name: "Animation" }).click();
+  await nav.getByRole("link", { name: "Animation" }).click();
   await expect(page).toHaveURL("/animation");
   await expect(current).toHaveCount(1);
   await expect(current).toHaveAttribute("href", "/animation");
@@ -1263,87 +1681,260 @@ test.skip(
 );
 
 /**
- * The viewport here is load-bearing, and not in a way anyone would guess.
+ * The canvas takes its width from its container and derives its height from that. One
+ * expression, no viewport-shape branch -- so what this guards is simply "the clamp to
+ * the container is present", and the interesting question is which viewports can still
+ * tell.
  *
- * `updateCanvasDimensions` picks a width-led or a height-led branch by comparing
- * the viewport's aspect ratio against the sketch's. Playwright's default
- * 1280x720 is 1.778, which lands in the *height*-led branch -- the branch that
- * never overflowed. So this guard passes at the default size whether or not the
- * bug is present, and asserting at the default would be no guard at all.
+ * The history matters because this test has been vacuous twice.
  *
- * 1280x1024 is 1.25, which takes the width-led branch. That branch sized the
- * canvas from `p5.windowWidth`, ignoring the 250px sidebar and <main>'s 32px of
- * padding, and `<main>` is a flex item whose `min-width` defaults to `auto`, so
- * it widened to fit the oversized canvas instead of clipping it. The page ended
- * up 232px wider than the window at this size, and at 1024x768, 1024x900 and
- * 1440x900 too.
+ *   - Originally the canvas sized itself from `p5.windowWidth`, ignoring the 250px rail
+ *     of the day and `<main>`'s 32px of padding. `<main>` is a flex item whose
+ *     `min-width` defaults to `auto`, so it widened to fit rather than clipping, and the
+ *     page ended up 232px wider than the window. That is #57.
+ *   - #136 removed the rail, and the guard went INSENSITIVE: with the container at
+ *     `windowWidth - 32` and the width expression already reserving 50px, the clamp
+ *     could not change the result. Deleting `measureAvailableWidth()` left this passing.
+ *   - #138 put the canvas inside the shared content column, which is narrower than
+ *     `windowWidth - 32` by a `max(0px, 4vw - 1rem)` gutter a side and capped at
+ *     `110rem`. That restored sensitivity at both viewports below.
+ *
+ * Measured by mutation rather than reasoned, at the current code: replacing the clamp
+ * with `Infinity` fails at 1280x1024 (unclamped 1230px in a 1178px box) and at
+ * 2560x1440 (unclamped 2510px in a 1760px box).
+ *
+ * The two cases are not redundant. The first is the gutter, the second the ceiling;
+ * raising the ceiling or dropping the gutters silences one and not the other.
+ *
+ * WHY THERE ARE TWO ASSERTIONS, which is the part worth keeping. At 2560x1440 an
+ * oversized canvas does NOT make the page scroll sideways. The column is centred with
+ * roughly 400px of gutter a side, so the overshoot lands in space that was empty anyway
+ * and `scrollWidth` reports 0 while the canvas visibly breaks out of its column. That
+ * is still the defect #138 was filed for -- artwork not lining up with the text above
+ * it. So the page-level check is necessary but not sufficient, and the
+ * canvas-against-its-box assertion is the one that actually catches it.
+ *
+ * A viewport-shape branch used to live in `updateCanvasDimensions` and is gone. It
+ * computed a height-led width, `windowHeight * aspectRatio - 300`, for viewports wider
+ * than the sketch. Two consequences for this file: the old note that 1280x720 was a
+ * "safe" viewport because of which branch it took no longer means anything, and the
+ * `2560x1440` case here is now sensitive through the ceiling alone rather than through
+ * height-driven growth.
  */
+/**
+ * The two properties the owner actually asked for, and neither was asserted anywhere.
+ *
+ * FLUSH WITH ITS COLUMN. The canvas used to take a height-led width on wide viewports,
+ * which left it 455px short of the right edge of the text above it at a 1990px viewport
+ * and read as broken alignment. It now takes its width from its container at every
+ * size. Nothing pinned that: the overflow guard only checks the canvas is not WIDER
+ * than its box, so a canvas half the width of the column passes it happily -- which is
+ * exactly the state this replaced.
+ *
+ * THE DESIGN RATIO. `updateCanvasDimensions` computes the width and derives the height
+ * from it, and the comment there claims the ratio therefore holds "by construction".
+ * That claim was unguarded. Measured by mutation: changing the height to derive from
+ * `p5.windowHeight` instead of the canvas width passed the entire suite. That is the
+ * class of defect #80 was filed for -- a delivered ratio that does not match the
+ * 1180x735 design space, which squeezes the tank and pushes the lower fish outside it.
+ * The tolerance is 1px rather than exact because the sketch rounds to whole pixels.
+ *
+ * Several widths rather than one, because the two failure modes appear at different
+ * sizes: a height-led width only diverges once the viewport is wide relative to the
+ * sketch's shape, and the gutter/ceiling arithmetic on the column changes at 400px and
+ * again at 1913px.
+ */
+test("the p5 canvas fills its column and keeps the sketch's design ratio", async ({
+  page,
+}) => {
+  // 1180 / 735, from `baseWidth / baseHeight` in fishTankSketch.ts.
+  const DESIGN_RATIO = 1180 / 735;
+
+  for (const [width, height, why] of [
+    [390, 844, "phone, no column gutters"],
+    [768, 1024, "tablet, gutters active"],
+    [1280, 720, "the old height-led branch's viewport"],
+    [1440, 900, "desktop"],
+    [1990, 1000, "wide enough that the old branch fell 455px short"],
+    [2560, 1440, "past the column's 110rem ceiling"],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    await page.goto("/animation");
+    await expect(page.locator("canvas")).toBeVisible({ timeout: 15_000 });
+
+    const measured = await page.evaluate(() => {
+      const canvas = document.querySelector("canvas")!;
+      const box = canvas.parentElement!;
+      const rect = canvas.getBoundingClientRect();
+      return {
+        width: rect.width,
+        height: rect.height,
+        box: box.clientWidth,
+      };
+    });
+
+    const at = `${width}x${height} (${why})`;
+    expect(
+      Math.abs(measured.width - measured.box),
+      `${at}: canvas is ${measured.width} in a ${measured.box}px column, so it does not fill it`,
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(measured.height - measured.width / DESIGN_RATIO),
+      `${at}: canvas ${measured.width}x${measured.height} is not the sketch's ${DESIGN_RATIO.toFixed(4)} ratio -- expected a height of ${(measured.width / DESIGN_RATIO).toFixed(1)}`,
+    ).toBeLessThanOrEqual(1);
+  }
+});
+
 test("the p5 canvas does not push the page wider than the viewport", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1280, height: 1024 });
-  await page.goto("/animation");
-  // Same reason as the mount test above: the canvas is client-only, so there is
-  // nothing to measure until p5 has run `setup`.
-  await expect(page.locator("canvas")).toBeVisible({ timeout: 15_000 });
+  for (const { width, height, why } of [
+    { width: 1280, height: 1024, why: "the column's gutters bind" },
+    {
+      width: 2560,
+      height: 1440,
+      why: "past the column's 110rem ceiling",
+    },
+  ]) {
+    await page.setViewportSize({ width, height });
+    await page.goto("/animation");
+    // Same reason as the mount test above: the canvas is client-only, so there is
+    // nothing to measure until p5 has run `setup`.
+    await expect(page.locator("canvas")).toBeVisible({ timeout: 15_000 });
 
-  const overflow = await page.evaluate(
-    () =>
-      document.documentElement.scrollWidth -
-      document.documentElement.clientWidth,
-  );
-  expect(overflow).toBe(0);
+    const measured = await page.evaluate(() => {
+      const root = document.documentElement;
+      const canvas = document.querySelector("canvas")!;
+      const box = canvas.parentElement!;
+      return {
+        overflow: root.scrollWidth - root.clientWidth,
+        canvasWidth: canvas.getBoundingClientRect().width,
+        boxWidth: box.clientWidth,
+      };
+    });
+
+    expect(
+      measured.overflow,
+      `${width}x${height} (${why}) scrolls sideways`,
+    ).toBe(0);
+    // The page-level assertion above only fails once <main> has already widened.
+    // This one names the cause directly, so a regression reports "canvas 2011 in a
+    // 1760 box" rather than "the document is 251px too wide".
+    expect(
+      measured.canvasWidth,
+      `${width}x${height} (${why}): canvas ${measured.canvasWidth} exceeds its ${measured.boxWidth}px box`,
+    ).toBeLessThanOrEqual(measured.boxWidth);
+  }
 });
 
 /**
- * The height-led branch subtracts a flat 300 from both dimensions, so a short
- * window drives them to zero and then past it: at a 186px window height the
- * width is -1.4. p5 hands that straight to <canvas> and the renderer crashes the
- * tab outright — reproduced at 186, 185 and 183, while 187 still rendered.
- * `scaleFactor` divides by the same value, so zero is no safer than negative.
+ * Two viewports, because the crash this was written for and the floors it asserts are
+ * no longer reachable at the same size.
  *
- * 800x186 is the boundary case rather than an arbitrary tiny window:
- * 300 / (1180 / 735) = 186.86 is where the width crosses zero. A crashed tab
- * makes `evaluate` throw, so a regression fails loudly here rather than subtly.
+ * WHAT IT WAS FOR. A height-led width expression, `windowHeight * aspectRatio - 300`,
+ * subtracted a flat 300 and so drove the width to zero and past it: at a 186px window
+ * height it computed -1.4. p5 handed that straight to `<canvas>` and the renderer
+ * crashed the tab outright -- reproduced at 186, 185 and 183, while 187 still rendered.
+ * `scaleFactor` divides by the same value, so a zero floor was no safer than a negative
+ * width; it handed `Infinity` to every draw call and the tab still died.
  *
- * The size assertions are deliberately magnitudes, not `> 0`, and they catch a
- * second regression the crash cannot. Floors of `0` do not render here — they
- * crash too, because `scaleFactor` divides by the width and hands `Infinity` to
- * the draw calls — and at the heights where a zero dimension does survive
- * (800x250, 800x300) the canvas has an empty bounding box, so it is not visible
- * either. A floor of `1`, though, renders a visible 1x1 canvas that no crash and
- * no visibility check can see. So `> 0` was unfalsifiable and a magnitude is not.
+ * 800x186 was the boundary case rather than an arbitrary tiny window:
+ * `300 / (1180 / 735)` = 186.86 is where the width crossed zero.
  *
- * What that buys is narrow, and worth stating so nobody reads more into a pass:
- * it pins the two constants and nothing else. It does not establish that 120x75
- * is *usable* — see the comment on `minCanvasHeight`, where it is not — and any
- * larger canvas passes too.
+ * WHAT CHANGED. That expression was deleted -- the width now comes from the container
+ * and the height derives from the width -- so viewport height no longer reaches the
+ * width calculation and the crash is structurally gone rather than floored. At 800x186
+ * the canvas is now 736x458, so this viewport no longer exercises either floor. It is
+ * kept as a regression guard: it is the size that used to kill the tab, and a
+ * reintroduced height dependence would show up here first. A crashed tab makes
+ * `evaluate` throw, so it fails loudly.
  *
- * The margins are exactly zero, which is the point rather than an oversight: at
- * this viewport the branch computes -1.39 and -114, so both floors apply and the
- * received values are precisely 120 and 75. Lowering either floor by one pixel
- * fails here.
+ * WHICH MEANS the floors need their own viewport, and it is a narrow one rather than a
+ * short one. The width is the container's, which below a 400px viewport is
+ * `windowWidth - 32`, so the floor applies only under a 152px viewport. At 140px the
+ * container is 108px, the width floor lifts the canvas to 120, and `120 / aspectRatio`
+ * is 74.75 -- just under the height floor, so both apply and the values are exactly 120
+ * and 75. Lowering either by a pixel fails there.
  *
- * Measured via `getBoundingClientRect`, not the `width`/`height` attributes. p5
- * calls `pixelDensity(window.devicePixelRatio)`, so those attributes are
- * backing-store pixels — 2x the floors at DPR 2 — while the floors are logical
- * dimensions. The Chromium project runs at DPR 1, so the two happen to coincide
- * today and the distinction is invisible; the rect is the quantity actually meant.
+ * A CONSEQUENCE worth stating plainly, because it makes one assertion conditional: the
+ * floor is now only reachable in a regime where it MUST overflow its container. Reaching
+ * 120px requires a container under 120px, so the floored canvas is always wider than the
+ * box it sits in. There is no viewport left where the floor applies harmlessly -- a
+ * 170-to-152px band used to exist and it was an artefact of a `- 50` viewport allowance
+ * that mutation testing showed was otherwise inert. So containment is asserted at every
+ * case except this one. That is not a gap being waved through: 140px is narrower than
+ * any device and less than half the 320px WCAG reflow floor, and the floors exist to
+ * stop `scaleFactor` dividing by zero when the container has no width at all, not to
+ * make a 140px viewport look right.
+ *
+ * The assertions are magnitudes rather than `> 0`, and that catches a second regression
+ * the crash cannot. A floor of `0` does not render, it crashes; but a floor of `1`
+ * renders a visible 1x1 canvas that no crash check and no visibility check can see. So
+ * `> 0` was unfalsifiable and a magnitude is not.
+ *
+ * What this buys is narrow, and worth stating so nobody reads more into a pass: it pins
+ * the two constants and nothing else. It does not establish that 120x75 is *usable* --
+ * see the comment on `minCanvasHeight`, where it is not.
+ *
+ * Measured via `getBoundingClientRect`, not the `width`/`height` attributes. p5 calls
+ * `pixelDensity(window.devicePixelRatio)`, so those attributes are backing-store pixels
+ * -- 2x the floors at DPR 2 -- while the floors are logical dimensions. The Chromium
+ * project runs at DPR 1, so the two coincide today and the distinction is invisible; the
+ * rect is the quantity actually meant.
  */
-test("the p5 canvas survives a window shorter than the reserved height", async ({
+test("the p5 canvas survives a window that used to crash it, and honours its floors", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 800, height: 186 });
-  await page.goto("/animation");
-  await expect(page.locator("canvas")).toBeVisible({ timeout: 15_000 });
+  for (const { width, height, expectW, expectH, why, fitsItsBox = true } of [
+    {
+      width: 800,
+      height: 186,
+      expectW: 120,
+      expectH: 75,
+      why: "the height that used to compute a negative width",
+    },
+    {
+      width: 140,
+      height: 600,
+      expectW: 120,
+      expectH: 75,
+      why: "narrow enough that both floors apply exactly",
+      // The floor is only REACHABLE where it necessarily overflows, so containment
+      // cannot also be asserted here. See the docblock.
+      fitsItsBox: false,
+    },
+  ]) {
+    await page.setViewportSize({ width, height });
+    await page.goto("/animation");
+    await expect(page.locator("canvas")).toBeVisible({ timeout: 15_000 });
 
-  const size = await page.evaluate(() => {
-    const rect = document.querySelector("canvas")?.getBoundingClientRect();
-    return { width: rect?.width ?? 0, height: rect?.height ?? 0 };
-  });
+    const size = await page.evaluate(() => {
+      const rect = document.querySelector("canvas")?.getBoundingClientRect();
+      const box = document.querySelector("canvas")?.parentElement;
+      return {
+        width: rect?.width ?? 0,
+        height: rect?.height ?? 0,
+        box: box?.clientWidth ?? 0,
+      };
+    });
 
-  expect(size.width).toBeGreaterThanOrEqual(120);
-  expect(size.height).toBeGreaterThanOrEqual(75);
+    const at = `${width}x${height} (${why})`;
+    expect(size.width, `${at}: width below the floor`).toBeGreaterThanOrEqual(
+      expectW,
+    );
+    expect(size.height, `${at}: height below the floor`).toBeGreaterThanOrEqual(
+      expectH,
+    );
+    // The floor bypasses the clamp to the container, so a RAISED floor overflows
+    // rather than merely looking wrong -- which is why this is asserted wherever the
+    // floor is not expected to apply.
+    if (fitsItsBox) {
+      expect(
+        size.width,
+        `${at}: canvas ${size.width} exceeds its ${size.box}px box`,
+      ).toBeLessThanOrEqual(size.box);
+    }
+  }
 });
 
 /**
@@ -1357,7 +1948,8 @@ test("the p5 canvas survives a window shorter than the reserved height", async (
  * 320px wide is what makes this checkable, and the existing overflow guard
  * cannot substitute for it. Measured against a build with the width floor raised
  * to 320: here the page overflows by 16px (canvas 320 in a 288px container),
- * while at that guard's 1280x1024 the canvas is 998 in a 998px container and
+ * while at that guard's 1280x1024 the canvas was 998 in a 998px container. Since
+ * #136 the same viewport gives 1230 in a 1248px container, and
  * nothing overflows at all. An assertion that the canvas fits its container
  * would pass there too, so the *viewport* is the load-bearing part, not the
  * assertion. Same blind spot as 1280x720 in the guard above -- and 320px is a
@@ -1515,6 +2107,25 @@ async function expectCanvasToHold(page: import("@playwright/test").Page) {
 }
 
 test.describe("the p5 canvas and prefers-reduced-motion", () => {
+  // A TALLER VIEWPORT THAN THE DEFAULT, and this is a correctness requirement rather
+  // than a preference. These tests compare `locator.screenshot()` of the canvas across
+  // samples. Playwright captures an element larger than the viewport by scrolling and
+  // stitching, and that is not byte-stable: measured at the default 1280x720, with the
+  // sketch provably frozen -- zero canvas 2d draw calls in a 1200ms window -- five
+  // consecutive screenshots came back 101727, 103670, 103746, 103781 and 104007 bytes
+  // and four of the five differed from the first. The tests failed while the code was
+  // correct.
+  //
+  // The canvas is 734px tall at a 1280px viewport, because since #140 its height
+  // derives from its container's WIDTH alone. So any viewport at least that tall works
+  // and 900 leaves margin. The width is deliberately left at 1280: the fish-body pixel
+  // counts below are calibrated to the canvas size, and narrowing the viewport would
+  // shrink every fish toward the 50px threshold.
+  //
+  // If this ever fails again with the sketch frozen, check the canvas height against
+  // the viewport before touching the thresholds.
+  test.use({ viewport: { width: 1280, height: 900 } });
+
   test("keeps swimming when no preference is set", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.goto("/animation");

@@ -4,7 +4,7 @@ import { contentColumnClasses } from "@/components/ui/layout";
 
 const loadingSkeleton = () => {
   return (
-    <div className={`animate-pulse mt-2 ${contentColumnClasses}`}>
+    <div className="animate-pulse mt-2">
       <div className="h-10 bg-muted rounded mb-2"></div>
       <div className="h-[500px] bg-muted rounded mb-2"></div>
       <div className="h-10 bg-muted rounded"></div>
@@ -14,11 +14,11 @@ const loadingSkeleton = () => {
 
 const Loading = () => {
   return (
-    <>
+    <div className={contentColumnClasses}>
       <PageHeading>Create New Blog Post</PageHeading>
       <BackLink />
       {loadingSkeleton()}
-    </>
+    </div>
   );
 };
 

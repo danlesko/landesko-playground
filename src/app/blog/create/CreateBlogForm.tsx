@@ -9,7 +9,6 @@ import {
   formLabelClasses,
 } from "@/components/ui/form";
 import { primaryButtonClasses } from "@/components/ui/button";
-import { contentColumnClasses } from "@/components/ui/layout";
 
 const INITIAL_STATE: CreateBlogState = {};
 
@@ -21,10 +20,7 @@ const CreateBlogForm = () => {
   const contentError = state.fieldErrors?.content?.[0];
 
   return (
-    <form
-      className={`text-lg mt-2 ${contentColumnClasses}`}
-      action={formAction}
-    >
+    <form className="text-lg mt-2" action={formAction}>
       <label htmlFor={`${fieldId}-title`} className={formLabelClasses}>
         Title
       </label>

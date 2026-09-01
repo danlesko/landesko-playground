@@ -16,7 +16,6 @@ import {
   formSuccessClasses,
 } from "@/components/ui/form";
 import { primaryButtonClasses } from "@/components/ui/button";
-import { contentColumnClasses } from "@/components/ui/layout";
 
 // Read once, at module scope, because `NEXT_PUBLIC_*` is substituted by the
 // compiler rather than looked up at runtime: this is a build-time constant in
@@ -166,7 +165,7 @@ const ContactForm = () => {
 
   return (
     <form
-      className={`text-lg mt-2 ${contentColumnClasses} h-1/2`}
+      className="text-lg mt-2 h-1/2"
       onSubmit={handleSubmit}
       aria-describedby={
         recaptchaSiteKey ? undefined : `${fieldId}-recaptcha-missing`
@@ -187,7 +186,16 @@ const ContactForm = () => {
         // No `aria-live`, unlike the message elements in CreateBlogForm.
         // Those announce a change; this is decided before first paint and
         // never changes, so a live region would have nothing to announce.
-        <p id={`${fieldId}-recaptcha-missing`} className={formErrorClasses}>
+        <p
+          id={`${fieldId}-recaptcha-missing`}
+          // `break-words`, because this notice names an environment variable and
+          // `NEXT_PUBLIC_REACT_APP_SITE_KEY_RECAPTCHA` is a single unbreakable token
+          // 359px wide. In a 288px column -- a 320px viewport -- it overflowed the
+          // document by 55px, which is a WCAG 1.4.10 reflow failure. It only renders
+          // when the key is absent, so production never showed it, but a preview
+          // deployment or a fresh checkout does.
+          className={`${formErrorClasses} break-words`}
+        >
           This form is unavailable because
           NEXT_PUBLIC_REACT_APP_SITE_KEY_RECAPTCHA is not set, so the reCAPTCHA
           challenge cannot load. Email the address above instead.

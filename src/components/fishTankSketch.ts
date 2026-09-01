@@ -97,8 +97,12 @@ export function createFishTankSketch(
       }
     };
 
-    // p5.windowWidth is the whole viewport, but from `lg` up the canvas only
-    // has the viewport minus the 250px sidebar and <main>'s 32px of padding.
+    // p5.windowWidth is the whole viewport; the canvas has considerably less. Its
+    // box is the shared content column, which is `<main>`'s content box (the
+    // viewport less `p-4`, so 2rem) less a `max(0px, 4vw - 1rem)` gutter a side and
+    // capped at 110rem. Two changes moved this: #136 removed a 250px rail, and #138
+    // put the canvas inside the column instead of letting it span `<main>`. Figures
+    // further down that predate those are flagged where they appear.
     // Sizing from the viewport made the canvas overrun <main>, and because
     // <main> is a flexbox child whose min-width defaults to auto it widened to
     // fit rather than clip, pushing the page 232px past the viewport. So
@@ -129,31 +133,41 @@ export function createFishTankSketch(
       return availableWidth;
     };
 
-    // The height-led branch's width goes negative under a 187px window height,
-    // which crashes the tab. Zero is measurably no safer: `scaleFactor` below
-    // divides by the width, so a zero floor hands `Infinity` to every draw call
-    // and the tab still dies at 800x186. Floored on both branches for symmetry.
-    // The two floors now bite at essentially the same point, which they did not
-    // before. Height is derived from the floored width, so `minCanvasHeight`
-    // can only apply once the width is already at `minCanvasWidth`:
-    // `120 / aspectRatio` is 74.75, just under the 75 floor. A 375px-tall window
-    // used to land exactly on `minCanvasHeight`; it now yields 302x188 and
-    // neither floor is involved.
+    // These floors are now belt-and-braces rather than the thing standing between the
+    // sketch and a crashed tab, and the distinction is worth stating so nobody trims
+    // them on the grounds that they never fire.
+    //
+    // What they were for: a height-led width expression, `windowHeight * aspectRatio
+    // - 300`, went NEGATIVE under a 187px window height and killed the tab. Zero was
+    // measurably no safer, because `scaleFactor` divides by the width and a zero floor
+    // handed `Infinity` to every draw call -- the tab still died at 800x186. That
+    // expression was removed outright when the canvas started taking its width from
+    // its container, so the failure mode is gone by construction: a container's
+    // `clientWidth` cannot be negative, and viewport HEIGHT no longer reaches the
+    // width calculation at all.
+    //
+    // What they still do: bound the degenerate narrow-VIEWPORT case. Height is derived
+    // from the floored width, so `minCanvasHeight` can only apply once the width is
+    // already at `minCanvasWidth` -- `120 / aspectRatio` is 74.75, just under the 75
+    // floor.
     //
     // minCanvasWidth must stay below the narrowest width
     // `measureAvailableWidth` can report, because the Math.max below can now
     // exceed it. That used to be impossible by construction — the Math.min made
     // "never wider than the container" true arithmetically — and #57 exists
     // because a canvas wider than <main> widens <main> rather than clipping.
-    // Two different thresholds, neither of them 120px of viewport: the floor
-    // starts applying below a 170px viewport width, because `windowWidth - 50`
-    // is what drops under 120 first, and it starts exceeding the container below
-    // 152px, because the wrapper's padding costs 32px. So 120 is reachable, and
-    // between 170 and 152 it is reached without overflowing anything. Raising it
-    // to a "comfortable" 320 does reintroduce #57 — measured at 16px of page
-    // overflow on a 320px-wide viewport — so there is an e2e guard at that
-    // width. The 1280x1024 overflow guard cannot see it: available width there
-    // is 998 and so is the canvas.
+    // ONE threshold now, not 120px of viewport: the width comes straight from the
+    // container, so the floor starts applying and starts exceeding the container at the
+    // same point -- a viewport under 152px, where `windowWidth - 32` drops under 120.
+    // There used to be a 170-to-152 band where the floor was reached without
+    // overflowing anything, and it came from a `- 50` viewport allowance that mutation
+    // testing showed was inert. Raising the floor to a "comfortable" 320 reintroduces
+    // #57 — measured at 16px of page overflow on a 320px-wide viewport — so there is an
+    // e2e guard that reaches the floor deliberately, at a 160px viewport, and asserts
+    // the floored canvas against its container. The 1280x1024 overflow guard cannot see it: available width there
+    // was 998 and so was the canvas. That viewport now gives a 1178px box -- #136
+    // removed the rail and #138 subtracted the column's gutters -- so the canvas is
+    // larger; the relationship this comment describes is unchanged, only the number.
     //
     // These stop the crash; they do not make the result look right, and it would
     // be wrong to read them as a "smallest usable tank". Seaweed blades are still
@@ -170,23 +184,25 @@ export function createFishTankSketch(
     const minCanvasWidth = 120;
     const minCanvasHeight = 75;
 
-    // Width first, then height derived from it, so both branches deliver the
-    // design ratio by construction rather than by coincidence. Each used to
-    // compute the two dimensions independently and neither was aspect-preserving:
+    // Width first, then height derived from it, so the design ratio holds by
+    // construction rather than by coincidence. There is one width expression now, so
+    // this is a one-line property; it used to be the thing two separate branches each
+    // got wrong, which is what #80 was filed about:
     //
-    //   wide  - subtracted 300 from *both* sides. Two equal subtractions from the
-    //           two sides of a ratio are not proportional, so the delivered ratio
-    //           was `aspectRatio + 181.6/(windowHeight - 300)`: 2.04:1 at
-    //           1280x720 against a 1.605:1 design space, diverging hyperbolically
-    //           as the height approached 300.
-    //   tall  - derived height from the *full* viewport width while taking width
-    //           from the reduced one, so the delivered ratio was
-    //           `aspectRatio * canvasWidth/windowWidth`. It erred the other way,
-    //           leaving unused water rather than clipping.
+    //   the wide branch subtracted 300 from *both* dimensions. Two equal subtractions
+    //   from the two sides of a ratio are not proportional, so the delivered ratio was
+    //   `aspectRatio + 181.6/(windowHeight - 300)` -- 2.04:1 at 1280x720 against a
+    //   1.605:1 design space, diverging hyperbolically as the height approached 300.
     //
-    // The squeeze is what #80 was filed about, and it was present at *every* wide
-    // viewport including the desktop design one -- short landscape is only where
-    // it became visible enough to notice.
+    //   the other derived height from the *full* viewport width while taking width
+    //   from the reduced one, so the delivered ratio was
+    //   `aspectRatio * canvasWidth/windowWidth`. It erred the other way, leaving
+    //   unused water rather than clipping.
+    //
+    // The squeeze was present at *every* wide viewport including the desktop design
+    // one -- short landscape is only where it became obvious enough to notice. Both
+    // branches are gone; this is kept because the wrong fix for #80 was to adjust the
+    // fish, and the paragraph below explains why that was never the problem.
     //
     // Nothing about the fish changes to fix it, which is worth stating because
     // #80 proposed it as a second piece of work. Every fish Y is a base-space
@@ -197,17 +213,43 @@ export function createFishTankSketch(
     // `(200 - 110)/735` to `(200 + 320)/735`. A too-short canvas was the entire
     // reason the lower fish were drawn underneath it.
     const updateCanvasDimensions = () => {
-      const requestedWidth =
-        p5.windowWidth / p5.windowHeight > aspectRatio
-          ? // Wide: viewport height binds, and 300px is reserved for the heading
-            // and copy above the canvas. Keeping that reserve on the *width*
-            // expression is what makes the canvas 113px taller than it used to
-            // be at any wide viewport (`300 - 300/aspectRatio`, independent of
-            // viewport height). /animation already scrolls at 1280x720, so the
-            // reserve was not keeping anything in view.
-            p5.windowHeight * aspectRatio - 300
-          : // Tall: the container's width binds.
-            Math.min(p5.windowWidth - 50, measureAvailableWidth());
+      // ONE RULE: the width comes from the container and the height follows from it.
+      // There is no viewport-shape branch any more, and deleting it IS the change.
+      //
+      // What was here: a height-led branch for viewports wider than the sketch's
+      // aspect ratio -- `windowHeight * aspectRatio - 300`, reserving 300px for the
+      // heading and copy. It kept the canvas roughly inside one screen, and the price
+      // was that on a wide viewport the canvas stopped tracking its container. At a
+      // 1990px viewport it came out 1305px inside a 1760px column, so the artwork sat
+      // 455px short of the right edge of the text above it and read as broken
+      // alignment rather than as a deliberately smaller figure. The owner chose the
+      // flush edge with the extra scrolling understood: about 283px more at
+      // 1990x1000, and rather more at 1280x720, where the canvas goes from 856px wide
+      // to the column's 1178px and so from 533px tall to 734px.
+      //
+      // Three things this DELETES rather than bypasses:
+      //
+      //   - the negative-width crash. `windowHeight * aspectRatio - 300` goes negative
+      //     below a 187px window height, and a zero floor was measurably no safer,
+      //     because `scaleFactor` divides by the width and handed `Infinity` to every
+      //     draw call. A container width cannot go negative, so that whole failure
+      //     mode is gone rather than floored.
+      //   - the 110rem interaction. The height-led width kept growing with viewport
+      //     height after the column had stopped growing with viewport width, so it
+      //     overshot the column by 251px at 2560x1440.
+      //   - a fixed pixel reserve standing in for the height of text that scales with
+      //     the root font size. 300px was only ever right at one root size.
+      //
+      // A `- 50` viewport allowance used to be the other half of this `Math.min`, and
+      // it went the same way once mutation testing showed it was inert. Dropping it
+      // changed no assertion in the suite, and the reason is that it never did the job
+      // its comment claimed: whether the width FLOOR overflows the container depends on
+      // the container alone -- `windowWidth - 32 < 120`, i.e. a viewport under 152px --
+      // and the allowance does not appear in that comparison. All it did was hold the
+      // canvas 18px narrower than its column below a 400px viewport, where the column
+      // has no gutters. So on a 390px phone the artwork was inset from the text beside
+      // it for no reason. Now it is flush at every width.
+      const requestedWidth = measureAvailableWidth();
 
       const canvasWidth = Math.max(minCanvasWidth, requestedWidth);
 

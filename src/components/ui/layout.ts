@@ -1,49 +1,101 @@
-// The one content measure. Cards, the two forms, the create skeleton and the
-// blog list's heading row all share it, so the column has a single width instead
-// of four opinions about it.
+// The one content measure. Every route carries it on its own top-level wrapper --
+// including the error boundaries, the 404 and the loading states, which render in place
+// of a page and so need their own. Cards, forms, the create skeleton and the blog
+// heading row do NOT carry it: they used to, and the result was pages where a form knew
+// its width and the heading above it did not.
 //
-// It replaces a 600px min-width floor paired with a half-width, which was wrong
-// at both ends. The floor beat the half-width, so the column stayed 600px until
-// its parent reached 1200px -- a 1482px viewport, given the 250px sidebar and
-// 32px of padding -- and only then began to track the viewport, with nothing
-// capping it after that. Measured against the old rule:
+// The p5 canvas on /animation used to be a deliberate exception, on the grounds that it
+// sizes itself from its container so a cap shrinks the drawing rather than the line
+// length. That was a real cost against a fixed 64rem column -- it took the canvas from
+// 1390px to 1024px. Against a proportional column it is 65px, and the price of the
+// exception was that the canvas sat 35-64px left of every other element on the page. It
+// now carries the measure like everything else.
 //
-// Widths below are for the ordinary routes, which sit beside the 250px sidebar.
-// `global-error.tsx` renders its own document with no sidebar, so its parent is
-// the full body width and these numbers do not describe it -- the cap still
-// applies, it just starts from a wider parent.
+// CENTRED, WITH PROPORTIONAL GUTTERS. Three utilities, and each is doing something the
+// others cannot.
 //
-//   viewport   parent   old      new
-//   1024        742     600      672
-//   1280        998     600      672
-//   1536       1254     627      672
-//   1920       1638     819      672
-//   2560       2278    1139      672
+// THE GUTTER IS PROPORTIONAL, which is the whole trick. A fixed cap leaves the gutters
+// to be whatever remains, so they GROW as the screen does -- a 64rem column left 208px
+// either side at 1440px and 448px at 1920px, which is the opposite of what a wide screen
+// should do. Here the gutter is `4vw` a side, so the content takes MORE of the screen the
+// larger it gets, not less.
 //
-// So the old rule produced a 1139px line on a wide monitor, which is the same
-// over-long-measure problem #6 item 3 raises about the uncapped routes. Dropping
-// the floor and keeping the half-width would have gone the other way and given a
-// 371px column at 1024px, narrower than a phone. A cap is the only option that
-// is right at both ends.
+// `max(0px, 4vw - 1rem)` and not a flat percentage, and the `max()` is the part that
+// matters. `<main>` already contributes `1rem` a side, so a flat `92%` would stack a
+// second gutter on top of it and narrow phones -- measured, 358px to 329px at a 390px
+// viewport, a change nobody asked for. Subtracting that `1rem` means this contributes
+// nothing until `4vw` exceeds it, which is a 400px viewport, and below that the column
+// fills `<main>`'s box exactly as it did before.
 //
-// 672px is not the *closest* constant to the old 600-627px -- `xl` at 576px is
-// nearer. It is chosen so the column is never NARROWER than it was on the sizes
-// where it was stable: 600 to 672 at 1024-1440, 627 to 672 at 1536, and only
-// above that does the cap bite, which is the runaway it exists to stop. `xl`
-// would have shrunk every desktop. 3xl (768px) is the alternative if this now
-// reads too narrow.
+// `mx-auto` centres it. The `110rem` ceiling is for ultrawide displays and binds above a
+// 1913px viewport at a 16px root, which is `1760 / 0.92` -- not the 2100px this comment
+// used to claim, and the gap matters because 1920 is a common desktop width that sits on
+// the binding side of it. Two things downstream have to account for the ceiling rather
+// than assume it never binds first: the hero photo's `sizes`, and the fish tank's
+// height-led width, which keeps growing with viewport height after this has stopped
+// growing with viewport width.
 //
-// Not applied to the p5 canvas on /animation. That measures the box it sits in,
-// and its wide branch can already ask for more width than that box has -- 855px
-// at 1280x720 -- so capping the parent would put the canvas outside its wrapper.
-// Note the existing overflow guards would NOT catch that: they run at 320px and
-// at 1280x1024, and neither lands where a 672px cap and an 855px request meet.
-// So the canvas needs its own decision, and it would not fail loudly first.
+// MONOTONIC AND CONTINUOUS, which is the property this must not lose. Below the 400px
+// crossover the width is `100vw - 2rem`; above it the two `1rem` terms cancel and it is
+// exactly `0.92 * 100vw`. Both are non-decreasing in the viewport and they agree at the
+// crossover -- 368px either way at 400px -- so there is no step and it cannot get wider
+// as the window gets smaller.
 //
-// `lg:`-prefixed, matching every rule it replaces. Those were all `lg:`-only, so
-// below 1024px the column was unconstrained and filled its parent. An unprefixed
-// cap would have quietly narrowed the 705-1023px band -- 736px to 672px on a
-// 768px tablet -- which is a change nobody asked for and which the measurements
-// above do not cover. Keeping the prefix makes the claim exact: nothing below
-// `lg` moves.
-export const contentColumnClasses = "lg:max-w-2xl";
+// That was not true before. The cap used to be `lg:`-prefixed, so below 1024px the
+// column filled the viewport and at 1024px it snapped to 672px -- dragging a window
+// narrower across that line made the content suddenly 319px WIDER. Measured on
+// /contact at the time:
+//
+//   viewport   content   % of viewport
+//     390px      358px      92%
+//    1023px      991px      97%
+//    1024px      672px      66%   <- collapsed by 319px
+//    1440px      672px      47%
+//    2560px      672px      26%
+//
+// Any change here should be checked against that: pick a few widths either side of
+// every breakpoint involved and confirm the width never decreases as the viewport
+// grows. The e2e suite asserts alignment but not this, because a sweep is the wrong
+// shape for it.
+//
+// WHAT IT COSTS, and it is the thing to revisit rather than the proportion: prose lines
+// are long. An earlier version of this file argued against exactly that, calling a
+// 1139px line the over-long-measure problem, and this is wider than that on any large
+// screen. The tension is real and not resolvable by choosing a different percentage --
+// filling the screen and keeping a 65-75 character measure are different goals. If the
+// lines matter more, the fix is a narrower measure for LONG-FORM PROSE specifically,
+// applied inside this column rather than by shrinking it.
+//
+// That was tried on the home page's hero copy and REVERTED, which is the useful part of
+// the story. A 38rem cap brought the first line from 135 characters to 70 -- and looked
+// worse, because the hero's prose sits in a flex track that keeps its width whether the
+// text uses it or not. The text stopped short and left 627px of nothing between it and
+// the photo at a 1990px viewport. So a reading measure is only an improvement where
+// narrowing the text also narrows its container, or where there is enough copy that the
+// leftover space is not conspicuous. Neither holds for a three-line hero blurb. It would
+// hold for a blog post body.
+//
+// The hero photo already does exactly that, and it is worth knowing WHY its cap is not a
+// fixed measure. It is a 1286x1714 portrait, so at the column's full width it rendered
+// 1766px tall at a 1440px viewport -- twice a fold. Its cap is therefore derived from a
+// height, `70vh` converted to the width that produces it, which is a bound this column
+// cannot express and should not try to.
+//
+// HISTORY, because two earlier shapes are worth not re-deriving:
+//
+//   - It replaced a 600px min-width floor paired with a half-width, which was wrong at
+//     both ends: the floor beat the half-width, so the column stayed 600px until its
+//     parent reached 1200px and only then tracked the viewport, uncapped after that. A
+//     cap is the only rule that is right at both ends.
+//   - It was briefly centred, with the space either side filled in a darker tone and the
+//     column painting the page colour back over it as a panel. Both were reverted on the
+//     owner's call. One thing learned there is worth keeping: painting a background here
+//     put the first heading of four routes OUT of axe's contrast gate, because axe
+//     requires the first background-painting ancestor to fully encompass the TEXT rects
+//     and a column whose edge meets the text does not. If a fill ever comes back, it
+//     needs padding and the a11y suite will say so.
+//
+// `global-error.tsx` renders its own document with no layout, so it carries the measure
+// itself and its parent is the full body width rather than `<main>`'s content box.
+export const contentColumnClasses =
+  "mx-auto w-[calc(100%-2*max(0px,4vw-1rem))] max-w-[110rem]";

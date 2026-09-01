@@ -10,7 +10,7 @@ export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
   // A smoke suite that needs a retry to go green is reporting something real.
-  // Retries here would convert "the sidebar intermittently fails to navigate"
+  // Retries here would convert "the nav intermittently fails to navigate"
   // into a silent pass, which is the opposite of why this suite exists.
   retries: 0,
   forbidOnly: !!process.env.CI,

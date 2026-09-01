@@ -1,5 +1,4 @@
 import TextLink from "@/components/ui/TextLink";
-import { contentColumnClasses } from "@/components/ui/layout";
 
 /**
  * Page links for the blog list.
@@ -53,7 +52,7 @@ export default function Pagination({
   return (
     <nav
       aria-label="Blog pages"
-      className={`mt-6 flex flex-wrap items-center gap-x-4 gap-y-2 ${contentColumnClasses}`}
+      className="mt-6 flex flex-wrap items-center gap-x-4 gap-y-2"
     >
       {page > 1 && (
         <TextLink href={`/blog?page=${page - 1}`} className="font-bold">
