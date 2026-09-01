@@ -78,12 +78,28 @@ export default async function Home() {
           and an image is a leaf. It starts at the same left edge as the text and is
           simply narrower, which is an ordinary thing for a figure in a text column
           to be. */}
-      <div className="mt-6 max-w-2xl">
+      <div className="mt-6 max-w-[calc(70vh*1286/1714)]">
         <Image
           src="/danPool.jpeg"
           alt="Lan Playing Pool"
           width="1286"
           height="1714"
+          // BOUNDED BY HEIGHT, converted to a width. The photograph is a 1286x1714
+          // portrait, so filling the content column made it 1325x1766 at a 1440px
+          // viewport -- nearly twice a 900px fold. The bound is therefore `70vh`
+          // expressed as the width that produces it, `70vh * 1286 / 1714`, which is
+          // why that ratio appears here and in the wrapper's max-width.
+          //
+          // The conversion lives on the WRAPPER rather than as a max-height on the
+          // image, and that is not a style preference. Cap the height and leave the
+          // width automatic and the image's layout size becomes its INTRINSIC size --
+          // the pixel size of whichever srcset candidate the browser downloaded -- so
+          // `sizes` would be feeding a value that then determines the very thing it
+          // is supposed to describe. Measured: declared 472.67px against a rendered
+          // 283.59px, a circular dependency rather than an arithmetic error. Keeping
+          // the image at a full-width rule inside a width-capped
+          // wrapper leaves the layout CSS-determined and the contract checkable.
+          //
           // NO MEDIA QUERY, because neither this cap nor the column's has a
           // breakpoint. The photo's box is its own 42rem cap or the column, whichever
           // is smaller. The column is `<main>`'s box less a `max(0px, 4vw - 1rem)`
@@ -109,7 +125,7 @@ export default async function Home() {
           //
           // The e2e test varies the root font size as well as the viewport, which is
           // the only reason either mistake was visible.
-          sizes="min(42rem, calc(100vw - 2rem - 2*max(0px, 4vw - 1rem)))"
+          sizes="min(calc(70vh * 1286 / 1714), calc(100vw - 2rem - 2*max(0px, 4vw - 1rem)))"
           className="h-auto w-full"
           priority
         />

@@ -4,8 +4,12 @@
 // heading row do NOT carry it: they used to, and the result was pages where a form knew
 // its width and the heading above it did not.
 //
-// The p5 canvas on /animation is the one deliberate exception. It sizes itself from its
-// container, so capping it shrinks the drawing rather than the line length.
+// The p5 canvas on /animation used to be a deliberate exception, on the grounds that it
+// sizes itself from its container so a cap shrinks the drawing rather than the line
+// length. That was a real cost against a fixed 64rem column -- it took the canvas from
+// 1390px to 1024px. Against a proportional column it is 65px, and the price of the
+// exception was that the canvas sat 35-64px left of every other element on the page. It
+// now carries the measure like everything else.
 //
 // CENTRED, WITH PROPORTIONAL GUTTERS. Three utilities, and each is doing something the
 // others cannot.
@@ -57,8 +61,11 @@
 // lines matter more, the fix is a narrower measure for LONG-FORM PROSE specifically,
 // applied inside this column rather than by shrinking it.
 //
-// The hero photo already does exactly that: it carries its own 42rem cap, because a
-// portrait at the column's full width rendered taller than the viewport.
+// The hero photo already does exactly that, and it is worth knowing WHY its cap is not a
+// fixed measure. It is a 1286x1714 portrait, so at the column's full width it rendered
+// 1766px tall at a 1440px viewport -- twice a fold. Its cap is therefore derived from a
+// height, `70vh` converted to the width that produces it, which is a bound this column
+// cannot express and should not try to.
 //
 // HISTORY, because two earlier shapes are worth not re-deriving:
 //
