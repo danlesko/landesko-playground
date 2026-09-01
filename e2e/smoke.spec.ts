@@ -88,11 +88,15 @@ test("the home hero links to every destination it promises", async ({
 });
 
 /**
- * The `sizes` contract that #10 warned about in as many words. The hero is a single
- * column as of #135, and since #138 the photo is bounded by HEIGHT rather than by a
- * fixed measure -- `70vh` converted to the width that produces it -- so the declared
- * width is the smallest of that cap, the column's `110rem` ceiling and the column's
- * own width. If the page structure or
+ * The `sizes` contract that #10 warned about in as many words. Since #138 the photo is
+ * bounded by HEIGHT rather than by a fixed measure -- `70vh` converted to the width
+ * that produces it -- and since #140 it shares a row with the prose from `lg` up, so
+ * the attribute has two branches:
+ *
+ *   at `lg`+  `min(height cap, 40% of the content column)`
+ *   below     `min(height cap, 110rem, the content column's own width)`
+ *
+ * If the page structure or
  * the cap changes without that attribute being updated the browser is left choosing
  * a candidate against a width the image no longer has -- and nothing about the
  * layout changes to announce it. Declare too large and the cost is bytes nobody
@@ -119,11 +123,20 @@ test("the home hero links to every destination it promises", async ({
  * relationship rather than a frozen constant, which is the difference between a
  * test that survives a legitimate change and one that gets muted for crying wolf.
  *
- * Sensitivity is 1:1 in whichever of the three terms is binding and 0 in the other
- * two, which is why the cases below have to span all three. Since #136 there is no
+ * Sensitivity is 1:1 in whichever term is binding and 0 in the others, which is why
+ * the cases below have to span all of them -- a term can be missing from the attribute
+ * entirely and still pass every sample that does not bind on it. Since #136 there is no
  * rail; since #138 the column is `100vw - 2rem` less a `max(0px, 4vw - 1rem)` gutter
  * a side, capped at `110rem`. The `min()` in the attribute is what keeps declared and
  * rendered equal as the binding term changes hands.
+ *
+ * ONE KNOWN DIVERGENCE, so nobody re-derives it as a bug: `100vw` includes the width of
+ * a classic space-consuming scrollbar and the containing block does not. On a platform
+ * with those, every term derived from `100vw` over-declares by the scrollbar width --
+ * about 17px on the row, so about 7px on the photo once 40% is taken. The CI browser
+ * uses overlay scrollbars so the suite does not see it. It is left alone deliberately:
+ * over-declaring costs bytes and never softness, and the alternative is to stop
+ * mirroring the CSS, which is the property that makes this test worth having.
  * The sub-pixel tolerance is kept: it was tightened because a whole pixel of slack
  * passed a 250px -> 252px rail back when the column was half the box.
  *
@@ -143,6 +156,104 @@ test("the home hero links to every destination it promises", async ({
  * only between two of them, still passes. Widening that is a matter of adding
  * widths, not of the test being wrong.
  */
+/**
+ * #140 asked for two tracks on desktop and one on mobile, and nothing in this suite
+ * asserted either. Every existing home-page test passes with the row collapsed back to
+ * a single column: the `sizes` test only compares a declared width to a rendered one,
+ * and both move together when the layout changes. So deleting `lg:flex` -- or its gap,
+ * or the height cap -- is a silent visual regression.
+ *
+ * What this pins, and why each part:
+ *
+ *   - SIDE BY SIDE at `lg`, by geometry rather than by class name. The photo's box must
+ *     start after the prose track ends horizontally and share its top edge. A class
+ *     assertion would pass on `lg:flex` while some other rule stopped it applying.
+ *   - THE GAP between them is non-zero and is the `2rem` the row declares. Measured
+ *     rather than assumed, because a gap utility is exactly the kind of thing that gets
+ *     dropped in a reformat and looks fine in isolation.
+ *   - A SHARED TOP EDGE, which is the assertion that would have caught the defect this
+ *     change actually shipped with: the heading's bottom margin sat on the first
+ *     paragraph, so the photo started 8px above the prose. That is a hairline at a 16px
+ *     root and 12px at 24px -- visible, and nothing else here would have failed.
+ *   - STACKED below `lg`, so the mobile arrangement the owner asked to keep is pinned
+ *     too. 1023 and 1024 rather than round numbers, since that is where it changes.
+ *
+ * Deliberately NOT asserted: the 40%-vs-height-cap split, or any particular photo
+ * width. Those are the `sizes` test's job and duplicating them here would mean two
+ * places to update for one legitimate change.
+ *
+ * Verified by mutation rather than claimed. Killed: collapsing the row to one track;
+ * dropping the track gap; failing to reset the stacked top margin at `lg`; removing the
+ * prose floor (that one fails the `sizes` test instead, which is the right place); and
+ * moving the heading's gap back onto the first paragraph, which fails here with "the
+ * photo and the first line of prose are 8px apart vertically".
+ *
+ * One hole found the same way and left open: removing the heading's gap ENTIRELY passes
+ * everything. Both tracks lose it together, so nothing misaligns and no width moves --
+ * the page just loses 8px under the heading. That is a spacing regression no assertion
+ * here would catch, and it is not this test's subject.
+ */
+test("the home hero puts prose beside the photo at `lg` and stacks below it", async ({
+  page,
+}) => {
+  await page.goto("/");
+
+  for (const [width, height, sideBySide] of [
+    [1024, 900, true],
+    [1440, 900, true],
+    [1920, 1080, true],
+    [1023, 900, false],
+    [390, 844, false],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+
+    const measured = await page.evaluate(() => {
+      const img = document.querySelector<HTMLImageElement>(
+        'img[alt="Lan Playing Pool"]',
+      );
+      if (!img) throw new Error("hero image not found");
+      const photo = img.parentElement!;
+      const row = photo.parentElement!;
+      const prose = row.firstElementChild!;
+      if (prose === photo)
+        throw new Error("the row has no separate prose track");
+      // The first paragraph rather than the track box, because the track's box top and
+      // its first line of text are exactly what came apart last time.
+      const firstLine = prose.querySelector("p");
+      if (!firstLine) throw new Error("prose track has no paragraph");
+
+      const p = prose.getBoundingClientRect();
+      const i = photo.getBoundingClientRect();
+      return {
+        gap: i.left - p.right,
+        topDelta: Math.abs(firstLine.getBoundingClientRect().top - i.top),
+        photoBelowProse: i.top >= p.bottom,
+        rowGap: getComputedStyle(row).columnGap,
+      };
+    });
+
+    const at = `${width}x${height}`;
+    if (sideBySide) {
+      expect(
+        measured.gap,
+        `${at}: photo does not start after the prose`,
+      ).toBeGreaterThan(0);
+      // The `2rem` the row declares. Asserted as a computed length so a dropped gap
+      // utility fails here rather than merely looking cramped.
+      expect(measured.rowGap, `${at}: the track gap is not 2rem`).toBe("32px");
+      expect(
+        measured.topDelta,
+        `${at}: the photo and the first line of prose are ${measured.topDelta}px apart vertically`,
+      ).toBeLessThan(1);
+    } else {
+      expect(
+        measured.photoBelowProse,
+        `${at}: the photo should be stacked under the prose, not beside it`,
+      ).toBe(true);
+    }
+  }
+});
+
 test("the home hero image declares the width it actually renders", async ({
   page,
 }) => {
@@ -200,6 +311,7 @@ test("the home hero image declares the width it actually renders", async ({
     [1024, 600, 16],
     [1023, 900, 16],
     [1280, 900, 16],
+    [1280, 800, 16],
     [1024, 900, 24],
   ] as const) {
     await page.setViewportSize({ width, height });

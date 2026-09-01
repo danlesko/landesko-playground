@@ -33,8 +33,17 @@ export default async function Home() {
           heights and nothing should be asked to match the other. */}
       <div className="mt-2 lg:flex lg:items-start lg:gap-x-8">
         {/* `lg:min-w-0` because a flex item's automatic minimum size is its content,
-            so a single long unbroken token in the prose would refuse to shrink and
-            push the photo out of the row instead of wrapping. */}
+            so without it this track refuses to shrink below its longest line and
+            pushes the photo out of the row.
+
+            Be exact about what that does and does not buy, because the first version
+            of this comment claimed too much: `min-w-0` lets the track shrink, it does
+            NOT make an unbreakable token wrap. A single token longer than the track
+            would still overflow the track -- it would just stop widening the row
+            first. Nothing here needs `break-words` the way the contact form's error
+            notice does, because that notice can contain an arbitrary token and this
+            copy is authored; if user-supplied text ever lands in this track, it will.
+            */}
         <div className="lg:min-w-0 lg:flex-1">
           <p className="text-lg">
             I'm a full-stack software engineer. This is my portfolio and blog —
@@ -178,7 +187,7 @@ export default async function Home() {
             // column ever gains padding again this needs it back.
             //
             // The e2e test varies the root font size as well as the viewport, which is
-            // the only reason either mistake was visible.
+            // the only reason either mistake showed up at all.
             sizes="(min-width: 1024px) min(calc(70vh * 1286 / 1714), calc(0.4 * min(110rem, 100vw - 2rem - 2*max(0px, 4vw - 1rem)))), min(calc(70vh * 1286 / 1714), 110rem, calc(100vw - 2rem - 2*max(0px, 4vw - 1rem)))"
             className="h-auto w-full"
             priority
