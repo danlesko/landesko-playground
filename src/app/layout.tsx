@@ -106,10 +106,16 @@ export default async function RootLayout({
                 </span>
               </span>
               <form action={signedIn ? signOutOfSession : signInWithGithub}>
+                {/* No top margin. There was a `mt-1` here with nothing explaining
+                    it, and it was not doing what an optical nudge would: the row is
+                    already `items-center`, so the margin pushed the button below the
+                    centre it was being given and made its `<form>` 4px taller at the
+                    same time. Measured after removing it, the button's centre and the
+                    header's agree. */}
                 <Button
                   type="submit"
                   variant="primary"
-                  className={`mt-1 ${primaryButtonClasses}`}
+                  className={primaryButtonClasses}
                   size="sm"
                 >
                   {signedIn ? "Logout" : "Login"}

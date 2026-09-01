@@ -44,7 +44,13 @@ export default function Animation() {
           some wonkiness.
         </p>
       </div>
-      <div className={contentColumnClasses}>
+      {/* `mt-6` because there was nothing at all here. Tailwind's preflight zeroes
+          paragraph margins, so the canvas butted straight against the copy above it
+          while the rest of this page keeps a clear rhythm -- `mt-6` before the `<h2>`
+          and `mt-2` before its paragraph. The artwork was the one element on the page
+          with no space above it, which read as a rendering fault rather than a layout
+          choice. Matches the `<h2>` step rather than inventing a value. */}
+      <div className={`${contentColumnClasses} mt-6`}>
         <ProcessingDrawing />
       </div>
     </>

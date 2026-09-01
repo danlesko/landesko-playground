@@ -45,14 +45,35 @@ export default async function Home() {
             copy is authored; if user-supplied text ever lands in this track, it will.
             */}
         <div className="lg:min-w-0 lg:flex-1">
-          <p className="text-lg">
-            I'm a full-stack software engineer. This is my portfolio and blog —
-            a place to experiment with new technologies and write about what I
-            find.
-          </p>
-          <p className="mt-2 text-sm text-muted">
-            Master's from Johns Hopkins University.
-          </p>
+          {/* A READING MEASURE on the paragraphs, not on the track. The track is the
+              flex remainder, which at a 1990px viewport is 1203px, and the first
+              paragraph was setting a 135-character line in it with a five-character
+              orphan under it. Typographic guidance is 45-75 characters and the
+              classic target is 66.
+
+              38rem is derived, not chosen. Measured on this typeface at `text-lg`:
+              820px of line held 90 characters, so 9.11px a character; 66 characters
+              is 601px, which is 37.6rem. In rem rather than px so it tracks a reader
+              who has enlarged their default text -- the whole point of a measure is
+              the character count, and that is what stays fixed when both sides scale.
+
+              On the PARAGRAPHS so the link row below is free to use the full track.
+              The links are a wrapping row of short labels, not prose; holding them to
+              a reading measure would wrap them earlier for no benefit.
+
+              Unprefixed, because a constant cap cannot cause the failure a prefixed
+              one did in #138 -- it never grows as the viewport shrinks. It first
+              binds around a 700px-wide viewport and does nothing below that. */}
+          <div className="max-w-[38rem]">
+            <p className="text-lg">
+              I'm a full-stack software engineer. This is my portfolio and blog
+              — a place to experiment with new technologies and write about what
+              I find.
+            </p>
+            <p className="mt-2 text-sm text-muted">
+              Master's from Johns Hopkins University.
+            </p>
+          </div>
           {/* A plain list rather than a second `<nav>` landmark: the main nav is
               this site's navigation, and a landmark here would compete with it for
               the same job. The list still gives a screen reader the count. */}

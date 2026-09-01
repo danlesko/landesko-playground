@@ -1681,64 +1681,119 @@ test.skip(
 );
 
 /**
- * The viewport here is load-bearing, and not in a way anyone would guess.
+ * The canvas takes its width from its container and derives its height from that. One
+ * expression, no viewport-shape branch -- so what this guards is simply "the clamp to
+ * the container is present", and the interesting question is which viewports can still
+ * tell.
  *
- * `updateCanvasDimensions` picks a width-led or a height-led branch by comparing
- * the viewport's aspect ratio against the sketch's. Playwright's default
- * 1280x720 is 1.778, which lands in the *height*-led branch -- the branch that
- * never overflowed. So this guard passes at the default size whether or not the
- * bug is present, and asserting at the default would be no guard at all.
+ * The history matters because this test has been vacuous twice.
  *
- * 1280x1024 is 1.25, which takes the width-led branch. That branch sized the
- * canvas from `p5.windowWidth`, ignoring the 250px rail of the day and <main>'s
- * 32px of padding, and `<main>` is a flex item whose `min-width` defaults to
- * `auto`, so it widened to fit the oversized canvas instead of clipping it. The
- * page ended up 232px wider than the window at this size, and at 1024x768,
- * 1024x900 and 1440x900 too.
+ *   - Originally the canvas sized itself from `p5.windowWidth`, ignoring the 250px rail
+ *     of the day and `<main>`'s 32px of padding. `<main>` is a flex item whose
+ *     `min-width` defaults to `auto`, so it widened to fit rather than clipping, and the
+ *     page ended up 232px wider than the window. That is #57.
+ *   - #136 removed the rail, and the guard went INSENSITIVE: with the container at
+ *     `windowWidth - 32` and the width expression already reserving 50px, the clamp
+ *     could not change the result. Deleting `measureAvailableWidth()` left this passing.
+ *   - #138 put the canvas inside the shared content column, which is narrower than
+ *     `windowWidth - 32` by a `max(0px, 4vw - 1rem)` gutter a side and capped at
+ *     `110rem`. That restored sensitivity at both viewports below.
  *
- * #136 removed the rail, and for a while that made this guard INSENSITIVE to the
- * defect it was written for: with the container at `windowWidth - 32` and the width
- * expression already reserving 50px, the clamp could not change the result, and
- * deleting `measureAvailableWidth()` left this test passing. The docblock then said
- * restoring sensitivity "needs a viewport where the two expressions disagree, and
- * with the rail gone there is none."
+ * Measured by mutation rather than reasoned, at the current code: replacing the clamp
+ * with `Infinity` fails at 1280x1024 (unclamped 1230px in a 1178px box) and at
+ * 2560x1440 (unclamped 2510px in a 1760px box).
  *
- * #138 gave the container two reasons to be narrower than `windowWidth - 32`, and
- * BOTH viewports below are now sensitive. Measured by mutation, not reasoned:
- * replacing the clamp with `Infinity` fails at 1280x1024 AND at 2560x1440.
+ * The two cases are not redundant. The first is the gutter, the second the ceiling;
+ * raising the ceiling or dropping the gutters silences one and not the other.
  *
- *   - gutters. The canvas moved inside the shared content column, so the box is
- *     `windowWidth - 32` less a `max(0px, 4vw - 1rem)` gutter a side. At 1280 that is
- *     1178px against an unclamped 1230px -- a 52px overshoot, from a change that
- *     looked purely like alignment.
- *   - the ceiling. Past a 1913px viewport the box stops growing with width while the
- *     height-led expression keeps growing with height. 2560x1440 asks for
- *     `1440 * 1.605 - 300` = 2011px inside a 1760px column, a 251px overshoot, larger
- *     than the 232px the rail used to produce.
+ * WHY THERE ARE TWO ASSERTIONS, which is the part worth keeping. At 2560x1440 an
+ * oversized canvas does NOT make the page scroll sideways. The column is centred with
+ * roughly 400px of gutter a side, so the overshoot lands in space that was empty anyway
+ * and `scrollWidth` reports 0 while the canvas visibly breaks out of its column. That
+ * is still the defect #138 was filed for -- artwork not lining up with the text above
+ * it. So the page-level check is necessary but not sufficient, and the
+ * canvas-against-its-box assertion is the one that actually catches it.
  *
- * The second is worth its own viewport even though the first already fails, because
- * they are independent -- raising the ceiling or dropping the gutters silences one and
- * not the other, and only the ceiling case exercises the branch where viewport HEIGHT
- * drives the overshoot.
- *
- * And the reason this test grew a second assertion: at 2560x1440 the page does NOT
- * scroll sideways when the canvas overshoots. The column is centred with roughly 400px
- * of gutter a side, so a 251px overshoot is absorbed by space that was empty anyway.
- * The page-level check is blind to it -- measured, it reports 0 while the canvas is
- * 2011px in a 1760px box. That is still a real defect: the canvas breaks out of the
- * column and stops lining up with the text above it, which is the complaint #138 was
- * filed for in the first place. So `scrollWidth` is no longer sufficient here, and the
- * canvas-against-its-box assertion is the one that actually fails.
+ * A viewport-shape branch used to live in `updateCanvasDimensions` and is gone. It
+ * computed a height-led width, `windowHeight * aspectRatio - 300`, for viewports wider
+ * than the sketch. Two consequences for this file: the old note that 1280x720 was a
+ * "safe" viewport because of which branch it took no longer means anything, and the
+ * `2560x1440` case here is now sensitive through the ceiling alone rather than through
+ * height-driven growth.
  */
+/**
+ * The two properties the owner actually asked for, and neither was asserted anywhere.
+ *
+ * FLUSH WITH ITS COLUMN. The canvas used to take a height-led width on wide viewports,
+ * which left it 455px short of the right edge of the text above it at a 1990px viewport
+ * and read as broken alignment. It now takes its width from its container at every
+ * size. Nothing pinned that: the overflow guard only checks the canvas is not WIDER
+ * than its box, so a canvas half the width of the column passes it happily -- which is
+ * exactly the state this replaced.
+ *
+ * THE DESIGN RATIO. `updateCanvasDimensions` computes the width and derives the height
+ * from it, and the comment there claims the ratio therefore holds "by construction".
+ * That claim was unguarded. Measured by mutation: changing the height to derive from
+ * `p5.windowHeight` instead of the canvas width passed the entire suite. That is the
+ * class of defect #80 was filed for -- a delivered ratio that does not match the
+ * 1180x735 design space, which squeezes the tank and pushes the lower fish outside it.
+ * The tolerance is 1px rather than exact because the sketch rounds to whole pixels.
+ *
+ * Several widths rather than one, because the two failure modes appear at different
+ * sizes: a height-led width only diverges once the viewport is wide relative to the
+ * sketch's shape, and the gutter/ceiling arithmetic on the column changes at 400px and
+ * again at 1913px.
+ */
+test("the p5 canvas fills its column and keeps the sketch's design ratio", async ({
+  page,
+}) => {
+  // 1180 / 735, from `baseWidth / baseHeight` in fishTankSketch.ts.
+  const DESIGN_RATIO = 1180 / 735;
+
+  for (const [width, height, why] of [
+    [390, 844, "phone, no column gutters"],
+    [768, 1024, "tablet, gutters active"],
+    [1280, 720, "the old height-led branch's viewport"],
+    [1440, 900, "desktop"],
+    [1990, 1000, "wide enough that the old branch fell 455px short"],
+    [2560, 1440, "past the column's 110rem ceiling"],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    await page.goto("/animation");
+    await expect(page.locator("canvas")).toBeVisible({ timeout: 15_000 });
+
+    const measured = await page.evaluate(() => {
+      const canvas = document.querySelector("canvas")!;
+      const box = canvas.parentElement!;
+      const rect = canvas.getBoundingClientRect();
+      return {
+        width: rect.width,
+        height: rect.height,
+        box: box.clientWidth,
+      };
+    });
+
+    const at = `${width}x${height} (${why})`;
+    expect(
+      Math.abs(measured.width - measured.box),
+      `${at}: canvas is ${measured.width} in a ${measured.box}px column, so it does not fill it`,
+    ).toBeLessThanOrEqual(1);
+    expect(
+      Math.abs(measured.height - measured.width / DESIGN_RATIO),
+      `${at}: canvas ${measured.width}x${measured.height} is not the sketch's ${DESIGN_RATIO.toFixed(4)} ratio -- expected a height of ${(measured.width / DESIGN_RATIO).toFixed(1)}`,
+    ).toBeLessThanOrEqual(1);
+  }
+});
+
 test("the p5 canvas does not push the page wider than the viewport", async ({
   page,
 }) => {
   for (const { width, height, why } of [
-    { width: 1280, height: 1024, why: "width-led branch, ceiling not binding" },
+    { width: 1280, height: 1024, why: "the column's gutters bind" },
     {
       width: 2560,
       height: 1440,
-      why: "width-led branch past the 110rem ceiling",
+      why: "past the column's 110rem ceiling",
     },
   ]) {
     await page.setViewportSize({ width, height });
@@ -1773,54 +1828,113 @@ test("the p5 canvas does not push the page wider than the viewport", async ({
 });
 
 /**
- * The height-led branch subtracts a flat 300 from both dimensions, so a short
- * window drives them to zero and then past it: at a 186px window height the
- * width is -1.4. p5 hands that straight to <canvas> and the renderer crashes the
- * tab outright — reproduced at 186, 185 and 183, while 187 still rendered.
- * `scaleFactor` divides by the same value, so zero is no safer than negative.
+ * Two viewports, because the crash this was written for and the floors it asserts are
+ * no longer reachable at the same size.
  *
- * 800x186 is the boundary case rather than an arbitrary tiny window:
- * 300 / (1180 / 735) = 186.86 is where the width crosses zero. A crashed tab
- * makes `evaluate` throw, so a regression fails loudly here rather than subtly.
+ * WHAT IT WAS FOR. A height-led width expression, `windowHeight * aspectRatio - 300`,
+ * subtracted a flat 300 and so drove the width to zero and past it: at a 186px window
+ * height it computed -1.4. p5 handed that straight to `<canvas>` and the renderer
+ * crashed the tab outright -- reproduced at 186, 185 and 183, while 187 still rendered.
+ * `scaleFactor` divides by the same value, so a zero floor was no safer than a negative
+ * width; it handed `Infinity` to every draw call and the tab still died.
  *
- * The size assertions are deliberately magnitudes, not `> 0`, and they catch a
- * second regression the crash cannot. Floors of `0` do not render here — they
- * crash too, because `scaleFactor` divides by the width and hands `Infinity` to
- * the draw calls — and at the heights where a zero dimension does survive
- * (800x250, 800x300) the canvas has an empty bounding box, so it is not visible
- * either. A floor of `1`, though, renders a visible 1x1 canvas that no crash and
- * no visibility check can see. So `> 0` was unfalsifiable and a magnitude is not.
+ * 800x186 was the boundary case rather than an arbitrary tiny window:
+ * `300 / (1180 / 735)` = 186.86 is where the width crossed zero.
  *
- * What that buys is narrow, and worth stating so nobody reads more into a pass:
- * it pins the two constants and nothing else. It does not establish that 120x75
- * is *usable* — see the comment on `minCanvasHeight`, where it is not — and any
- * larger canvas passes too.
+ * WHAT CHANGED. That expression was deleted -- the width now comes from the container
+ * and the height derives from the width -- so viewport height no longer reaches the
+ * width calculation and the crash is structurally gone rather than floored. At 800x186
+ * the canvas is now 736x458, so this viewport no longer exercises either floor. It is
+ * kept as a regression guard: it is the size that used to kill the tab, and a
+ * reintroduced height dependence would show up here first. A crashed tab makes
+ * `evaluate` throw, so it fails loudly.
  *
- * The margins are exactly zero, which is the point rather than an oversight: at
- * this viewport the branch computes -1.39 and -114, so both floors apply and the
- * received values are precisely 120 and 75. Lowering either floor by one pixel
- * fails here.
+ * WHICH MEANS the floors need their own viewport, and it is a narrow one rather than a
+ * short one. The width is the container's, which below a 400px viewport is
+ * `windowWidth - 32`, so the floor applies only under a 152px viewport. At 140px the
+ * container is 108px, the width floor lifts the canvas to 120, and `120 / aspectRatio`
+ * is 74.75 -- just under the height floor, so both apply and the values are exactly 120
+ * and 75. Lowering either by a pixel fails there.
  *
- * Measured via `getBoundingClientRect`, not the `width`/`height` attributes. p5
- * calls `pixelDensity(window.devicePixelRatio)`, so those attributes are
- * backing-store pixels — 2x the floors at DPR 2 — while the floors are logical
- * dimensions. The Chromium project runs at DPR 1, so the two happen to coincide
- * today and the distinction is invisible; the rect is the quantity actually meant.
+ * A CONSEQUENCE worth stating plainly, because it makes one assertion conditional: the
+ * floor is now only reachable in a regime where it MUST overflow its container. Reaching
+ * 120px requires a container under 120px, so the floored canvas is always wider than the
+ * box it sits in. There is no viewport left where the floor applies harmlessly -- a
+ * 170-to-152px band used to exist and it was an artefact of a `- 50` viewport allowance
+ * that mutation testing showed was otherwise inert. So containment is asserted at every
+ * case except this one. That is not a gap being waved through: 140px is narrower than
+ * any device and less than half the 320px WCAG reflow floor, and the floors exist to
+ * stop `scaleFactor` dividing by zero when the container has no width at all, not to
+ * make a 140px viewport look right.
+ *
+ * The assertions are magnitudes rather than `> 0`, and that catches a second regression
+ * the crash cannot. A floor of `0` does not render, it crashes; but a floor of `1`
+ * renders a visible 1x1 canvas that no crash check and no visibility check can see. So
+ * `> 0` was unfalsifiable and a magnitude is not.
+ *
+ * What this buys is narrow, and worth stating so nobody reads more into a pass: it pins
+ * the two constants and nothing else. It does not establish that 120x75 is *usable* --
+ * see the comment on `minCanvasHeight`, where it is not.
+ *
+ * Measured via `getBoundingClientRect`, not the `width`/`height` attributes. p5 calls
+ * `pixelDensity(window.devicePixelRatio)`, so those attributes are backing-store pixels
+ * -- 2x the floors at DPR 2 -- while the floors are logical dimensions. The Chromium
+ * project runs at DPR 1, so the two coincide today and the distinction is invisible; the
+ * rect is the quantity actually meant.
  */
-test("the p5 canvas survives a window shorter than the reserved height", async ({
+test("the p5 canvas survives a window that used to crash it, and honours its floors", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 800, height: 186 });
-  await page.goto("/animation");
-  await expect(page.locator("canvas")).toBeVisible({ timeout: 15_000 });
+  for (const { width, height, expectW, expectH, why, fitsItsBox = true } of [
+    {
+      width: 800,
+      height: 186,
+      expectW: 120,
+      expectH: 75,
+      why: "the height that used to compute a negative width",
+    },
+    {
+      width: 140,
+      height: 600,
+      expectW: 120,
+      expectH: 75,
+      why: "narrow enough that both floors apply exactly",
+      // The floor is only REACHABLE where it necessarily overflows, so containment
+      // cannot also be asserted here. See the docblock.
+      fitsItsBox: false,
+    },
+  ]) {
+    await page.setViewportSize({ width, height });
+    await page.goto("/animation");
+    await expect(page.locator("canvas")).toBeVisible({ timeout: 15_000 });
 
-  const size = await page.evaluate(() => {
-    const rect = document.querySelector("canvas")?.getBoundingClientRect();
-    return { width: rect?.width ?? 0, height: rect?.height ?? 0 };
-  });
+    const size = await page.evaluate(() => {
+      const rect = document.querySelector("canvas")?.getBoundingClientRect();
+      const box = document.querySelector("canvas")?.parentElement;
+      return {
+        width: rect?.width ?? 0,
+        height: rect?.height ?? 0,
+        box: box?.clientWidth ?? 0,
+      };
+    });
 
-  expect(size.width).toBeGreaterThanOrEqual(120);
-  expect(size.height).toBeGreaterThanOrEqual(75);
+    const at = `${width}x${height} (${why})`;
+    expect(size.width, `${at}: width below the floor`).toBeGreaterThanOrEqual(
+      expectW,
+    );
+    expect(size.height, `${at}: height below the floor`).toBeGreaterThanOrEqual(
+      expectH,
+    );
+    // The floor bypasses the clamp to the container, so a RAISED floor overflows
+    // rather than merely looking wrong -- which is why this is asserted wherever the
+    // floor is not expected to apply.
+    if (fitsItsBox) {
+      expect(
+        size.width,
+        `${at}: canvas ${size.width} exceeds its ${size.box}px box`,
+      ).toBeLessThanOrEqual(size.box);
+    }
+  }
 });
 
 /**
@@ -1993,6 +2107,25 @@ async function expectCanvasToHold(page: import("@playwright/test").Page) {
 }
 
 test.describe("the p5 canvas and prefers-reduced-motion", () => {
+  // A TALLER VIEWPORT THAN THE DEFAULT, and this is a correctness requirement rather
+  // than a preference. These tests compare `locator.screenshot()` of the canvas across
+  // samples. Playwright captures an element larger than the viewport by scrolling and
+  // stitching, and that is not byte-stable: measured at the default 1280x720, with the
+  // sketch provably frozen -- zero canvas 2d draw calls in a 1200ms window -- five
+  // consecutive screenshots came back 101727, 103670, 103746, 103781 and 104007 bytes
+  // and four of the five differed from the first. The tests failed while the code was
+  // correct.
+  //
+  // The canvas is 734px tall at a 1280px viewport, because since #140 its height
+  // derives from its container's WIDTH alone. So any viewport at least that tall works
+  // and 900 leaves margin. The width is deliberately left at 1280: the fish-body pixel
+  // counts below are calibrated to the canvas size, and narrowing the viewport would
+  // shrink every fish toward the 50px threshold.
+  //
+  // If this ever fails again with the sketch frozen, check the canvas height against
+  // the viewport before touching the thresholds.
+  test.use({ viewport: { width: 1280, height: 900 } });
+
   test("keeps swimming when no preference is set", async ({ page }) => {
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.goto("/animation");
