@@ -27,8 +27,13 @@
 // nothing until `4vw` exceeds it, which is a 400px viewport, and below that the column
 // fills `<main>`'s box exactly as it did before.
 //
-// `mx-auto` centres it. `max-w-[110rem]` is a ceiling for ultrawide displays and only
-// binds above roughly a 2100px viewport.
+// `mx-auto` centres it. The `110rem` ceiling is for ultrawide displays and binds above a
+// 1913px viewport at a 16px root, which is `1760 / 0.92` -- not the 2100px this comment
+// used to claim, and the gap matters because 1920 is a common desktop width that sits on
+// the binding side of it. Two things downstream have to account for the ceiling rather
+// than assume it never binds first: the hero photo's `sizes`, and the fish tank's
+// height-led width, which keeps growing with viewport height after this has stopped
+// growing with viewport width.
 //
 // MONOTONIC AND CONTINUOUS, which is the property this must not lose. Below the 400px
 // crossover the width is `100vw - 2rem`; above it the two `1rem` terms cancel and it is

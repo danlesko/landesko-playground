@@ -91,21 +91,33 @@ export default async function Home() {
           // why that ratio appears here and in the wrapper's max-width.
           //
           // The conversion lives on the WRAPPER rather than as a max-height on the
-          // image, and that is not a style preference. Cap the height and leave the
-          // width automatic and the image's layout size becomes its INTRINSIC size --
-          // the pixel size of whichever srcset candidate the browser downloaded -- so
-          // `sizes` would be feeding a value that then determines the very thing it
-          // is supposed to describe. Measured: declared 472.67px against a rendered
-          // 283.59px, a circular dependency rather than an arithmetic error. Keeping
-          // the image at a full-width rule inside a width-capped
-          // wrapper leaves the layout CSS-determined and the contract checkable.
+          // image, and that is not a style preference -- it is what makes this
+          // attribute checkable at all. Cap the height and leave the width automatic
+          // and the image is sized as a replaced element from its INTRINSIC size,
+          // which for a `w`-descriptor srcset is the candidate's width divided by its
+          // computed density -- i.e. whatever `sizes` evaluated to when the candidate
+          // was chosen. Measured directly in that form at a 720px viewport height: a
+          // `w:384` candidate, natural 378x504, rendered 378x504. So the rendered
+          // width WAS the declared width, and `sizes` was describing a length it had
+          // itself produced. Any gap between selection time and measurement time then
+          // shows up as a width mismatch, which is the failure this form produced
+          // (declared 472.67px against a rendered 283.59px). That exact pair did not
+          // reproduce under a deliberate sweep of settle times, so treat the specific
+          // number as unexplained -- the circularity is the measured part, and it is
+          // the part the wrapper form removes. With the image at a full-width rule
+          // inside a width-capped wrapper the layout width comes from the containing
+          // block, so it cannot depend on which candidate was fetched, or on whether
+          // one was fetched at all.
           //
-          // NO MEDIA QUERY, because neither this cap nor the column's has a
-          // breakpoint. The photo's box is its own 42rem cap or the column, whichever
-          // is smaller. The column is `<main>`'s box less a `max(0px, 4vw - 1rem)`
-          // gutter a side, which is what the second half of this expression
-          // restates. The column's own 110rem ceiling never binds first, since 42rem
-          // is always the smaller of the two.
+          // NO MEDIA QUERY, because none of the three terms has a breakpoint. The
+          // photo's box is the smallest of: the height-derived cap above, the
+          // column's `110rem` ceiling, and the column's own width -- `<main>`'s box
+          // less a `max(0px, 4vw - 1rem)` gutter a side. All three are needed. The
+          // `110rem` term used to be omitted on the grounds that a 42rem photo cap
+          // was always smaller; a height-derived cap is not, and above roughly a
+          // 1913px viewport width the column stops growing while the cap does not.
+          // Codex caught that when the cap changed and the reasoning behind the
+          // omission was not revisited.
           //
           // The attribute used to carry a `(min-width: 1024px)` branch purely to
           // mirror a `lg:`-prefixed column. That prefix was removed because it made
@@ -125,7 +137,7 @@ export default async function Home() {
           //
           // The e2e test varies the root font size as well as the viewport, which is
           // the only reason either mistake was visible.
-          sizes="min(calc(70vh * 1286 / 1714), calc(100vw - 2rem - 2*max(0px, 4vw - 1rem)))"
+          sizes="min(calc(70vh * 1286 / 1714), 110rem, calc(100vw - 2rem - 2*max(0px, 4vw - 1rem)))"
           className="h-auto w-full"
           priority
         />

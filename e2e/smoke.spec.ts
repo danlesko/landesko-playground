@@ -89,7 +89,10 @@ test("the home hero links to every destination it promises", async ({
 
 /**
  * The `sizes` contract that #10 warned about in as many words. The hero is a single
- * column as of #135, capped at `42rem` from `lg` up, and if the page structure or
+ * column as of #135, and since #138 the photo is bounded by HEIGHT rather than by a
+ * fixed measure -- `70vh` converted to the width that produces it -- so the declared
+ * width is the smallest of that cap, the column's `110rem` ceiling and the column's
+ * own width. If the page structure or
  * the cap changes without that attribute being updated the browser is left choosing
  * a candidate against a width the image no longer has -- and nothing about the
  * layout changes to announce it. Declare too large and the cost is bytes nobody
@@ -116,13 +119,24 @@ test("the home hero links to every destination it promises", async ({
  * relationship rather than a frozen constant, which is the difference between a
  * test that survives a legitimate change and one that gets muted for crying wolf.
  *
- * Sensitivity changed with #135 and is now 1:1 in the band where the cap does not
- * bind, and 0 where it does. Since #136 there is no rail to change: the content box
- * is `100vw - 32px` at every width, and above `lg` the declared width is the cap, so
- * the rendered width only moves once the box drops below `42rem`. The `min()` in the
- * attribute is what keeps the two equal when it does -- at a large root font size.
+ * Sensitivity is 1:1 in whichever of the three terms is binding and 0 in the other
+ * two, which is why the cases below have to span all three. Since #136 there is no
+ * rail; since #138 the column is `100vw - 2rem` less a `max(0px, 4vw - 1rem)` gutter
+ * a side, capped at `110rem`. The `min()` in the attribute is what keeps declared and
+ * rendered equal as the binding term changes hands.
  * The sub-pixel tolerance is kept: it was tightened because a whole pixel of slack
  * passed a 250px -> 252px rail back when the column was half the box.
+ *
+ * One thing this test established that is worth not re-deriving: the image must be
+ * sized by CSS, not left to its intrinsic size. An earlier form of #138 capped the
+ * image's height and left its width automatic, which makes a replaced element take
+ * its width from the selected candidate's density-corrected size -- i.e. from
+ * whatever `sizes` evaluated to. Measured in that form at a 720px height: candidate
+ * `w:384`, natural 378x504, rendered 378x504. The attribute was then describing a
+ * length it had produced, and this test cannot check a tautology. It failed anyway,
+ * with a 283.59px render against a 472.67px declaration, and that specific pair never
+ * reproduced under a sweep of settle times -- so the lesson on record is the
+ * circularity, not the number.
  *
  * And the limit, since sampling is not proof: this checks the widths listed below.
  * A width constraint introduced at a breakpoint above the largest of them, or active
@@ -153,19 +167,31 @@ test("the home hero image declares the width it actually renders", async ({
   // size, which is a setting rather than an edge case. Full-page zoom is NOT the same
   // thing and would not have caught either bug: it scales the CSS pixel, so every rem
   // and every px term moves together and the arithmetic stays consistent while wrong.
-  for (const [width, rootPx] of [
-    [1280, 16],
-    [1281, 16],
-    [1600, 16],
-    [1024, 16],
-    [1023, 16],
-    [768, 16],
-    [390, 16],
-    [1440, 24],
-    [1024, 24],
-    [1024, 20],
+  // VIEWPORT HEIGHT is a third dimension now, and it was missing. Every case here used
+  // to be 900px tall, which meant the `70vh` term -- the one that decides the width at
+  // most sizes -- was only ever evaluated at a single height. A height-independent
+  // mistake in it would have passed all ten. 600 and 4000 are the two that matter:
+  // 600 is a short laptop where the height cap is the binding term by a wide margin,
+  // and 4000 is tall enough that the cap stops binding and the column's `110rem`
+  // ceiling takes over. That last case is the one that catches an omitted ceiling
+  // term: without `110rem` in the expression it declares 2101px against a rendered
+  // 1760px.
+  for (const [width, height, rootPx] of [
+    [1280, 900, 16],
+    [1281, 900, 16],
+    [1600, 900, 16],
+    [1024, 900, 16],
+    [1023, 900, 16],
+    [768, 900, 16],
+    [390, 900, 16],
+    [1440, 900, 24],
+    [1024, 900, 24],
+    [1024, 900, 20],
+    [1440, 600, 16],
+    [2560, 4000, 16],
+    [2560, 4000, 24],
   ] as const) {
-    await page.setViewportSize({ width, height: 900 });
+    await page.setViewportSize({ width, height });
     await page.evaluate((px) => {
       document.documentElement.style.fontSize = `${px}px`;
     }, rootPx);
@@ -279,7 +305,7 @@ test("the home hero image declares the width it actually renders", async ({
     // here as a plain mismatch, with the message below naming both numbers.
     expect(
       Math.abs(measured.actualPx - measured.declaredPx),
-      `at ${width}px wide with a ${rootPx}px root, sizes declares ${measured.declared} = ${measured.declaredPx}px but the image renders ${measured.actualPx}px`,
+      `at ${width}x${height} with a ${rootPx}px root, sizes declares ${measured.declared} = ${measured.declaredPx}px but the image renders ${measured.actualPx}px`,
     ).toBeLessThan(0.02);
   }
 });
@@ -1547,41 +1573,80 @@ test.skip(
  * page ended up 232px wider than the window at this size, and at 1024x768,
  * 1024x900 and 1440x900 too.
  *
- * #136 removed the rail, and that made this guard INSENSITIVE to the defect it was
- * written for. Measured, not reasoned: deleting `measureAvailableWidth()` from the
- * tall branch leaves this test passing.
+ * #136 removed the rail, and for a while that made this guard INSENSITIVE to the
+ * defect it was written for: with the container at `windowWidth - 32` and the width
+ * expression already reserving 50px, the clamp could not change the result, and
+ * deleting `measureAvailableWidth()` left this test passing. The docblock then said
+ * restoring sensitivity "needs a viewport where the two expressions disagree, and
+ * with the rail gone there is none."
  *
- * The arithmetic is why. The tall branch is `min(windowWidth - 50, container)`, and
- * the container is now `windowWidth - 32`. Since the 50px reserve exceeds the 32px
- * of padding, the unclamped expression is already narrower than the box and the
- * clamp cannot change the result. Beside a 250px rail the container was
- * `windowWidth - 282`, so the unclamped expression exceeded it by 232px -- which is
- * exactly the overflow recorded above. The wide branch reserves 300px and is
- * likewise past the 32px padding.
+ * #138 gave the container two reasons to be narrower than `windowWidth - 32`, and
+ * BOTH viewports below are now sensitive. Measured by mutation, not reasoned:
+ * replacing the clamp with `Infinity` fails at 1280x1024 AND at 2560x1440.
  *
- * So `measureAvailableWidth()` is now defence in depth rather than load-bearing, and
- * nothing in this suite would notice its removal. The test is kept because "the page
- * is never wider than the viewport" is still worth asserting end to end, and it would
- * catch a NEW way of overflowing -- but it is no longer evidence that the clamp
- * works. Restoring that sensitivity needs a viewport where the two expressions
- * disagree, and with the rail gone there is none. Measured after the move: no
- * horizontal overflow at 1024x800, 1440x900 or 1920x1080.
+ *   - gutters. The canvas moved inside the shared content column, so the box is
+ *     `windowWidth - 32` less a `max(0px, 4vw - 1rem)` gutter a side. At 1280 that is
+ *     1178px against an unclamped 1230px -- a 52px overshoot, from a change that
+ *     looked purely like alignment.
+ *   - the ceiling. Past a 1913px viewport the box stops growing with width while the
+ *     height-led expression keeps growing with height. 2560x1440 asks for
+ *     `1440 * 1.605 - 300` = 2011px inside a 1760px column, a 251px overshoot, larger
+ *     than the 232px the rail used to produce.
+ *
+ * The second is worth its own viewport even though the first already fails, because
+ * they are independent -- raising the ceiling or dropping the gutters silences one and
+ * not the other, and only the ceiling case exercises the branch where viewport HEIGHT
+ * drives the overshoot.
+ *
+ * And the reason this test grew a second assertion: at 2560x1440 the page does NOT
+ * scroll sideways when the canvas overshoots. The column is centred with roughly 400px
+ * of gutter a side, so a 251px overshoot is absorbed by space that was empty anyway.
+ * The page-level check is blind to it -- measured, it reports 0 while the canvas is
+ * 2011px in a 1760px box. That is still a real defect: the canvas breaks out of the
+ * column and stops lining up with the text above it, which is the complaint #138 was
+ * filed for in the first place. So `scrollWidth` is no longer sufficient here, and the
+ * canvas-against-its-box assertion is the one that actually fails.
  */
 test("the p5 canvas does not push the page wider than the viewport", async ({
   page,
 }) => {
-  await page.setViewportSize({ width: 1280, height: 1024 });
-  await page.goto("/animation");
-  // Same reason as the mount test above: the canvas is client-only, so there is
-  // nothing to measure until p5 has run `setup`.
-  await expect(page.locator("canvas")).toBeVisible({ timeout: 15_000 });
+  for (const { width, height, why } of [
+    { width: 1280, height: 1024, why: "width-led branch, ceiling not binding" },
+    {
+      width: 2560,
+      height: 1440,
+      why: "width-led branch past the 110rem ceiling",
+    },
+  ]) {
+    await page.setViewportSize({ width, height });
+    await page.goto("/animation");
+    // Same reason as the mount test above: the canvas is client-only, so there is
+    // nothing to measure until p5 has run `setup`.
+    await expect(page.locator("canvas")).toBeVisible({ timeout: 15_000 });
 
-  const overflow = await page.evaluate(
-    () =>
-      document.documentElement.scrollWidth -
-      document.documentElement.clientWidth,
-  );
-  expect(overflow).toBe(0);
+    const measured = await page.evaluate(() => {
+      const root = document.documentElement;
+      const canvas = document.querySelector("canvas")!;
+      const box = canvas.parentElement!;
+      return {
+        overflow: root.scrollWidth - root.clientWidth,
+        canvasWidth: canvas.getBoundingClientRect().width,
+        boxWidth: box.clientWidth,
+      };
+    });
+
+    expect(
+      measured.overflow,
+      `${width}x${height} (${why}) scrolls sideways`,
+    ).toBe(0);
+    // The page-level assertion above only fails once <main> has already widened.
+    // This one names the cause directly, so a regression reports "canvas 2011 in a
+    // 1760 box" rather than "the document is 251px too wide".
+    expect(
+      measured.canvasWidth,
+      `${width}x${height} (${why}): canvas ${measured.canvasWidth} exceeds its ${measured.boxWidth}px box`,
+    ).toBeLessThanOrEqual(measured.boxWidth);
+  }
 });
 
 /**

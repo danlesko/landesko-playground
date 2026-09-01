@@ -97,10 +97,12 @@ export function createFishTankSketch(
       }
     };
 
-    // p5.windowWidth is the whole viewport, but from `lg` up the canvas only
-    // has the viewport minus <main>'s 32px of padding. It was also minus a 250px
-    // rail until #136 moved the nav under the header, so this box is 250px wider
-    // than the figures further down were measured against.
+    // p5.windowWidth is the whole viewport; the canvas has considerably less. Its
+    // box is the shared content column, which is `<main>`'s content box (the
+    // viewport less `p-4`, so 2rem) less a `max(0px, 4vw - 1rem)` gutter a side and
+    // capped at 110rem. Two changes moved this: #136 removed a 250px rail, and #138
+    // put the canvas inside the column instead of letting it span `<main>`. Figures
+    // further down that predate those are flagged where they appear.
     // Sizing from the viewport made the canvas overrun <main>, and because
     // <main> is a flexbox child whose min-width defaults to auto it widened to
     // fit rather than clip, pushing the page 232px past the viewport. So
@@ -155,9 +157,9 @@ export function createFishTankSketch(
     // to a "comfortable" 320 does reintroduce #57 — measured at 16px of page
     // overflow on a 320px-wide viewport — so there is an e2e guard at that
     // width. The 1280x1024 overflow guard cannot see it: available width there
-    // was 998 and so was the canvas. Since #136 the same viewport gives a 1248px
-    // box, so the canvas is larger; the relationship this comment describes is
-    // unchanged, only the number.
+    // was 998 and so was the canvas. That viewport now gives a 1178px box -- #136
+    // removed the rail and #138 subtracted the column's gutters -- so the canvas is
+    // larger; the relationship this comment describes is unchanged, only the number.
     //
     // These stop the crash; they do not make the result look right, and it would
     // be wrong to read them as a "smallest usable tank". Seaweed blades are still
@@ -201,7 +203,27 @@ export function createFishTankSketch(
     // `(200 - 110)/735` to `(200 + 320)/735`. A too-short canvas was the entire
     // reason the lower fish were drawn underneath it.
     const updateCanvasDimensions = () => {
-      const requestedWidth =
+      // The container clamps BOTH branches. The wide branch used to be unclamped,
+      // on the reasoning that a height-led width is always smaller than the box --
+      // which held while the box was `<main>`'s content box, i.e. the viewport less
+      // 32px. It stopped holding when the content column gained a `110rem` ceiling,
+      // because the canvas keeps growing with viewport height after the column has
+      // stopped growing with viewport width. Worked example: 2560x1440 asks for
+      // 1440*1.605 - 300 = 2011px inside a 1760px column.
+      //
+      // Worth knowing how that one FAILS, because it is not #57. There the canvas
+      // widened `<main>` -- a flex child whose `min-width` defaults to auto -- and
+      // pushed the whole page sideways. Here the column is centred with roughly 400px
+      // of gutter a side, so the 251px overshoot lands in space that was empty and
+      // `scrollWidth` stays clean. What breaks is alignment: the canvas escapes the
+      // column and no longer lines up with the text above it, which is the thing #138
+      // was filed about. The e2e guard therefore asserts the canvas against its box
+      // and not just against the viewport.
+      //
+      // Clamping is safe rather than merely corrective: `Math.min` only bites when
+      // the container is the smaller of the two, which is exactly the overflow case.
+      // Every viewport where the height genuinely binds is unaffected.
+      const requestedWidth = Math.min(
         p5.windowWidth / p5.windowHeight > aspectRatio
           ? // Wide: viewport height binds, and 300px is reserved for the heading
             // and copy above the canvas. Keeping that reserve on the *width*
@@ -210,8 +232,10 @@ export function createFishTankSketch(
             // viewport height). /animation already scrolls at 1280x720, so the
             // reserve was not keeping anything in view.
             p5.windowHeight * aspectRatio - 300
-          : // Tall: the container's width binds.
-            Math.min(p5.windowWidth - 50, measureAvailableWidth());
+          : // Tall: the viewport width binds, less a 50px allowance.
+            p5.windowWidth - 50,
+        measureAvailableWidth(),
+      );
 
       const canvasWidth = Math.max(minCanvasWidth, requestedWidth);
 
