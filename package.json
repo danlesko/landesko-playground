@@ -34,7 +34,6 @@
     "react-dom": "^19.0.0",
     "react-google-recaptcha": "3.1.0",
     "react-p5-wrapper": "4.1.2",
-    "tailwind-scrollbar": "4.0.2",
     "zod": "3.24.2"
   },
   "devDependencies": {

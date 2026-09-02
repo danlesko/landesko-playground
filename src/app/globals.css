@@ -52,25 +52,75 @@
 /* The same two globs v3 had, spelled out rather than left to detection. */
 @source "../components/**/*.{js,ts,jsx,tsx,mdx}";
 @source "../app/**/*.{js,ts,jsx,tsx,mdx}";
+/* Test files cannot contribute a class that ships, so scanning them can only produce
+   false candidates (#141). Correct in principle and worth almost nothing in practice:
+   measured at 30 bytes gzipped, 0.24%.
+
+   The number is recorded because the instinct this guards against is worth naming. The
+   extractor has no notion of syntax, so PROSE IN COMMENTS becomes class candidates, and
+   it is tempting to treat every stray utility word as a defect. It is not: the whole
+   comment-derived cost across the repo is tens of bytes. What actually matters is a bare
+   word that happens to be a valid utility in a file with no other consumer for it -- the
+   Tailwind 4 migration wrote "ring" fourteen times in prose and emitted a `.ring` rule
+   nothing used, and before that a single unused PLUGIN cost 12,309 bytes (#133). Audit
+   plugins and globs; do not police vocabulary. */
+@source not "../**/*.test.{js,ts,jsx,tsx}";
 /* rewind-ui ships compiled class strings; without this its utilities stop being emitted
    and every Button, Input, Textarea, Checkbox and Modal renders unstyled. `node_modules`
-   is excluded by default in v4, so this has to be explicit. */
-@source "../../node_modules/@rewind-ui/core/dist/theme/styles/*.js";
+   is excluded by default in v4, so this has to be explicit.
 
-/* `nocompatible` gates the rounded/size utilities, and it still exists in 4.0.2. The
-   version bump from 3.1.0 was not optional -- its peer range is `4.x`.
-   Confirmed loaded rather than assumed: the build emits `scrollbar-thumb-rounded-lg`,
-   which only exists when `nocompatible` is on.
+   TEN FILES, NOT ALL 33 (#134). This used to be `*.js`, which harvested candidates from
+   Accordion, Calendar, Table, Tooltip and nineteen more components that cannot render
+   here. Measured across both rewind globs: 18,297 -> 12,351 gzipped, a 32.5% reduction,
+   and 1,228 emitted classes down to 707.
 
-   @rewind-ui/core declares `tailwind-scrollbar: ^3.0.5`, so pnpm keeps a second copy of
-   3.1.0 in the tree that the root bump does not satisfy. It is inert and deliberately
-   left alone: rewind-ui mentions the package only in its README, never in code, so
-   nothing imports it, and `@plugin` below resolves from this file upward to the root's
-   4.0.2. An override forcing rewind onto 4.0.2 would be tidier and would also be a claim
-   about a dependency nobody loads. */
-@plugin "tailwind-scrollbar" {
-  nocompatible: true;
-}
+   Ten and not the five we import, which is the part worth getting right. The five pull in
+   others internally -- Modal renders an Overlay, and Spinner renders inside a Button while
+   a form is submitting. Narrowing to just the five DOES build and saves more, and it
+   strips the Overlay's fill and blur so the Modal's backdrop stops being drawn at all.
+
+   Three of the ten -- Dropdown, FormControl and InputGroup -- are reached only as context
+   providers and hooks, and never render anything here. They are kept because this list is
+   the mechanical closure of relative imports and the test recomputes it the same way, so
+   trimming them by hand would only make the two disagree. There are no dynamic imports in
+   that subtree to miss.
+
+   `src/components/ui/rewindSources.test.ts` recomputes that closure and fails if it stops
+   matching, because the failure mode is silent. Add a rewind-ui import without touching
+   these lines and that test tells you -- as long as it is a named import,
+   `import { X } from "@rewind-ui/core"`, which is how every call site is written today. A
+   namespace import or a re-export through another module would slip past it. */
+@source "../../node_modules/@rewind-ui/core/dist/theme/styles/{Button,Checkbox,Dropdown,FormControl,Input,InputGroup,Modal,Overlay,Spinner,Textarea}.styles.js";
+/* AND the component implementations, not only their theme styles. This was missed on the
+   first pass and codex caught it: a component can hardcode classes in its own JSX rather
+   than take them from the theme. `Checkbox.js` does exactly that -- `grid grid-cols-1
+   justify-items-start` is inline in the component.
+
+   Under the old wildcard that class was emitted by ACCIDENT, because Combobox's style file
+   happens to contain it too. Excluding Combobox took it away, and the authenticated create
+   form's checkbox lost its layout with a green build, a passing suite, and no warning.
+
+   That is also a lesson about the audit rather than just the glob. I verified "nothing was
+   lost" by diffing class tokens across the ten retained STYLE files, which is the wrong
+   set: it cannot see a class that only ever appears in an implementation file. Re-run
+   across all 24 reachable implementation files, exactly one class was missing, and this is
+   it. */
+@source "../../node_modules/@rewind-ui/core/dist/components/{Button,Checkbox,Dropdown,FormControl,Input,InputGroup,Modal,Overlay,Spinner,Textarea}/**/*.js";
+
+/* NO `tailwind-scrollbar` PLUGIN. It was declared and nothing used it -- the same shape
+   as the `@tailwindcss/typography` finding in #133, and found the same way.
+
+   Nothing in `src/` carries a `scrollbar*` class in markup. Three mentions in
+   MainNav.tsx are prose about horizontal scrollbars, and `scrollbar` is itself one of the
+   plugin's classes, so those comments were the plugin's only consumer -- it was emitting
+   rules to describe itself. Within rewind-ui only Combobox and Sidebar use its utilities,
+   and this app imports neither; it renders its own nav.
+
+   Worth 123 bytes gzipped on top of the glob narrowing, which is small, but the reason to
+   remove it is that a declared plugin reads as a dependency the design relies on. If a
+   custom scrollbar is ever wanted it comes back as a dependency plus an `@plugin` line,
+   not one line -- and at 4.x, since 3.1.0's peer range is `3.x`. */
+
 /* `class` and not `base`, and this is load-bearing: rewind-ui supplies every form control
    in the app, so the `base` strategy would restyle its inputs underneath it. Verified on
    v4: `class` emits the `.form-*` classes and restyles zero elements, where `base`
