@@ -10,10 +10,14 @@ import { contentColumnClasses } from "@/components/ui/layout";
  * WHY THIS EXISTS. `BlogBodyAbbr` is the only place the app renders a modal, and until now
  * nothing could render it: the delete trigger is behind `session?.user`, and the card itself
  * is rendered by `BlogList` from Postgres rows. So the modal had no unit coverage, no e2e
- * coverage, and axe never reached it. Two silent regressions shipped through that gap in one
- * evening -- a missing `justify-items-start` (#144) and a checkbox contrast defect (#145) --
- * each found only by hand-rendering the component on a throwaway route and measuring it.
- * This is that throwaway route, kept.
+ * coverage, and axe never reached it.
+ *
+ * Two regressions shipped in one evening through the SAME KIND of gap -- a dropped grid
+ * utility and a checkbox contrast defect, both on the authenticated create form (#144, #145)
+ * -- and each was found only by hand-rendering the component on a throwaway route. Those were
+ * a different unrenderable component, not this one; what they establish is that the technique
+ * works and the gap is general. Kept as a route, this one immediately found an unnamed dialog
+ * and a focus trap that engages late.
  *
  * It needs NO authentication, which is the part worth knowing before reaching for the
  * alternative. `BlogBodyAbbr` takes `session`, `blog` and `deleteBlogPost` as props, so a
@@ -30,8 +34,10 @@ import { contentColumnClasses } from "@/components/ui/layout";
  * all it should ever grow to be.
  */
 
-// The gate. Production never sets this, so the route 404s there; the Playwright config sets
-// it for the test server. A `notFound()` rather than a build-time exclusion because the route
+// The gate. Production must not set this, and nothing in the repository can prove it does
+// not -- that is a deployment fact, not a code one. What the repository does guarantee is
+// that only playwright.config.ts sets it, which is asserted in
+// src/test/e2e-fixture-gate.test.ts. A `notFound()` rather than a build-time exclusion because the route
 // has to exist in the same production build the e2e suite runs against -- that is the whole
 // point of `webServer: pnpm start`, and a build that differs from the one under test would
 // make the coverage worthless.
@@ -41,9 +47,9 @@ import { contentColumnClasses } from "@/components/ui/layout";
 // switch it on.
 const FIXTURES_ENABLED = process.env.E2E_FIXTURES === "1";
 
-// Fixed values, never `new Date()`. A card renders its date as a relative string, so a live
-// clock would make the rendered text change between runs and any screenshot comparison
-// useless. This instant is arbitrary and in the past.
+// A fixed instant, never a live clock -- `new Date()` with no argument. A card renders its
+// date as a relative string, so reading the clock would make the rendered text change between
+// runs and any screenshot comparison useless. This instant is arbitrary and in the past.
 const BLOG = {
   id: "fixture-1",
   title: "Fixture post",

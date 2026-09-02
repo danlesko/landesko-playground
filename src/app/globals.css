@@ -269,9 +269,13 @@ body {
      Measured through a scratch route, since the Modal needs a signed-in session.
      Sampling computed style every frame under emulated `reduce`, before this rule
      the modal ran through 17 distinct transforms, sliding 100px; after it, one,
-     pinned at `none`. With `no-preference` it still ran (13 distinct). The harness
-     is deleted, so those numbers are a record of a measurement rather than
-     something this repo can re-run — which is also why there is no e2e guard.
+     pinned at `none`. With `no-preference` it still ran (13 distinct).
+
+     That harness is no longer gone. `src/app/e2e-fixture/blog-card` renders the Modal
+     without needing a session, so `e2e/modal.spec.ts` re-runs this: it asserts the transform
+     never varies from `none` under `reduce`, with a control proving it DOES vary without the
+     preference, so neither half can pass vacuously. The numbers above stay as a record; the
+     property itself is now guarded.
 
      `transform` only, never `opacity`, because the preference is about movement and
      a fade is not movement. An earlier version of this comment justified it instead

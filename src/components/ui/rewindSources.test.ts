@@ -5,9 +5,13 @@ import { dirname, join, resolve } from "node:path";
 /**
  * Guards the narrowed `@source` glob for rewind-ui (#134).
  *
- * globals.css used to scan every one of rewind-ui's 33 compiled style files. The app
- * imports five components, so most of that was candidates for markup that cannot render
- * here -- 32.0% of the gzipped stylesheet, measured.
+ * globals.css used to scan every one of rewind-ui's 33 compiled style files. Most of that was
+ * candidates for markup that cannot render here -- 32.0% of the gzipped stylesheet when this
+ * was written.
+ *
+ * The glob now names two files, and two is the load-bearing number rather than one: the app
+ * imports only Modal, and Modal renders an Overlay. Narrowing to `Modal` alone builds cleanly
+ * and strips the Overlay's fill and blur, so the backdrop stops being drawn.
  *
  * The glob now names ten files, and ten is the load-bearing number. It is NOT the five we
  * import: those render others internally, and Modal in particular renders an Overlay.
