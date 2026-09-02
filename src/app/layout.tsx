@@ -96,15 +96,23 @@ export default async function RootLayout({
               viewport, oklab moved the midpoint from rgb(66,109,209) to
               rgb(107,121,211) even with identical stops -- and it lightened the
               cyan end enough to drop the white site title from 3.24:1 to 2.93:1,
-              under the 3:1 that 20px bold needs. With `/srgb` and the two stops
-              pinned in globals.css, a full-page pixel comparison of three routes
-              at two widths differs by zero pixels from v3.
+              under the 3:1 that 20px bold needs. With `/srgb` and the stops moved
+              onto semantic tokens in globals.css, the header renders byte-for-byte
+              identical to v3: `/` and `/credits` compare at a maximum per-channel
+              difference of ZERO across the whole page, at 1440x900 and 390x844.
+
+              The stops are semantic rather than stock for a reason worth keeping.
+              The first version of this fix pinned `--color-purple-700` and
+              `--color-cyan-500` back to their v3 hex values, which fixed the header
+              and also quietly redefined two stock palette names for anything else
+              that might use them. `--brand-hover` already held this value and was
+              already documented as the left stop.
 
               If the gradient is ever re-tuned deliberately, dropping `/srgb` is
               probably the better default -- oklab avoids the grey dead zone that
               sRGB interpolation puts between complementary hues. It is held here
               only so that a toolchain migration did not change how the site looks. */}
-          <header className="row-span-1 col-span-full bg-linear-to-r/srgb from-purple-700 to-cyan-500 p-4 text-zinc-200 font-bold shadow-zinc-900 shadow-lg z-10">
+          <header className="row-span-1 col-span-full bg-linear-to-r/srgb from-brand-hover to-header-gradient-end p-4 text-zinc-200 font-bold shadow-zinc-900 shadow-lg z-10">
             <div className="flex items-center justify-between">
               <span className="flex items-center space-x-4">
                 <Image

@@ -33,7 +33,7 @@ const REPO_ROOT = new URL("../../../", import.meta.url).pathname;
 // The override strings carry two concerns now: the background fills these tests are
 // about, and a `focus:ring-[3px]` width restored for Tailwind v4 (see button.ts). Every
 // fill assertion below selects the fills explicitly rather than assuming the whole
-// string is backgrounds -- it used to assume that, and the ring class broke three
+// string is backgrounds -- it used to assume that, and the ring-width class broke three
 // assertions at once when it was added.
 const fillsOf = (classes: string): string[] =>
   classes.split(" ").filter((candidate) => candidate.includes("bg-"));
@@ -249,18 +249,23 @@ describe.each(FILLED)(
 // string. That weaker check passes on a config that maps the variable to a
 // *differently named* utility -- nesting `fill` under `hover` would emit
 // `bg-danger-hover-fill` and satisfy it while every override above stayed inert.
-it("has a real utility behind every fill the overrides name", () => {
+it("declares a theme token for every fill the overrides name", () => {
   // Reads globals.css's `@theme` block. This used to resolve `tailwind.config.ts`
   // through `tailwindcss/resolveConfig`; v4 is CSS-first and that file is gone, so the
   // palette now has exactly one declaration site and this reads it.
   //
-  // Equal strength to what it replaced, and worth being precise about why. The old
-  // check was against a RESOLVED config, not against emitted CSS, so it never proved a
-  // rule existed either -- it proved the palette mapped the exact utility name. This
-  // proves the same thing from the same source of truth, and it keeps the property the
-  // comment below cares about: nesting `fill` under `hover` would declare
-  // `--color-danger-hover-fill` and fail here, where a grep for the `var()` string
-  // would not.
+  // WEAKER than what it replaced, and worth saying so rather than claiming parity. The
+  // old check handed the config to Tailwind's own resolver, so it could only pass if
+  // Tailwind agreed the name existed. This reads the file with a regex, so it would also
+  // pass on a declaration that is commented out, nested somewhere invalid, or otherwise
+  // never reaches the compiler. What it does still catch is the thing the comment below
+  // cares about -- nesting `fill` under `hover` would declare
+  // `--color-danger-hover-fill` and fail here, where a grep for the `var()` string would
+  // not -- and it catches an outright missing token.
+  //
+  // The stronger version compiles globals.css with Tailwind and asserts on the emitted
+  // rule. That means a real compile inside a unit test, which is why it is not done here;
+  // it is the right follow-up if this ever passes over a real defect.
   const themeBlock = /@theme\s*\{([\s\S]*?)\n\}/.exec(
     readFileSync(join(REPO_ROOT, "src/app/globals.css"), "utf8"),
   );
@@ -290,29 +295,29 @@ it("has a real utility behind every fill the overrides name", () => {
  * The `focus:ring-[3px]` half of the override strings, which the fill assertions above
  * deliberately ignore.
  *
- * Tailwind v4 narrowed the default ring from 3px to 1px. rewind-ui's Button asks for a
- * bare `ring`, so on v4 every Button in this app would have had a 1px focus indicator --
+ * Tailwind v4 narrowed the default ring-width from 3px to 1px. rewind-ui's Button asks for a
+ * bare ring-width class, so on v4 every Button in this app would have had a 1px focus indicator --
  * a WCAG 2.4.11 concern rather than a cosmetic one. The colour was never affected, since
- * rewind-ui names an explicit ring colour per variant.
+ * rewind-ui names an explicit ring-colour utility per variant.
  *
  * Two things are pinned, and the second is the one that could rot quietly:
  *
  *  1. both override strings still carry the width.
- *  2. tailwind-merge still treats an arbitrary ring width as conflicting with the
- *     library's bare `ring`, so the override REPLACES it rather than joining it. If that
+ *  2. tailwind-merge still treats an arbitrary ring-width value as conflicting with the
+ *     library's bare ring-width class, so the override REPLACES it rather than joining it. If that
  *     stopped holding, both classes would be emitted and the narrower could win on source
  *     order. rewind-ui bundles tailwind-merge 1.14.0, whose conflict tables predate v4,
  *     so this is an assumption about a vendored transitive dependency and not about our
  *     own code.
  */
 describe.each(FILLED)(
-  "the $name override's focus ring",
+  "the $name override's focus-indicator width",
   ({ props, override }) => {
     it("names an explicit 3px width", () => {
       expect(override.split(" ")).toContain("focus:ring-[3px]");
     });
 
-    it("replaces the library's bare ring rather than joining it", () => {
+    it("replaces the library's default ring-width class rather than joining it", () => {
       const rendered = rewindClasses(props, override);
       expect(
         rendered,
@@ -322,7 +327,7 @@ describe.each(FILLED)(
       // "focus:ring" and must NOT count as the bare width class.
       expect(
         rendered,
-        "the library's bare `ring` is still present, so both widths apply",
+        "the library's bare ring-width class is still present, so both widths apply",
       ).not.toContain("focus:ring");
     });
   },

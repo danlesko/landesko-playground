@@ -2,8 +2,9 @@
    and lives in this file, which is why the theme and the plugin list are here.
 
    `source(none)` DISABLES automatic source detection, and that is the load-bearing part
-   of this line rather than a stylistic choice. v4 otherwise scans the whole project from
-   the git root, which is strictly WIDER than the two globs v3 was given. Everything the
+   of this line rather than a stylistic choice. v4 otherwise scans automatically from the
+   build's working directory -- the repository root, when Next runs the PostCSS plugin --
+   which is strictly WIDER than the two globs v3 was given. Everything the
    extractor reads becomes a class candidate, including prose in comments, so widening it
    emits dead CSS from files that contain no markup at all:
 
@@ -21,6 +22,32 @@
    re-includes gitignored paths -- so these are narrow on purpose. A directory-wide
    `@source "../.."` would scan the agent worktrees. */
 @import "tailwindcss" source(none);
+
+/* HOW FAR THE "nothing changed" CLAIM ACTUALLY GOES, because it is easy to read the
+   migration as verified everywhere and it is not.
+
+   MEASURED, v3 versus v4, full-page screenshots compared per pixel:
+     `/` and `/credits`      identical, maximum per-channel difference 0
+     `/contact`              11,146 pixels at 1440x900 and 7,359 at 390x844 differ,
+                             maximum per-channel difference 4/255, and 99.8% of those
+                             differ by only 1 or 2. Confined to the form controls
+                             (x=58..1381, y=320..597 at 1440x900). The cause is
+                             rewind-ui's stock `border-gray-300`/`gray-200`, re-derived
+                             from oklch. Below any perceptual threshold, but not zero, and
+                             an earlier version of this comment said "pixel-identical"
+                             on the strength of a pixelmatch run at threshold 0.05 that
+                             reported zero. The threshold was doing the work.
+
+   NOT REACHED by any of that, and genuinely able to differ:
+     - the create form, which needs a session. Its Checkbox uses stock `purple-100`,
+       `purple-300`, `purple-500` and `purple-600`.
+     - the Modal, which needs blog data. Its overlay uses stock `bg-gray-900/50`.
+     - disabled Buttons (`disabled:bg-purple-300`) and the focus borders on Input and
+       Textarea, all stock colours.
+     - hover states anywhere.
+
+   None of those is expected to move by more than the 1-2/255 seen on /contact, since the
+   cause is the same oklch re-derivation. That is a prediction, not a measurement. */
 
 /* The same two globs v3 had, spelled out rather than left to detection. */
 @source "../components/**/*.{js,ts,jsx,tsx,mdx}";
@@ -79,34 +106,19 @@
   --color-danger-fill-hover: var(--danger-fill-hover);
   --color-focus: var(--focus);
 
-  /* TWO STOCK COLOURS PINNED TO THEIR v3 VALUES, and this is a contrast fix rather than
-     nostalgia. v4 rebuilt the default palette in oklch for wide-gamut displays, which
-     moved every stock colour slightly -- and these two are the header gradient's stops
-     (`from-purple-700 to-cyan-500` in layout.tsx).
+  /* The header gradient's end stop. Its start stop is `--brand-hover`, which already
+     carries this value and is already documented below as the gradient's left stop, so
+     only the right one needed a name.
 
-     v4's versions are LIGHTER, which lowers contrast for the white site title sitting on
-     them. Measured from rendered pixels at a 390px viewport, white against the gradient
-     directly behind the title's rightmost glyphs:
-
-       v3  rgb(30,152,211)  3.24:1   passes
-       v4  rgb(58,159,220)  2.93:1   FAILS
-
-     The title is 20px bold, so it is large text and needs 3:1 under WCAG 1.4.3. v3 was
-     already marginal at 3.24; v4's shift of -0.31 is enough to cross the line. It is only
-     the narrow viewport that fails, because the title occupies a much larger fraction of
-     the gradient's width there -- at 1440px the same glyphs sit at 5.47:1.
-
-     Pinned rather than re-tuned, because the gradient is a deliberate design element that
-     has already been kept once on the owner's call, and a migration is the wrong place to
-     change how the site looks. Restoring these two makes the header pixel-identical to v3
-     -- verified, the header was the ONLY region that differed in a full-page comparison of
-     three routes at two viewport widths.
-
-     Left as a known near-miss: 3.24:1 is not comfortable, and past the title the gradient
-     reaches 2.5:1. Nothing renders text there today. If the title ever grows, or the
-     gradient is re-tuned, that is the number to fix properly rather than preserve. */
-  --color-purple-700: #7e22ce;
-  --color-cyan-500: #06b6d4;
+     It exists so the gradient does not depend on Tailwind's STOCK palette. It used to be
+     `to-cyan-500`, and v4 rebuilt the stock palette in oklch -- which lightened that
+     colour and dropped the white site title from 3.24:1 to 2.93:1 against it, under the
+     3:1 that 20px bold needs (measured from rendered pixels at a 390px viewport, where
+     the title spans most of the gradient's width). The first fix pinned
+     `--color-cyan-500` back to its v3 hex, which worked and also silently changed that
+     stock name for anything else that might use it. A semantic token is the same fix
+     without the side effect. */
+  --color-header-gradient-end: var(--header-gradient-end);
 }
 
 /* This site is dark-only. There is no light palette and no `prefers-color-scheme`
@@ -167,6 +179,10 @@
   --danger-fill: #dc2626; /* red-600    4.83:1 under white */
   --danger-fill-hover: #b91c1c; /* red-700    6.47:1 under white */
   --focus: #67e8f9; /* cyan-300  10.28:1 on --surface */
+  /* The header gradient's right stop, formerly the stock `cyan-500`. Same value; named
+     here so the gradient is not exposed to stock-palette changes. 2.57:1 under white at
+     full strength, which is why nothing renders text over that end of the band. */
+  --header-gradient-end: #06b6d4;
 }
 
 /* Set on body rather than only on <main> so content portaled out of <main>
@@ -246,7 +262,8 @@ body {
    emits no cursor rule at all, so a native button reverts to the UA default arrow.
    rewind-ui is unaffected -- its Button ships `cursor-pointer` in its own class string --
    but this app authors five native buttons that are not rewind-ui: the nav toggle, the
-   blog excerpt's expander, and the retry control in each of the three error boundaries.
+   delete control on a blog card that opens the confirmation modal, and the retry button in
+   each of the three error boundaries.
    Restored centrally rather than by adding a class five times, because that is what the
    removed rule did and a future sixth button should not have to remember.
 

@@ -71,7 +71,7 @@ const CreateBlogForm = () => {
       </p>
 
       {/* `focus:ring-[3px]` for the same reason the Button strings carry it: rewind-ui
-          asks for a bare `ring`, which Tailwind v4 narrowed from 3px to 1px. The colour
+          asks for a bare ring-width class, which Tailwind v4 narrowed from 3px to 1px. The colour
           is unaffected -- the library names one per `color` variant. */}
       <Checkbox
         name="private"
