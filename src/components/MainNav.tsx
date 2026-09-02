@@ -157,7 +157,7 @@ const MainNav = () => {
         // the one click the scrim swallowed. It dropped a conditional bottom
         // margin that spaced it from the list; the panel is out of flow now and
         // the strip's own padding is the gap.
-        className="relative z-10 lg:hidden p-2 text-white bg-brand rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+        className="relative z-10 lg:hidden p-2 text-white bg-brand rounded focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
         onClick={toggleMenu}
       >
         <List size={24} aria-hidden="true" />
@@ -223,7 +223,7 @@ const MainNav = () => {
                   // background: it used to reuse the active-page background, so
                   // the two states were indistinguishable. Avoid bare Tailwind
                   // class words in this comment; the scanner emits them as CSS.
-                  "block p-2 rounded hover:bg-gray-400 hover:text-zinc-900 font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
+                  "block p-2 rounded hover:bg-gray-400 hover:text-zinc-900 font-semibold focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface",
                   {
                     // zinc-300 on --brand is only 3.64:1; white is 5.38:1.
                     "bg-brand text-white": isActive,
