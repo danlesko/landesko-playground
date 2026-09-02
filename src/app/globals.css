@@ -116,10 +116,13 @@
    custom scrollbar is ever wanted it comes back as a dependency plus an `@plugin` line,
    not one line -- and at 4.x, since 3.1.0's peer range is `3.x`. */
 
-/* `class` and not `base`, and this is load-bearing: rewind-ui supplies every form control
-   in the app, so the `base` strategy would restyle its inputs underneath it. Verified on
-   v4: `class` emits the `.form-*` classes and restyles zero elements, where `base`
-   restyles nine selector groups. */
+/* `class` and not `base`, and it is still load-bearing though the reason has moved. It used
+   to be that rewind-ui supplied every form control and `base` would restyle its inputs
+   underneath it. Since #143 the controls are ours, styled by `ui/form.ts` -- so `base` would
+   instead inject a second opinion beneath class strings that already say what those elements
+   look like. The plugin itself is NOT removable: `form-checkbox` is what draws the checkbox
+   and its check mark. Verified on v4: `class` emits the `.form-*` classes and restyles zero
+   elements, where `base` restyles nine selector groups. */
 @plugin "@tailwindcss/forms" {
   strategy: class;
 }
@@ -243,7 +246,8 @@ body {
    here listens for those events today; this is about not depending on that.
 
    The first rule covers only what CSS drives: the `animate-pulse` skeletons under
-   blog/, and rewind-ui's `transition-*` and `animate-spin`. The second covers the
+   blog/, the contact form's own submit spinner, and the `transition-*` on the buttons and
+   fields. The second covers the
    one JS-driven animation it can reach. The p5 sketch on /animation is neither — it
    reads `matchMedia` itself and stops (#79). */
 @media (prefers-reduced-motion: reduce) {
@@ -305,8 +309,10 @@ body {
 
    THE POINTER CURSOR. v3's preflight carried `button,[role=button]{cursor:pointer}` and v4
    emits no cursor rule at all, so a native button reverts to the UA default arrow.
-   rewind-ui is unaffected -- its Button ships `cursor-pointer` in its own class string --
-   but this app authors five native buttons that are not rewind-ui: the nav toggle, the
+   Since #143 every button in the app is native, and the filled ones carry
+   `enabled:cursor-pointer` in their shared string, so for those this rule is belt and
+   braces. It still matters for the bespoke ones, which have their own classes: the nav
+   toggle, the
    delete control on a blog card that opens the confirmation modal, and the retry button in
    each of the three error boundaries.
    Restored centrally rather than by adding a class five times, because that is what the
@@ -324,26 +330,26 @@ body {
 /* FOCUS UNDER forced-colors. This is an accessibility fix, not a cosmetic one, and it
    covers components whose source we cannot edit.
 
-   The chain: rewind-ui pairs `focus:outline-none` with `focus:ring` on its controls. In v3
+   The chain, which now runs through our own class strings rather than the library's. In v3
    `outline-none` did NOT remove the outline -- it set `outline: 2px solid transparent`
    with a 2px offset, which is the standard trick for keeping a focus indicator in Windows
    high-contrast mode, where the transparent outline is forced to a visible colour. v4
    redefined `outline-none` to genuinely mean `outline-style: none` and moved the old
-   behaviour to `outline-hidden`. rewind-ui's compiled strings still say `outline-none`, so
-   on v4 its controls suppress the outline outright, and the `box-shadow` ring they rely on
-   instead is commonly dropped under forced colors. That leaves no focus indicator.
+   behaviour to `outline-hidden`. `ui/form.ts` and `ui/button.ts` still say `outline-none`,
+   deliberately -- see the note in form.ts, because the alternative is unconditional and
+   would paint an outline on an unfocused field -- so the controls suppress the outline
+   outright and the `box-shadow` ring they rely on instead is commonly dropped under forced
+   colors. That leaves no focus indicator.
 
-   Scoped to the element types the app actually renders through rewind-ui -- Button, Input,
-   Textarea and Checkbox, the last of which reaches this as `input`. Checkbox is worth
-   noting because it does not use `outline-none` at all: it sets zero-width transparent
-   outlines, which fail the same way. Input and Textarea matter most, because
+   Scoped to the element types the app renders as form controls -- button, input and
+   textarea, the last covering the checkbox as well. The text fields matter most, because
    `src/components/ui/form.ts` deliberately reduces their ring to zero, so their border is
    the only normal-mode indicator and a border is not a dependable one here.
 
    NOT `:where()`, and that was a measured mistake rather than a style choice. The first
    version wrapped the selector in `:where()` to keep specificity at zero, on the reasoning
    that authored styles should still win. Under forced-colors emulation the rule then had no
-   effect on inputs at all: rewind-ui's Input carries a BARE `outline-none`, whose class
+   effect on inputs at all: the field strings carry a BARE `outline-none`, whose class
    selector is specificity (0,1,0), and a media query adds none -- so the zero-specificity
    rule lost. Measured: `outline-style: none` on input and textarea with the rule present.
    Element selectors plus `:focus-visible` give (0,1,1), which beats a single class, and

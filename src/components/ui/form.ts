@@ -42,13 +42,15 @@ export const formTextareaClasses = `${formFieldBase} py-3 border-gray-200`;
 
 // `form-checkbox` is @tailwindcss/forms, which is why that plugin is not removable -- it
 // supplies the box and its check mark. The rest reproduces the library's appearance: a 20px
-// box, `text-purple-500` for the mark, and the 3px focus ring restored for Tailwind 4.
+// box, `text-purple-500` for the mark, and the 3px focus ring-width restored for Tailwind 4, which
+// narrowed the default to 1px. `ring-3` rather than an arbitrary value: it is a real utility
+// and emits the same declaration.
 // Every state the library defined, not just the resting one. The check glyph comes from
 // `form-checkbox` and paints in `currentColor`, so the `text-*` steps are what colour it on
 // hover, focus and press, and `disabled:` is what stops a disabled box looking live.
 // `self-start` keeps the box aligned to the first line if the label ever wraps.
 export const formCheckboxClasses =
-  "form-checkbox self-start w-5 h-5 rounded-md cursor-pointer border-gray-300 invalid:border-red-300 bg-white hover:bg-gray-50 active:bg-gray-100 text-purple-500 hover:text-purple-600 focus:text-purple-600 active:text-purple-700 disabled:text-purple-300 disabled:hover:text-purple-300 focus:ring-purple-100 focus:ring-offset-1 focus:ring-[3px] outline-none";
+  "form-checkbox self-start w-5 h-5 rounded-md cursor-pointer border-gray-300 invalid:border-red-300 bg-white hover:bg-gray-50 active:bg-gray-100 text-purple-500 hover:text-purple-600 focus:text-purple-600 active:text-purple-700 disabled:text-purple-300 disabled:hover:text-purple-300 focus:ring-purple-100 focus:ring-offset-1 focus:ring-3 outline-none";
 
 // THE ONE DELIBERATE APPEARANCE CHANGE in this swap, and it is a contrast fix.
 //

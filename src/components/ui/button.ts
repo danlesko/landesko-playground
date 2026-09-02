@@ -8,9 +8,14 @@
 //
 // Reproduced from the rendered output rather than reinvented, the same method as ui/form.ts:
 // each variant was rendered with the props its call site passes and the emitted class list
-// captured, so what shipped is what ships. Dropped only what provably could not apply --
-// four `data-[has-*-element]` classes that exist for a component group this app never
-// imports, and the library's generated `id`, which nothing referenced.
+// captured. Be precise about how far that goes -- the CLASSES were compared for every state,
+// and five of them were compared as rendered pixels (resting primary, danger, small, loading
+// and disabled, all identical). Hover, focus and active were compared class-for-class only,
+// because reaching them needs interaction. Attributes changed too, which is not a
+// reproduction: the generated `id` and `aria-disabled` are gone and `type` is now explicit.
+//
+// Class-wise, dropped only what provably could not apply -- four `data-[has-*-element]`
+// classes that exist for a component group this app never imports.
 //
 // Also dropped: `aria-disabled`. The library set it on every button, `"false"` when enabled.
 // A native button with the `disabled` attribute is already exposed as disabled, so the
@@ -19,17 +24,27 @@
 // One thing the library did that a native element does NOT, and it is the reason every call
 // site now names `type` explicitly: rewind-ui defaulted `type="button"`, while a native
 // `<button>` inside a form defaults to submitting it. The two modal buttons relied on that
-// default. They portal out of any form and there is no form on that page, so nothing was
-// broken -- but "it happens to work because of where the portal lands" is not a thing to
-// leave implicit.
+// default.
+//
+// Nothing was broken, and the reason is narrower than it first looks. Every page has a form
+// -- the header's sign-in control is one, from the root layout -- so "no form on the page" is
+// not the answer. The answer is that the modal portals to `body`, so it is not a DESCENDANT
+// of that form and could not have submitted it. That is a fact about where a portal lands,
+// which is not a thing to leave a default resting on.
 const buttonBase =
-  "inline-flex items-center justify-center enabled:cursor-pointer focus:outline-none transition duration-150 ease-in-out focus:z-20 border border-transparent antialiased text-sm rounded-lg shadow-none text-white focus:ring-offset-1 focus:ring-[3px]";
+  "inline-flex items-center justify-center enabled:cursor-pointer focus:outline-none transition duration-150 ease-in-out focus:z-20 border border-transparent antialiased text-sm rounded-lg shadow-none text-white focus:ring-offset-1 focus:ring-3";
 
-// `focus:ring-[3px]` sits in the base because Tailwind 4 narrowed the default ring to 1px
-// and a 1px perimeter does not provide the area WCAG 2.4.11 asks for. It was an arbitrary
-// value when it had to beat the library's own bare ring-width class through tailwind-merge;
-// it stays arbitrary because 3px is the width the buttons have always had, and there is no
-// utility for exactly 3.
+// `focus:ring-3` sits in the base because Tailwind 4 narrowed the default ring-width to 1px, and a
+// 1px perimeter does not provide the area WCAG 2.4.11 asks for. 3px is the width these
+// buttons have always had.
+//
+// A real utility rather than the arbitrary-value form this used to use. That form was needed
+// when the width had to beat the library's own through tailwind-merge; with native elements
+// there is nothing to beat. `ring-3` emits an identical declaration -- they compile into the
+// same grouped rule -- and a comment here previously claimed no utility gave exactly 3,
+// which was wrong. The arbitrary spelling is deliberately not written out below: naming it
+// in a scanned comment emits its rule, which is how it lingered in the stylesheet after the
+// class string stopped using it.
 
 // rewind-ui's `variant="primary"` filled with #a855f7 under a white label, which measures
 // 3.96:1 -- short of the 4.5:1 that 14px bold needs, and 14px bold is not large text (that
@@ -49,11 +64,12 @@ const primaryFills =
 // token pair because --danger is a *text* colour (the delete icon) at 2.77:1 under white --
 // reusing it would make this worse.
 //
-// The `active:` step is the one part that was not required. The library's
-// `active:bg-red-600/90` carried real alpha, and composited over the modal's --surface it
-// resolved to #ca2626 at 5.50:1, so it passed on its own. It is overridden anyway because
-// leaving it would make *pressing* the button lighter than hovering it: #ca2626 sits between
-// red-600 and red-700.
+// The `active:` step is the one part that was not required. The library's own pressed fill
+// carried real alpha, and composited over the modal's --surface it resolved to #ca2626 at
+// 5.50:1, so it passed on its own. It is overridden anyway because leaving it would make
+// *pressing* the button lighter than hovering it: #ca2626 sits between red-600 and red-700.
+// The library's utility is described rather than named, because a scanned comment naming it
+// emits its rule.
 const dangerFills =
   "bg-danger-fill hover:bg-danger-fill-hover focus:bg-danger-fill-hover active:bg-danger-fill-hover disabled:bg-red-300 disabled:hover:bg-red-300 focus:ring-red-100";
 

@@ -33,7 +33,7 @@ import {
 const REPO_ROOT = new URL("../../../", import.meta.url).pathname;
 
 // The override strings carry two concerns now: the background fills these tests are
-// about, and a `focus:ring-[3px]` width restored for Tailwind v4 (see button.ts). Every
+// about, and a `focus:ring-3` width restored for Tailwind v4 (see button.ts). Every
 // fill assertion below selects the fills explicitly rather than assuming the whole
 // string is backgrounds -- it used to assume that, and the ring-width class broke three
 // assertions at once when it was added.
@@ -99,11 +99,11 @@ const FILLED = [
     // Resting fill first; the second covers hover, focus and active, so a white
     // label sits on both.
     tokens: ["brand", "brand-hover"],
-    // What identifies a call site in source. It is the class binding itself now, not a
-    // library prop -- there is no library prop. That is strictly better for this file's
-    // purpose: the thing being checked is "every button carries the string", and a button
-    // that forgot it cannot be found by searching for it. The count below is what closes
-    // that hole.
+    // What identifies a call site in source: the class binding itself, since there is no
+    // library prop to look for any more. Be honest about what that can and cannot do --
+    // searching for the string finds only the buttons that HAVE it, so this cannot prove
+    // every button uses one. The exact count is a change-detector, not a completeness
+    // proof; the docblock further down says what would actually close that gap.
     needle: "primaryButtonClasses",
     callSites: 3,
     binding: "primaryButtonClasses",
@@ -147,10 +147,8 @@ describe.each(FILLED)(
       expect(tokenValue(tokens[1]!)).not.toBe(tokenValue(tokens[0]!));
     });
 
-    // The link between the two halves of this file. Measuring the tokens proves
-    // nothing if the class string names a different colour, and every check
-    // above would still pass -- it compares the merge result against the
-    // override itself, so any value at all survives that one.
+    // The link between the two halves of this file. Measuring the tokens proves nothing if
+    // the class string names a different colour, and every check above would still pass.
     // The LIVE fills only. The strings also carry `disabled:bg-*`, which is the
     // library's own stock-palette value kept deliberately -- WCAG exempts inactive
     // controls and a disabled button that looked live would be worse. It has no token
@@ -162,7 +160,13 @@ describe.each(FILLED)(
       expect([...new Set(fills)].sort()).toEqual([...tokens].sort());
     });
 
-    it("dims the disabled state with a fill of its own", () => {
+    // Two halves, and the second is the one that matters. Requiring merely SOME
+    // `disabled:bg-*` passes on `disabled:bg-brand`, which would make a disabled button
+    // look live -- exactly the state this exists to prevent -- and on
+    // `disabled:bg-nonsense`, which emits no rule at all and leaves the live fill showing.
+    // The old version of this test got the second half for free by asserting the fill was
+    // still the library's; with no library it has to be asserted directly.
+    it("dims the disabled state with a fill that is not the live one", () => {
       const disabled = fillsOf(override).filter((candidate) =>
         candidate.startsWith("disabled:"),
       );
@@ -170,6 +174,20 @@ describe.each(FILLED)(
         disabled.length,
         "without a disabled fill an inactive button keeps the live colour and reads as pressable",
       ).toBeGreaterThan(0);
+
+      expect(
+        disabled.filter((candidate) =>
+          tokens.some((token) => candidate.includes(token)),
+        ),
+        "the disabled fill names a live token, so a disabled button would look pressable",
+      ).toEqual([]);
+
+      // And it has to be a real shade. These are stock palette values by design, so the
+      // theme-token assertion below skips them -- which would let a typo through.
+      expect(
+        disabled.every((candidate) => /-\d{2,3}$/.test(candidate)),
+        `${disabled.join(", ")} does not end in a palette step, so it may emit no rule`,
+      ).toBe(true);
     });
   },
 );
@@ -224,10 +242,11 @@ describe.each(FILLED)("the $name button string", ({ binding, callSites }) => {
 // only exists if the palette maps it, and an unmapped `bg-danger-fill-hover`
 // leaves the hover state with no background at all rather than a dim one.
 //
-// Resolved through Tailwind rather than by grepping the config for the `var()`
-// string. That weaker check passes on a config that maps the variable to a
-// *differently named* utility -- nesting `fill` under `hover` would emit
-// `bg-danger-hover-fill` and satisfy it while every override above stayed inert.
+// Read from the `@theme` block by name, not by searching for the `var()` string. The
+// weaker check passes on a theme that maps the variable to a *differently named* utility --
+// nesting `fill` under `hover` would declare `--color-danger-hover-fill` and satisfy it
+// while every string above stayed inert. It is a text read rather than a compile, so it
+// cannot prove Tailwind emits the rule; the note inside the test says as much.
 it("declares a theme token for every fill the overrides name", () => {
   // Reads globals.css's `@theme` block. This used to resolve `tailwind.config.ts`
   // through `tailwindcss/resolveConfig`; v4 is CSS-first and that file is gone, so the
@@ -287,7 +306,7 @@ it("declares a theme token for every fill the overrides name", () => {
  */
 describe.each(FILLED)("the $name button's focus indicator", ({ override }) => {
   it("names an explicit 3px width", () => {
-    expect(override.split(" ")).toContain("focus:ring-[3px]");
+    expect(override.split(" ")).toContain("focus:ring-3");
   });
 
   it("names a ring colour, so the indicator is not currentColor", () => {

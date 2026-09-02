@@ -252,20 +252,24 @@ const ContactForm = () => {
           attribute for `loading` too, so this is the same semantics, and it keeps a
           double submit impossible rather than relying on the handler to guard.
 
-          The CURSOR is the one place the two reasons differ, and it is the library's
-          distinction rather than an invention: a send in progress reads as `progress`,
-          an unusable form as `not-allowed`. The base string's `enabled:cursor-pointer`
-          does not apply while disabled, so this is not competing with it.
+          The CURSOR is `not-allowed` in both cases, and getting here took a correction
+          worth recording. The library emitted an unqualified progress cursor for
+          `loading` and an unqualified not-allowed for `disabled`, and its bundled
+          tailwind-merge reduced the pair to the latter whenever both applied. Since
+          `formInoperable` is itself `isSendingEmail || !recaptchaSiteKey`, both ALWAYS
+          applied while sending -- so the progress cursor never once reached the screen.
+          A first pass at this reproduced the distinction the library's source implies
+          rather than the behaviour it shipped, and would have changed the cursor during
+          every send. Showing a progress cursor may well be better; it is a change, and
+          this was not the place for one.
 
           `aria-hidden` on the spinner because it says nothing a reader needs -- the
           button is already exposed as disabled, and "Send Message" is still its name.
           A live region below the form announces the outcome. */}
       <button
         type="submit"
-        className={`mt-1 font-bold ${primaryButtonClasses} ${
-          isSendingEmail ? "cursor-progress" : "disabled:cursor-not-allowed"
-        }`}
-        disabled={formInoperable || isSendingEmail}
+        className={`mt-1 font-bold ${primaryButtonClasses} disabled:cursor-not-allowed`}
+        disabled={formInoperable}
       >
         {isSendingEmail && (
           <svg
