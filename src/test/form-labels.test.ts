@@ -9,12 +9,18 @@ import ContactForm from "@/components/ContactForm";
 import CreateBlogPage from "@/app/blog/create/page";
 
 /**
- * These assert on *rendered markup*, not on the element tree, and that is the
- * point. `<Input id="x">` is a rewind-ui component: a tree walk would only
- * confirm the prop was passed, while the association depends on the library
- * forwarding `id` onto the real control rather than onto a wrapper. Rendering
- * is what makes that observable, so a library upgrade that stopped forwarding
- * `id` fails here.
+ * These assert on *rendered markup* rather than the element tree. That used to be strictly
+ * necessary: `<Input id="x">` was a rewind-ui component, so a tree walk could only confirm
+ * the prop was passed, while the association depended on the library forwarding `id` onto
+ * the real control instead of a wrapper. Since #143 the fields are native and `id` lands
+ * directly, so the argument is weaker than it was -- an element-tree walk could compare
+ * `id` against `htmlFor` itself.
+ *
+ * Rendering is kept because it is closer to what ships and it costs nothing here, not
+ * because it is the only way. What it does still buy: these tests passed unchanged across
+ * the swap, including for the checkbox, which went from an `aria-labelledby` pointing at a
+ * library-generated id to a native `for`/`id` pair. A structural assertion that survives a
+ * change of mechanism is the point.
  *
  * Deliberately NOT asserted by accessible name. `placeholder` is a fallback in
  * the accessible-name computation, so "this control has a name" passes on the
@@ -66,8 +72,10 @@ const FORMS = {
   },
   "blog authoring form": {
     markup: () => renderToStaticMarkup(createElement(CreateBlogPage)),
-    // `private` is the rewind-ui Checkbox, which labels itself via its own
-    // `label` prop. Included so this covers every control in the form.
+    // `private` is the checkbox. It was a rewind-ui component that labelled itself
+    // through a `label` prop and an `aria-labelledby`; since #143 it is a native
+    // control with its own `<label htmlFor>`. This entry did not change across that
+    // swap, which is the useful part. Included so every control in the form is covered.
     expected: {
       title: "Title",
       content: "Content",
@@ -95,7 +103,6 @@ for (const [formName, { markup, expected }] of Object.entries(FORMS)) {
         const id = attr(control, "id");
 
         // An unlabelable target makes `for` inert, which is the failure mode if
-        // rewind-ui ever puts the id on a wrapper instead of the control.
         expect(
           LABELABLE.has(control.tag),
           `[name=${name}] is a <${control.tag}>`,
