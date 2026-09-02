@@ -1,13 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync, readdirSync } from "node:fs";
 import { join } from "node:path";
-import { createElement, type ComponentProps } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
-import { Button } from "@rewind-ui/core";
 
 import {
   dangerButtonClasses,
   primaryButtonClasses,
+  primaryButtonSmClasses,
 } from "@/components/ui/button";
 
 /**
@@ -15,9 +13,13 @@ import {
  * each fails on its own:
  *
  *  1. the token values still measure up under a white label,
- *  2. tailwind-merge still lets the override win over the library's own
- *     background utilities rather than leaving both in the class list, and
- *  3. every call site still carries the override.
+ *  2. the class strings still name those tokens and nothing else, and
+ *  3. every call site still uses a string rather than its own fill.
+ *
+ * A fourth used to sit between them: that tailwind-merge let our override beat
+ * rewind-ui's own background utilities rather than leaving both in the class list.
+ * The buttons are native as of #143, so there is nothing to beat, and that
+ * assertion -- along with the render helpers it needed -- is gone.
  *
  * Contrast itself is computed here rather than trusted from the comment in
  * globals.css, so retuning a token to something too light fails in this file
@@ -31,12 +33,15 @@ import {
 const REPO_ROOT = new URL("../../../", import.meta.url).pathname;
 
 // The override strings carry two concerns now: the background fills these tests are
-// about, and a `focus:ring-[3px]` width restored for Tailwind v4 (see button.ts). Every
+// about, and a `focus:ring-3` width restored for Tailwind v4 (see button.ts). Every
 // fill assertion below selects the fills explicitly rather than assuming the whole
 // string is backgrounds -- it used to assume that, and the ring-width class broke three
 // assertions at once when it was added.
 const fillsOf = (classes: string): string[] =>
   classes.split(" ").filter((candidate) => candidate.includes("bg-"));
+
+const liveFillsOf = (classes: string): string[] =>
+  fillsOf(classes).filter((candidate) => !candidate.startsWith("disabled:"));
 
 const luminance = ([r, g, b]: number[]): number => {
   const channel = (value: number) => {
@@ -87,51 +92,38 @@ const sourceFiles = (dir: string): string[] =>
 const occurrences = (text: string, needle: string): number =>
   text.split(needle).length - 1;
 
-// The full rendered class list, i.e. rewind-ui's own classes and the override after
-// tailwind-merge has resolved them. `backgrounds` below is this filtered to fills.
-const rewindClasses = (
-  props: ComponentProps<typeof Button>,
-  className: string,
-): string[] => {
-  const markup = renderToStaticMarkup(
-    createElement(Button, { ...props, className }, "label"),
-  );
-  return (/class="([^"]*)"/.exec(markup)?.[1] ?? "").split(/\s+/);
-};
-
-const backgrounds = (
-  props: ComponentProps<typeof Button>,
-  className: string,
-): string[] =>
-  rewindClasses(props, className).filter((candidate) =>
-    /(^|:)bg-/.test(candidate),
-  );
-
 const FILLED = [
   {
     name: "primary",
-    props: { variant: "primary" },
     override: primaryButtonClasses,
     // Resting fill first; the second covers hover, focus and active, so a white
     // label sits on both.
     tokens: ["brand", "brand-hover"],
-    // What identifies a call site in source. Textual, with the same limits as
-    // any grep: a renamed prop makes it find nothing, which is what the
-    // "is actually found" case below exists to catch.
-    needle: 'variant="primary"',
-    callSites: 4,
+    // What identifies a call site in source: the class binding itself, since there is no
+    // library prop to look for any more. Be honest about what that can and cannot do --
+    // searching for the string finds only the buttons that HAVE it, so this cannot prove
+    // every button uses one. The exact count is a change-detector, not a completeness
+    // proof; the docblock further down says what would actually close that gap.
+    needle: "primaryButtonClasses",
+    callSites: 3,
     binding: "primaryButtonClasses",
   },
   {
+    // The header's sign-in control, the only one the library rendered at `size="sm"`.
+    // Its own entry rather than a special case, so the count assertion covers it too.
+    name: "primary (small)",
+    override: primaryButtonSmClasses,
+    tokens: ["brand", "brand-hover"],
+    needle: "primaryButtonSmClasses",
+    callSites: 1,
+    binding: "primaryButtonSmClasses",
+  },
+  {
+    // One call site, the modal's delete control.
     name: "danger",
-    props: { color: "red" },
     override: dangerButtonClasses,
     tokens: ["danger-fill", "danger-fill-hover"],
-    // Matches any rewind-ui component given `color="red"`, not only Button. If a
-    // red Alert or Badge is ever added this trips, and the fix is to narrow the
-    // search rather than to widen the exclusion -- a red fill that is not a
-    // button is a contrast question in its own right.
-    needle: 'color="red"',
+    needle: "dangerButtonClasses",
     callSites: 1,
     binding: "dangerButtonClasses",
   },
@@ -155,100 +147,106 @@ describe.each(FILLED)(
       expect(tokenValue(tokens[1]!)).not.toBe(tokenValue(tokens[0]!));
     });
 
-    // The link between the two halves of this file. Measuring the tokens proves
-    // nothing if the class string names a different colour, and every check
-    // above would still pass -- it compares the merge result against the
-    // override itself, so any value at all survives that one.
-    it("are the only fills the override names", () => {
-      const fills = fillsOf(override).map((candidate) =>
+    // The link between the two halves of this file. Measuring the tokens proves nothing if
+    // the class string names a different colour, and every check above would still pass.
+    // The LIVE fills only. The strings also carry `disabled:bg-*`, which is the
+    // library's own stock-palette value kept deliberately -- WCAG exempts inactive
+    // controls and a disabled button that looked live would be worse. It has no token
+    // behind it, so it is excluded here and asserted separately below.
+    it("names exactly these live fills and no others", () => {
+      const fills = liveFillsOf(override).map((candidate) =>
         candidate.replace(/^.*bg-/, ""),
       );
       expect([...new Set(fills)].sort()).toEqual([...tokens].sort());
     });
-  },
-);
 
-describe.each(FILLED)(
-  "the $name override against rewind-ui",
-  ({ props, override, tokens }) => {
-    // Guards the assumption the fix rests on. rewind-ui hands its own classes
-    // and this string to tailwind-merge together; were it to concatenate them
-    // instead, both would be emitted and the library's would win on source
-    // order, leaving the override inert and this file the only thing that
-    // noticed.
-    it("replaces every live background the library sets", () => {
-      const live = backgrounds(props, override).filter(
-        (candidate) => !candidate.startsWith("disabled:"),
-      );
-      expect(live.sort()).toEqual(fillsOf(override).sort());
-    });
-
-    // Left to the library on purpose: WCAG exempts inactive controls, and a
-    // disabled button that kept the live fill would read as pressable.
-    it("leaves the disabled fill alone", () => {
-      const disabled = backgrounds(props, override).filter((candidate) =>
+    // Two halves, and the second is the one that matters. Requiring merely SOME
+    // `disabled:bg-*` passes on `disabled:bg-brand`, which would make a disabled button
+    // look live -- exactly the state this exists to prevent -- and on
+    // `disabled:bg-nonsense`, which emits no rule at all and leaves the live fill showing.
+    // The old version of this test got the second half for free by asserting the fill was
+    // still the library's; with no library it has to be asserted directly.
+    it("dims the disabled state with a fill that is not the live one", () => {
+      const disabled = fillsOf(override).filter((candidate) =>
         candidate.startsWith("disabled:"),
       );
-      expect(disabled).not.toHaveLength(0);
-      // Asserted as "still the library's" rather than merely "present": an
-      // override that reached the disabled state would satisfy the weaker check.
+      expect(
+        disabled.length,
+        "without a disabled fill an inactive button keeps the live colour and reads as pressable",
+      ).toBeGreaterThan(0);
+
       expect(
         disabled.filter((candidate) =>
           tokens.some((token) => candidate.includes(token)),
         ),
+        "the disabled fill names a live token, so a disabled button would look pressable",
       ).toEqual([]);
+
+      // And it has to be a real shade. These are stock palette values by design, so the
+      // theme-token assertion below skips them -- which would let a typo through.
+      expect(
+        disabled.every((candidate) => /-\d{2,3}$/.test(candidate)),
+        `${disabled.join(", ")} does not end in a palette step, so it may emit no rule`,
+      ).toBe(true);
     });
   },
 );
 
-describe.each(FILLED)(
-  "every $name button in the repo",
-  ({ needle, binding, callSites }) => {
-    // A count-for-count comparison rather than "the file mentions it somewhere":
-    // a file with two such buttons and one override would pass the looser check.
-    // This is what catches a call site added later, in a file this change never
-    // touched.
-    it("carries the override", () => {
-      const offenders = sourceFiles("src")
-        .map((path) => {
-          const text = readFileSync(join(REPO_ROOT, path), "utf8");
-          return {
-            path,
-            buttons: occurrences(text, needle),
-            // Two spellings, because one call site interpolates the override
-            // into a longer string and the other passes it alone.
-            overrides:
-              occurrences(text, `\${${binding}}`) +
-              occurrences(text, `={${binding}}`),
-          };
-        })
-        .filter(({ buttons, overrides }) => buttons !== overrides);
-
-      expect(offenders).toEqual([]);
-    });
-
-    it("is actually found by the search", () => {
-      const total = sourceFiles("src").reduce(
-        (sum, path) =>
-          sum +
-          occurrences(readFileSync(join(REPO_ROOT, path), "utf8"), needle),
-        0,
+/**
+ * What replaced "every rewind-ui Button carries the fill override".
+ *
+ * That assertion's subject is gone. It counted `variant="primary"` props and required each
+ * to be accompanied by the override string, which worked because the library prop marked
+ * every button that needed one. With native elements there is no such marker -- and "every
+ * `<button>` carries one of these strings" is FALSE by design, because the repo also has
+ * bespoke buttons: the nav toggle, the delete icon on a blog card, and the retry control in
+ * each error boundary, all with their own classes.
+ *
+ * So two narrower properties, and between them they cover the same risk:
+ *
+ * What is left is narrower: each string is used exactly as many times as expected. A
+ * change-detector rather than a proof -- it fails when a call site is added or removed
+ * without anyone revisiting this file, which is the failure that actually happens.
+ *
+ * A SECOND CHECK WAS TRIED AND ABANDONED, and the reason is worth keeping so it is not
+ * tried again. The remaining hazard is a future button written with `bg-brand` inline: it
+ * would look right and silently miss the 3px focus ring, the disabled fill and the sizing.
+ * Asserting that nothing names those fills directly finds two legitimate uses in MainNav --
+ * the nav toggle and the active nav item -- because `bg-brand` is the brand fill generally,
+ * not a button's. An allowlist of two files to guard one hypothetical is more exclusion than
+ * assertion, so the risk is documented instead of policed. What WOULD close it properly is
+ * a lint rule scoped to `<button>` elements, or making the strings the only way to get the
+ * fill at all.
+ */
+describe.each(FILLED)("the $name button string", ({ binding, callSites }) => {
+  it(`is used at exactly ${callSites} call site(s)`, () => {
+    // The two usage spellings, and deliberately NOT a bare search for the binding:
+    // that also matches the import statement, which is how an earlier version of this
+    // double-counted every file.
+    const used = sourceFiles("src").reduce((sum, path) => {
+      const text = readFileSync(join(REPO_ROOT, path), "utf8");
+      return (
+        sum +
+        occurrences(text, `\${${binding}}`) +
+        occurrences(text, `={${binding}}`)
       );
-      // Without this the check above is vacuously true the moment the search
-      // stops finding anything -- a renamed prop, a moved directory.
-      expect(total).toBe(callSites);
-    });
-  },
-);
+    }, 0);
+    expect(
+      used,
+      "a call site was added or removed without updating this expectation",
+    ).toBe(callSites);
+  });
+});
 
 // The tokens can exist in globals.css and still produce no rule: the utility
 // only exists if the palette maps it, and an unmapped `bg-danger-fill-hover`
 // leaves the hover state with no background at all rather than a dim one.
 //
-// Resolved through Tailwind rather than by grepping the config for the `var()`
-// string. That weaker check passes on a config that maps the variable to a
-// *differently named* utility -- nesting `fill` under `hover` would emit
-// `bg-danger-hover-fill` and satisfy it while every override above stayed inert.
+// Read from the `@theme` block by name, not by searching for the `var()` string. The
+// weaker check passes on a theme that maps the variable to a *differently named* utility --
+// nesting `fill` under `hover` would declare `--color-danger-hover-fill` and satisfy it
+// while every string above stayed inert. It is a text read rather than a compile, so it
+// cannot prove Tailwind emits the rule; the note inside the test says as much.
 it("declares a theme token for every fill the overrides name", () => {
   // Reads globals.css's `@theme` block. This used to resolve `tailwind.config.ts`
   // through `tailwindcss/resolveConfig`; v4 is CSS-first and that file is gone, so the
@@ -282,7 +280,8 @@ it("declares a theme token for every fill the overrides name", () => {
   ).toBeGreaterThan(0);
 
   for (const { override } of FILLED) {
-    for (const utility of fillsOf(override)) {
+    // Live fills only: `disabled:bg-purple-300` is a stock shade by design.
+    for (const utility of liveFillsOf(override)) {
       const colour = utility.replace(/^.*bg-/, "");
       expect(palette[colour], `bg-${colour} maps to nothing`).toMatch(
         /^var\(--[\w-]+\)$/,
@@ -292,43 +291,29 @@ it("declares a theme token for every fill the overrides name", () => {
 });
 
 /**
- * The `focus:ring-[3px]` half of the override strings, which the fill assertions above
- * deliberately ignore.
+ * The focus indicator, which the fill assertions above deliberately ignore.
  *
- * Tailwind v4 narrowed the default ring-width from 3px to 1px. rewind-ui's Button asks for a
- * bare ring-width class, so on v4 every Button in this app would have had a 1px focus indicator --
- * a WCAG 2.4.11 concern rather than a cosmetic one. The colour was never affected, since
- * rewind-ui names an explicit ring-colour utility per variant.
+ * Tailwind v4 narrowed the default ring to 1px, and a 1px perimeter does not provide the
+ * area WCAG 2.4.11 asks for. The width is therefore named explicitly. It was an arbitrary
+ * value when it had to beat rewind-ui's own bare ring-width class through the tailwind-merge
+ * instance the library bundled; the buttons are native now, so nothing has to be beaten --
+ * it stays arbitrary only because 3px is the width these buttons have always had and no
+ * utility gives exactly 3.
  *
- * Two things are pinned, and the second is the one that could rot quietly:
- *
- *  1. both override strings still carry the width.
- *  2. tailwind-merge still treats an arbitrary ring-width value as conflicting with the
- *     library's bare ring-width class, so the override REPLACES it rather than joining it. If that
- *     stopped holding, both classes would be emitted and the narrower could win on source
- *     order. rewind-ui bundles tailwind-merge 1.14.0, whose conflict tables predate v4,
- *     so this is an assumption about a vendored transitive dependency and not about our
- *     own code.
+ * That deleted a second assertion along with the library: it used to check that the merge
+ * still treated an arbitrary width as conflicting with a bare one, which was an assumption
+ * about a vendored transitive dependency. There is nothing left to assume.
  */
-describe.each(FILLED)(
-  "the $name override's focus-indicator width",
-  ({ props, override }) => {
-    it("names an explicit 3px width", () => {
-      expect(override.split(" ")).toContain("focus:ring-[3px]");
-    });
+describe.each(FILLED)("the $name button's focus indicator", ({ override }) => {
+  it("names an explicit 3px width", () => {
+    expect(override.split(" ")).toContain("focus:ring-3");
+  });
 
-    it("replaces the library's default ring-width class rather than joining it", () => {
-      const rendered = rewindClasses(props, override);
-      expect(
-        rendered,
-        "the arbitrary width did not survive the merge",
-      ).toContain("focus:ring-[3px]");
-      // A token comparison, not a substring one: `focus:ring-purple-100` contains
-      // "focus:ring" and must NOT count as the bare width class.
-      expect(
-        rendered,
-        "the library's bare ring-width class is still present, so both widths apply",
-      ).not.toContain("focus:ring");
-    });
-  },
-);
+  it("names a ring colour, so the indicator is not currentColor", () => {
+    // v4's bare default is `currentColor`, which on these white-labelled fills would be a
+    // white ring on a coloured button -- legible, but not the colour that shipped.
+    expect(
+      override.split(" ").filter((c) => /^focus:ring-[a-z]+-\d{2,3}$/.test(c)),
+    ).toHaveLength(1);
+  });
+});

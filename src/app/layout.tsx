@@ -3,8 +3,7 @@ import { Montserrat } from "next/font/google";
 import "./globals.css";
 import Image from "next/image";
 import MainNav from "@/components/MainNav";
-import { Button } from "@rewind-ui/core";
-import { primaryButtonClasses } from "@/components/ui/button";
+import { primaryButtonSmClasses } from "@/components/ui/button";
 import { signIn, signOut } from "@/auth";
 import { getSession } from "@/lib/session";
 import { Analytics } from "@vercel/analytics/next";
@@ -136,14 +135,9 @@ export default async function RootLayout({
                     centre it was being given and made its `<form>` 4px taller at the
                     same time. Measured after removing it, the button's centre and the
                     header's agree. */}
-                <Button
-                  type="submit"
-                  variant="primary"
-                  className={primaryButtonClasses}
-                  size="sm"
-                >
+                <button type="submit" className={primaryButtonSmClasses}>
                   {signedIn ? "Logout" : "Login"}
-                </Button>
+                </button>
               </form>
             </div>
           </header>
