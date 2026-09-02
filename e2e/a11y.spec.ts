@@ -69,6 +69,20 @@ const VIEWPORTS = [
 // assertion below would be wrong if it guessed.
 const GRADIENT_TITLE = { rule: "color-contrast", tag: "span", gradient: true };
 
+// The open modal's body text. axe cannot judge its contrast because the panel partially
+// overlaps the page beneath it -- the same `elmPartiallyObscured` path that took four
+// headings out of this gate when the content column briefly painted a background.
+//
+// So the modal reaching axe does NOT mean its contrast is machine-checked; that specific
+// result is unavailable by construction. It is covered instead by the token pair: the panel
+// is `bg-surface` and the text inherits `--foreground`, a combination measured elsewhere in
+// this suite. Declared rather than ignored so the distinction is visible.
+const OVERLAPPED_MODAL_TEXT = {
+  rule: "color-contrast",
+  tag: "p",
+  gradient: false,
+};
+
 const ROUTES: {
   path: string;
   blockThirdParty?: true;
@@ -92,6 +106,30 @@ const ROUTES: {
     ready: (page) =>
       expect(page.getByRole("heading", { level: 1 })).toBeVisible(),
     unevaluable: [GRADIENT_TITLE],
+  },
+  {
+    // The e2e fixture, which exists so the confirmation modal can be rendered at all --
+    // see e2e/modal.spec.ts for why nothing else reaches it. Adding it here closed a real
+    // gap: axe had never seen that dialog, and it was shipping a SERIOUS
+    // `aria-dialog-name` violation, because rewind-ui sets `role="dialog"` and
+    // `aria-modal` and no name. Fixed in the same change by pointing `aria-labelledby` at
+    // the heading.
+    //
+    // `ready` OPENS the modal, which is the whole point. Scanning this route without
+    // clicking would add nothing that `/` does not already cover -- a closed modal is not
+    // in the accessibility tree.
+    path: "/e2e-fixture/blog-card",
+    ready: async (page) => {
+      await page
+        .getByRole("button", { name: "Delete post: Fixture post" })
+        .click();
+      await expect(page.locator('[role="dialog"]')).toBeVisible();
+      // Past the open animation. The dialog is scannable before it settles, but its
+      // focus trap is not yet active and its transform is mid-flight, so contrast and
+      // overlap results would be read off a moving target.
+      await page.waitForTimeout(250);
+    },
+    unevaluable: [GRADIENT_TITLE, OVERLAPPED_MODAL_TEXT],
   },
   {
     path: "/contact",
