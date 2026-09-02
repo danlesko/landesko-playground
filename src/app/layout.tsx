@@ -88,7 +88,23 @@ export default async function RootLayout({
               it. `banner` needs this to sit outside article/aside/main/nav/
               section, which the plain wrapper below satisfies -- asserted in
               e2e/smoke.spec.ts, since that nesting rule fails quietly. */}
-          <header className="row-span-1 col-span-full bg-gradient-to-r from-purple-700 to-cyan-500 p-4 text-zinc-200 font-bold shadow-zinc-900 shadow-lg z-10">
+          {/* `bg-linear-to-r/srgb`, and both halves of that are deliberate.
+              `bg-linear-*` is v4's name for what v3 called `bg-gradient-*`. The
+              `/srgb` modifier forces the interpolation space: v4 interpolates
+              gradients `in oklab` by default, which is perceptually smoother but
+              is NOT what this gradient looked like on v3. Measured at a 390px
+              viewport, oklab moved the midpoint from rgb(66,109,209) to
+              rgb(107,121,211) even with identical stops -- and it lightened the
+              cyan end enough to drop the white site title from 3.24:1 to 2.93:1,
+              under the 3:1 that 20px bold needs. With `/srgb` and the two stops
+              pinned in globals.css, a full-page pixel comparison of three routes
+              at two widths differs by zero pixels from v3.
+
+              If the gradient is ever re-tuned deliberately, dropping `/srgb` is
+              probably the better default -- oklab avoids the grey dead zone that
+              sRGB interpolation puts between complementary hues. It is held here
+              only so that a toolchain migration did not change how the site looks. */}
+          <header className="row-span-1 col-span-full bg-linear-to-r/srgb from-purple-700 to-cyan-500 p-4 text-zinc-200 font-bold shadow-zinc-900 shadow-lg z-10">
             <div className="flex items-center justify-between">
               <span className="flex items-center space-x-4">
                 <Image

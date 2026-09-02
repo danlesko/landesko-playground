@@ -104,7 +104,7 @@ const BlogBodyAbbr = ({ session, blog, deleteBlogPost }: BlogBodyAbbrProps) => {
             <button
               type="button"
               aria-label={`Delete post: ${blog.title}`}
-              className="text-danger hover:text-danger-hover rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
+              className="text-danger hover:text-danger-hover rounded focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-focus focus-visible:ring-offset-2 focus-visible:ring-offset-surface"
               onClick={() => setOpenModal(true)}
             >
               <Trash size={24} aria-hidden="true" />

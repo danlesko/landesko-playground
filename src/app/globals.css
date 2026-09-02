@@ -1,10 +1,123 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+/* Tailwind v4. There is no `tailwind.config.ts` any more -- configuration is CSS-first
+   and lives in this file, which is why the theme and the plugin list are here.
+
+   `source(none)` DISABLES automatic source detection, and that is the load-bearing part
+   of this line rather than a stylistic choice. v4 otherwise scans the whole project from
+   the git root, which is strictly WIDER than the two globs v3 was given. Everything the
+   extractor reads becomes a class candidate, including prose in comments, so widening it
+   emits dead CSS from files that contain no markup at all:
+
+     - `e2e/*.spec.ts` describes layout in prose and contains `lg:hidden`, `lg:flex`,
+       `p-4`, `w-full`, `h-auto`, `h-64` and more as ordinary words in sentences.
+     - `src/lib/` is deliberately OUTSIDE the scanned set -- `src/lib/contactStatus.ts`
+       was put there for exactly that reason -- and automatic detection would pull it in.
+     - the root config files and README would be scanned too.
+
+   Automatic detection does respect `.gitignore`, so `/.claude/worktrees/` (this repo runs
+   coding agents out of ~20 full checkouts under it) is excluded either way. That was the
+   hazard #124 listed first and it is not the real one. The real one is the tracked tree.
+
+   Note `@source` OVERRIDES both of v4's exclusions -- it reaches into `node_modules` and
+   re-includes gitignored paths -- so these are narrow on purpose. A directory-wide
+   `@source "../.."` would scan the agent worktrees. */
+@import "tailwindcss" source(none);
+
+/* The same two globs v3 had, spelled out rather than left to detection. */
+@source "../components/**/*.{js,ts,jsx,tsx,mdx}";
+@source "../app/**/*.{js,ts,jsx,tsx,mdx}";
+/* rewind-ui ships compiled class strings; without this its utilities stop being emitted
+   and every Button, Input, Textarea, Checkbox and Modal renders unstyled. `node_modules`
+   is excluded by default in v4, so this has to be explicit. */
+@source "../../node_modules/@rewind-ui/core/dist/theme/styles/*.js";
+
+/* `nocompatible` gates the rounded/size utilities, and it still exists in 4.0.2. The
+   version bump from 3.1.0 was not optional -- its peer range is `4.x`.
+   Confirmed loaded rather than assumed: the build emits `scrollbar-thumb-rounded-lg`,
+   which only exists when `nocompatible` is on.
+
+   @rewind-ui/core declares `tailwind-scrollbar: ^3.0.5`, so pnpm keeps a second copy of
+   3.1.0 in the tree that the root bump does not satisfy. It is inert and deliberately
+   left alone: rewind-ui mentions the package only in its README, never in code, so
+   nothing imports it, and `@plugin` below resolves from this file upward to the root's
+   4.0.2. An override forcing rewind onto 4.0.2 would be tidier and would also be a claim
+   about a dependency nobody loads. */
+@plugin "tailwind-scrollbar" {
+  nocompatible: true;
+}
+/* `class` and not `base`, and this is load-bearing: rewind-ui supplies every form control
+   in the app, so the `base` strategy would restyle its inputs underneath it. Verified on
+   v4: `class` emits the `.form-*` classes and restyles zero elements, where `base`
+   restyles nine selector groups. */
+@plugin "@tailwindcss/forms" {
+  strategy: class;
+}
+
+/* Semantic tokens, moved here from `tailwind.config.ts`'s `theme.extend.colors`. Each is
+   still an indirection into the `:root` block below, so there remains exactly one place to
+   retune the palette -- v4 just removes the second file that used to map names to values.
+   Fifteen names, not the eleven the issue estimated: five plain, three accent, two brand,
+   four danger, and focus.
+
+   EXTENDS the default palette rather than replacing it. v4 would let us clear it with
+   `--color-*: initial`, and that would be wrong here -- rewind-ui's own styles reference
+   `ring-purple-100`, `ring-gray-200`, `bg-gray-100` and friends, so the stock colours have
+   to stay reachable. */
+@theme {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-muted: var(--muted);
+  --color-border: var(--border);
+  --color-accent: var(--accent);
+  --color-accent-hover: var(--accent-hover);
+  --color-accent-visited: var(--accent-visited);
+  --color-brand: var(--brand);
+  --color-brand-hover: var(--brand-hover);
+  --color-danger: var(--danger);
+  --color-danger-hover: var(--danger-hover);
+  --color-danger-fill: var(--danger-fill);
+  --color-danger-fill-hover: var(--danger-fill-hover);
+  --color-focus: var(--focus);
+
+  /* TWO STOCK COLOURS PINNED TO THEIR v3 VALUES, and this is a contrast fix rather than
+     nostalgia. v4 rebuilt the default palette in oklch for wide-gamut displays, which
+     moved every stock colour slightly -- and these two are the header gradient's stops
+     (`from-purple-700 to-cyan-500` in layout.tsx).
+
+     v4's versions are LIGHTER, which lowers contrast for the white site title sitting on
+     them. Measured from rendered pixels at a 390px viewport, white against the gradient
+     directly behind the title's rightmost glyphs:
+
+       v3  rgb(30,152,211)  3.24:1   passes
+       v4  rgb(58,159,220)  2.93:1   FAILS
+
+     The title is 20px bold, so it is large text and needs 3:1 under WCAG 1.4.3. v3 was
+     already marginal at 3.24; v4's shift of -0.31 is enough to cross the line. It is only
+     the narrow viewport that fails, because the title occupies a much larger fraction of
+     the gradient's width there -- at 1440px the same glyphs sit at 5.47:1.
+
+     Pinned rather than re-tuned, because the gradient is a deliberate design element that
+     has already been kept once on the owner's call, and a migration is the wrong place to
+     change how the site looks. Restoring these two makes the header pixel-identical to v3
+     -- verified, the header was the ONLY region that differed in a full-page comparison of
+     three routes at two viewport widths.
+
+     Left as a known near-miss: 3.24:1 is not comfortable, and past the title the gradient
+     reaches 2.5:1. Nothing renders text there today. If the title ever grows, or the
+     gradient is re-tuned, that is the number to fix properly rather than preserve. */
+  --color-purple-700: #7e22ce;
+  --color-cyan-500: #06b6d4;
+}
 
 /* This site is dark-only. There is no light palette and no `prefers-color-scheme`
-   switch: every token below is the dark value, and `darkMode` is left unset in
-   tailwind.config.ts because there is no second theme to toggle to.
+   switch: every token below is the dark value. v3 expressed that by leaving `darkMode`
+   unset in `tailwind.config.ts`; v4 needs no equivalent, because a dark variant is
+   opt-in there and nothing opts in.
+
+   This block stays a plain `:root` rather than folding into `@theme` above. Two reasons,
+   and the second is the load-bearing one: `body` below reads `var(--background)`
+   directly, and v4 TREE-SHAKES unreferenced `@theme` variables -- a token only read by
+   hand-written CSS, never through a utility class, would be dropped from the output.
 
    Contrast ratios are against --background unless noted. */
 :root {
@@ -25,7 +138,18 @@
   /* Safe to read through var() from `visited:` utilities despite the :visited
      privacy restrictions — Blink allows var() in its internal visited properties
      since 2019, and wpt css-variables/variable-reference-visited.html passes on
-     all four engines. Do not inline this as a literal hex. */
+     all four engines. Do not inline this as a literal hex.
+
+     v4 adds a second level to that chain: the utility now reads
+     `var(--color-accent-visited)`, which reads `var(--accent-visited)`, where v3 read
+     this name directly. Verified at the CSS level, which is as far as it can be taken
+     here -- the emitted rule is
+     `.visited\:text-accent-visited:visited{color:var(--color-accent-visited)}` and both
+     variables resolve in the output. A RUNTIME check was attempted and is not evidence
+     either way: an ephemeral browser context has no history store, so the link never
+     rendered as visited under v3 or v4. Confirming the rendered colour needs a real
+     profile with history, and `getComputedStyle` will not do it -- browsers deliberately
+     lie about :visited there. */
   --accent-visited: #a78bfa; /* violet-400 6.51:1 */
   --brand: #9333ea; /* purple-600 — active nav, ties to the header gradient */
   /* Darker than --brand, where --accent-hover and --danger-hover are brighter
@@ -112,5 +236,68 @@ body {
      scope it then. See #60 and #64. */
   [role="dialog"] {
     transform: none !important;
+  }
+}
+
+/* Two rules restoring behaviour v4's preflight dropped. Both are deliberate: the point of
+   this migration was the toolchain, not a change in how the site behaves.
+
+   THE POINTER CURSOR. v3's preflight carried `button,[role=button]{cursor:pointer}` and v4
+   emits no cursor rule at all, so a native button reverts to the UA default arrow.
+   rewind-ui is unaffected -- its Button ships `cursor-pointer` in its own class string --
+   but this app authors five native buttons that are not rewind-ui: the nav toggle, the
+   blog excerpt's expander, and the retry control in each of the three error boundaries.
+   Restored centrally rather than by adding a class five times, because that is what the
+   removed rule did and a future sixth button should not have to remember.
+
+   `:enabled` rather than a bare selector, so a disabled control does not advertise itself
+   as clickable. v3's rule had no such guard; this is the one intentional improvement. */
+@layer base {
+  button:enabled,
+  [role="button"]:enabled {
+    cursor: pointer;
+  }
+}
+
+/* FOCUS UNDER forced-colors. This is an accessibility fix, not a cosmetic one, and it
+   covers components whose source we cannot edit.
+
+   The chain: rewind-ui pairs `focus:outline-none` with `focus:ring` on its controls. In v3
+   `outline-none` did NOT remove the outline -- it set `outline: 2px solid transparent`
+   with a 2px offset, which is the standard trick for keeping a focus indicator in Windows
+   high-contrast mode, where the transparent outline is forced to a visible colour. v4
+   redefined `outline-none` to genuinely mean `outline-style: none` and moved the old
+   behaviour to `outline-hidden`. rewind-ui's compiled strings still say `outline-none`, so
+   on v4 its controls suppress the outline outright, and the `box-shadow` ring they rely on
+   instead is commonly dropped under forced colors. That leaves no focus indicator.
+
+   Scoped to the element types the app actually renders through rewind-ui -- Button, Input,
+   Textarea and Checkbox, the last of which reaches this as `input`. Checkbox is worth
+   noting because it does not use `outline-none` at all: it sets zero-width transparent
+   outlines, which fail the same way. Input and Textarea matter most, because
+   `src/components/ui/form.ts` deliberately reduces their ring to zero, so their border is
+   the only normal-mode indicator and a border is not a dependable one here.
+
+   NOT `:where()`, and that was a measured mistake rather than a style choice. The first
+   version wrapped the selector in `:where()` to keep specificity at zero, on the reasoning
+   that authored styles should still win. Under forced-colors emulation the rule then had no
+   effect on inputs at all: rewind-ui's Input carries a BARE `outline-none`, whose class
+   selector is specificity (0,1,0), and a media query adds none -- so the zero-specificity
+   rule lost. Measured: `outline-style: none` on input and textarea with the rule present.
+   Element selectors plus `:focus-visible` give (0,1,1), which beats a single class, and
+   this rule is later in the file than the utilities anyway.
+
+   `:focus-visible` rather than `:focus` so a mouse click does not draw it.
+
+   Unlayered and after the import, so it is not subject to `@layer base` ordering.
+
+   Neither a screenshot nor axe validates this -- it needs forced-colors emulation with
+   keyboard focus. */
+@media (forced-colors: active) {
+  button:focus-visible,
+  input:focus-visible,
+  textarea:focus-visible {
+    outline: 2px solid transparent;
+    outline-offset: 2px;
   }
 }
