@@ -1,6 +1,6 @@
 "use client";
 import { useState, ChangeEvent, FormEventHandler, useRef, useId } from "react";
-import { Textarea, Input, Button } from "@rewind-ui/core";
+import { Button } from "@rewind-ui/core";
 import { Email } from "@/lib/definitions";
 import ReCAPTCHA from "react-google-recaptcha";
 import { sendContactEmail } from "@/lib/contact-actions";
@@ -10,7 +10,8 @@ import {
   type ContactStatus,
 } from "@/lib/contactStatus";
 import {
-  formControlClasses,
+  formInputClasses,
+  formTextareaClasses,
   formErrorClasses,
   formLabelClasses,
   formSuccessClasses,
@@ -204,41 +205,37 @@ const ContactForm = () => {
       <label htmlFor={`${fieldId}-name`} className={formLabelClasses}>
         Name
       </label>
-      <Input
+      <input
         required
         id={`${fieldId}-name`}
         disabled={formInoperable}
         value={userInput.name}
         type="text"
         name="name"
-        color="purple"
-        className={`${formControlClasses} mt-1`}
+        className={`${formInputClasses} mt-1`}
         onChange={handleChange}
       />
       <label htmlFor={`${fieldId}-email`} className={formLabelClasses}>
         Email
       </label>
-      <Input
+      <input
         required
         id={`${fieldId}-email`}
         disabled={formInoperable}
         value={userInput.email}
         type="email"
         name="email"
-        color="purple"
-        className={`${formControlClasses} mt-1`}
+        className={`${formInputClasses} mt-1`}
         onChange={handleChange}
       />
       <label htmlFor={`${fieldId}-message`} className={formLabelClasses}>
         Message
       </label>
-      <Textarea
+      <textarea
         required
         id={`${fieldId}-message`}
         disabled={formInoperable}
-        className={`${formControlClasses} mt-1`}
-        tone="solid"
-        color="purple"
+        className={`${formTextareaClasses} mt-1`}
         placeholder="Ask me anything!"
         name="message"
         value={userInput.message}

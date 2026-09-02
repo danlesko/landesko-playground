@@ -1,10 +1,13 @@
 "use client";
 
 import { useActionState, useId } from "react";
-import { Input, Textarea, Button, Checkbox } from "@rewind-ui/core";
+import { Button } from "@rewind-ui/core";
 import { createBlog, type CreateBlogState } from "@/lib/actions";
 import {
-  formControlClasses,
+  formCheckboxClasses,
+  formCheckboxLabelClasses,
+  formInputClasses,
+  formTextareaClasses,
   formErrorClasses,
   formLabelClasses,
 } from "@/components/ui/form";
@@ -24,13 +27,12 @@ const CreateBlogForm = () => {
       <label htmlFor={`${fieldId}-title`} className={formLabelClasses}>
         Title
       </label>
-      <Input
+      <input
         required
         id={`${fieldId}-title`}
         type="text"
         name="title"
-        color="purple"
-        className={`${formControlClasses} mt-1`}
+        className={`${formInputClasses} mt-1`}
         defaultValue={state.values?.title}
         aria-describedby={`${fieldId}-title-error`}
         aria-invalid={titleError ? true : undefined}
@@ -50,12 +52,10 @@ const CreateBlogForm = () => {
       <label htmlFor={`${fieldId}-content`} className={formLabelClasses}>
         Content
       </label>
-      <Textarea
+      <textarea
         required
         id={`${fieldId}-content`}
-        className={`h-[500px] ${formControlClasses} mt-1`}
-        tone="solid"
-        color="purple"
+        className={`h-[500px] ${formTextareaClasses} mt-1`}
         placeholder="What's On Your Mind?"
         name="content"
         defaultValue={state.values?.content}
@@ -70,16 +70,30 @@ const CreateBlogForm = () => {
         {contentError}
       </p>
 
-      {/* `focus:ring-[3px]` for the same reason the Button strings carry it: rewind-ui
-          asks for a bare ring-width class, which Tailwind v4 narrowed from 3px to 1px. The colour
-          is unaffected -- the library names one per `color` variant. */}
-      <Checkbox
-        name="private"
-        color="purple"
-        defaultChecked={state.values?.privateBlog ?? true}
-        label="Make this post private"
-        className="focus:ring-[3px]"
-      />
+      {/* A native checkbox and a real `<label htmlFor>`, replacing rewind-ui's Checkbox.
+          The association is the platform's rather than an `aria-labelledby` pointing at a
+          generated id, and the label is readable: the library hardcoded `text-gray-700`,
+          which measured 2.11:1 on this background against the 4.5:1 that 16px text needs.
+
+          It also drops a `grid grid-cols-1 justify-items-start` wrapper the library used to
+          hold its label -- a flex row needs no grid. That wrapper is why #144 had to widen
+          the Tailwind source globs to reach component implementation files, so this removes
+          the class that caused that regression rather than working around it. */}
+      <div className="mt-2 flex items-center">
+        <input
+          type="checkbox"
+          id={`${fieldId}-private`}
+          name="private"
+          defaultChecked={state.values?.privateBlog ?? true}
+          className={formCheckboxClasses}
+        />
+        <label
+          htmlFor={`${fieldId}-private`}
+          className={formCheckboxLabelClasses}
+        >
+          Make this post private
+        </label>
+      </div>
 
       <Button
         variant="primary"

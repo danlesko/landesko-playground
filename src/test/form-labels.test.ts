@@ -9,12 +9,18 @@ import ContactForm from "@/components/ContactForm";
 import CreateBlogPage from "@/app/blog/create/page";
 
 /**
- * These assert on *rendered markup*, not on the element tree, and that is the
- * point. `<Input id="x">` is a rewind-ui component: a tree walk would only
- * confirm the prop was passed, while the association depends on the library
- * forwarding `id` onto the real control rather than onto a wrapper. Rendering
- * is what makes that observable, so a library upgrade that stopped forwarding
- * `id` fails here.
+ * These assert on *rendered markup*, not on the element tree, and that is still the
+ * point, though the reason has changed. It used to be that `<Input id="x">` was a
+ * rewind-ui component, so a tree walk would only confirm the prop was passed while the
+ * association depended on the library forwarding `id` onto the real control rather than a
+ * wrapper. Since #143 the text fields are native elements and `id` lands directly.
+ *
+ * Rendering still earns its place. The create form's checkbox is a native control paired
+ * with a `<label htmlFor>`, and both halves are generated from the same `fieldId` -- a tree
+ * walk would confirm two props were passed without confirming they MATCH. Rendered markup
+ * is where a mismatch shows. It also keeps the assertion honest about the swap itself: the
+ * checkbox previously carried `aria-labelledby` pointing at a library-generated id, and
+ * these tests passed before and after, which is what a structural check should do.
  *
  * Deliberately NOT asserted by accessible name. `placeholder` is a fallback in
  * the accessible-name computation, so "this control has a name" passes on the

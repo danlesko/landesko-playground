@@ -69,28 +69,28 @@
    and every Button, Input, Textarea, Checkbox and Modal renders unstyled. `node_modules`
    is excluded by default in v4, so this has to be explicit.
 
-   TEN FILES, NOT ALL 33 (#134). This used to be `*.js`, which harvested candidates from
-   Accordion, Calendar, Table, Tooltip and nineteen more components that cannot render
-   here. Measured across both rewind globs: 18,297 -> 12,351 gzipped, a 32.5% reduction,
-   and 1,228 emitted classes down to 707.
+   SIX FILES, NOT ALL 33 (#134, then #143). This used to be `*.js`, which harvested
+   candidates from
+   Accordion, Calendar, Table, Tooltip and the rest, none of which can render here.
+   It was ten files until the form controls became native elements (#143), which removed
+   Checkbox, FormControl, Input and Textarea from the set.
 
-   Ten and not the five we import, which is the part worth getting right. The five pull in
+   Six and not the two we import, which is the part worth getting right. Both pull in
    others internally -- Modal renders an Overlay, and Spinner renders inside a Button while
-   a form is submitting. Narrowing to just the five DOES build and saves more, and it
-   strips the Overlay's fill and blur so the Modal's backdrop stops being drawn at all.
+   a form is submitting. Narrowing to just the two DOES build and saves more, and it strips
+   the Overlay's fill and blur so the Modal's backdrop stops being drawn at all.
 
-   Three of the ten -- Dropdown, FormControl and InputGroup -- are reached only as context
-   providers and hooks, and never render anything here. They are kept because this list is
-   the mechanical closure of relative imports and the test recomputes it the same way, so
-   trimming them by hand would only make the two disagree. There are no dynamic imports in
-   that subtree to miss.
+   Dropdown and InputGroup are reached only as context providers and hooks and never render
+   anything here. They are kept because this list is the mechanical closure of relative
+   imports and the test recomputes it the same way, so trimming them by hand would only make
+   the two disagree. There are no dynamic imports in that subtree to miss.
 
    `src/components/ui/rewindSources.test.ts` recomputes that closure and fails if it stops
    matching, because the failure mode is silent. Add a rewind-ui import without touching
    these lines and that test tells you -- as long as it is a named import,
    `import { X } from "@rewind-ui/core"`, which is how every call site is written today. A
    namespace import or a re-export through another module would slip past it. */
-@source "../../node_modules/@rewind-ui/core/dist/theme/styles/{Button,Checkbox,Dropdown,FormControl,Input,InputGroup,Modal,Overlay,Spinner,Textarea}.styles.js";
+@source "../../node_modules/@rewind-ui/core/dist/theme/styles/{Button,Dropdown,InputGroup,Modal,Overlay,Spinner}.styles.js";
 /* AND the component implementations, not only their theme styles. This was missed on the
    first pass and codex caught it: a component can hardcode classes in its own JSX rather
    than take them from the theme. `Checkbox.js` does exactly that -- `grid grid-cols-1
@@ -105,7 +105,7 @@
    set: it cannot see a class that only ever appears in an implementation file. Re-run
    across all 24 reachable implementation files, exactly one class was missing, and this is
    it. */
-@source "../../node_modules/@rewind-ui/core/dist/components/{Button,Checkbox,Dropdown,FormControl,Input,InputGroup,Modal,Overlay,Spinner,Textarea}/**/*.js";
+@source "../../node_modules/@rewind-ui/core/dist/components/{Button,Dropdown,InputGroup,Modal,Overlay,Spinner}/**/*.js";
 
 /* NO `tailwind-scrollbar` PLUGIN. It was declared and nothing used it -- the same shape
    as the `@tailwindcss/typography` finding in #133, and found the same way.
