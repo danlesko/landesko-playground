@@ -35,18 +35,29 @@ const styleFileNames = (): string[] =>
     .map((file) => file.replace(".styles.js", ""))
     .sort();
 
-/** The names the `@source` line in globals.css actually covers. */
-const globbedNames = (): string[] => {
+/**
+ * The names a rewind-ui `@source` line in globals.css covers. There are TWO such lines and
+ * both matter: one for the theme style files, one for the component implementations.
+ * Components hardcode classes in their own JSX -- `Checkbox.js` inlines
+ * `grid grid-cols-1 justify-items-start` -- so scanning only the styles leaves those
+ * classes unemitted. That shipped once and is why this takes a `kind`.
+ */
+const globbedNames = (kind: "styles" | "components"): string[] => {
   const css = readFileSync(join(REPO_ROOT, "src/app/globals.css"), "utf8");
-  const line = /@source\s+"[^"]*@rewind-ui\/core[^"]*";/.exec(css);
-  if (!line) throw new Error("no rewind-ui @source line in globals.css");
+  const marker = kind === "styles" ? "theme/styles" : "dist/components";
+  const line = new RegExp(
+    `@source\\s+"[^"]*@rewind-ui/core[^"]*${marker}[^"]*";`,
+  ).exec(css);
+  if (!line) {
+    throw new Error(`no rewind-ui ${kind} @source line in globals.css`);
+  }
 
   // A brace list, `{A,B}.styles.js`. A bare `*` would mean the narrowing was reverted,
   // which is a failure rather than something to expand -- say so instead of passing.
   const braces = /\{([^}]+)\}/.exec(line[0]);
   if (!braces) {
     throw new Error(
-      `the rewind-ui @source glob is not a brace list, so the #134 narrowing is gone: ${line[0]}`,
+      `the rewind-ui ${kind} @source glob is not a brace list, so the #134 narrowing is gone: ${line[0]}`,
     );
   }
   return braces[1]!
@@ -123,11 +134,14 @@ describe("the rewind-ui @source glob", () => {
       shipsAStyleFile.has(name),
     );
 
-    expect(
-      globbedNames(),
-      `imports ${imported.join(", ")} reach ${required.join(", ")}. A component missing ` +
-        "from the glob renders unstyled with a passing build and no warning.",
-    ).toEqual(required);
+    for (const kind of ["styles", "components"] as const) {
+      expect(
+        globbedNames(kind),
+        `imports ${imported.join(", ")} reach ${required.join(", ")}. A component ` +
+          `missing from the ${kind} glob loses those classes with a passing build and ` +
+          "no warning.",
+      ).toEqual(required);
+    }
   });
 
   it("does not name a style file nothing reaches", () => {
@@ -140,17 +154,21 @@ describe("the rewind-ui @source glob", () => {
     // The other direction, which the equality above already covers -- kept because it
     // fails with a clearer message when the glob has grown stale rather than short, and
     // because that is the direction a revert would take it.
-    expect(
-      globbedNames().filter((name) => !required.has(name)),
-      "these are scanned but unreachable, so they are dead weight",
-    ).toEqual([]);
+    for (const kind of ["styles", "components"] as const) {
+      expect(
+        globbedNames(kind).filter((name) => !required.has(name)),
+        `these are scanned via the ${kind} glob but unreachable, so they are dead weight`,
+      ).toEqual([]);
+    }
   });
 
   it("names only files rewind-ui actually ships", () => {
     const shipped = styleFileNames();
-    expect(
-      globbedNames().filter((name) => !shipped.includes(name)),
-      "a glob entry with no matching file is silently ignored by Tailwind",
-    ).toEqual([]);
+    for (const kind of ["styles", "components"] as const) {
+      expect(
+        globbedNames(kind).filter((name) => !shipped.includes(name)),
+        "a glob entry with no matching file is silently ignored by Tailwind",
+      ).toEqual([]);
+    }
   });
 });
