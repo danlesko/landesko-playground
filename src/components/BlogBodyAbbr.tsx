@@ -4,7 +4,7 @@ import { Trash } from "@phosphor-icons/react/dist/ssr";
 import type { Blog } from "@/lib/definitions";
 import { BLOG_DATE_TIME_FORMAT, formatBlogDateRelative } from "@/lib/blogDate";
 import type { Session } from "next-auth";
-import { Modal, Button } from "@rewind-ui/core";
+import { Modal } from "@rewind-ui/core";
 import TextLink from "@/components/ui/TextLink";
 import { formErrorClasses } from "@/components/ui/form";
 import {
@@ -142,20 +142,24 @@ const BlogBodyAbbr = ({ session, blog, deleteBlogPost }: BlogBodyAbbrProps) => {
             Are you sure you want to delete this blog post?
           </p>
           <div className="flex justify-end mt-4">
-            <Button
-              variant="primary"
+            {/* `type="button"` on both, explicitly. rewind-ui's Button defaulted to it;
+                a native one inside a form defaults to submitting it. These portal out of
+                any form and this page has none, so nothing depended on it -- but a
+                default worth relying on is a default worth naming. */}
+            <button
+              type="button"
               className={`mr-2 ${primaryButtonClasses}`}
               onClick={() => setOpenModal(false)}
             >
               Cancel
-            </Button>
-            <Button
-              color="red"
+            </button>
+            <button
+              type="button"
               className={dangerButtonClasses}
               onClick={handleDelete}
             >
               Delete
-            </Button>
+            </button>
           </div>
         </div>
       </Modal>

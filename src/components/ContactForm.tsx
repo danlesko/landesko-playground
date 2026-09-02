@@ -1,6 +1,5 @@
 "use client";
 import { useState, ChangeEvent, FormEventHandler, useRef, useId } from "react";
-import { Button } from "@rewind-ui/core";
 import { Email } from "@/lib/definitions";
 import ReCAPTCHA from "react-google-recaptcha";
 import { sendContactEmail } from "@/lib/contact-actions";
@@ -244,15 +243,55 @@ const ContactForm = () => {
       {recaptchaSiteKey && (
         <ReCAPTCHA theme="dark" ref={recaptcha} sitekey={recaptchaSiteKey} />
       )}
-      <Button
-        variant="primary"
+      {/* The only button in the app that had a `loading` prop, so the spinner it drew is
+          reproduced here rather than extracted -- one call site does not justify a
+          component, and this file already owns the pending state that drives it.
+
+          `disabled` covers both reasons the control should be inert: the form is
+          inoperable without a captcha key, and a send is in flight. rewind-ui set the
+          attribute for `loading` too, so this is the same semantics, and it keeps a
+          double submit impossible rather than relying on the handler to guard.
+
+          The CURSOR is the one place the two reasons differ, and it is the library's
+          distinction rather than an invention: a send in progress reads as `progress`,
+          an unusable form as `not-allowed`. The base string's `enabled:cursor-pointer`
+          does not apply while disabled, so this is not competing with it.
+
+          `aria-hidden` on the spinner because it says nothing a reader needs -- the
+          button is already exposed as disabled, and "Send Message" is still its name.
+          A live region below the form announces the outcome. */}
+      <button
         type="submit"
-        className={`mt-1 font-bold ${primaryButtonClasses}`}
-        disabled={formInoperable}
-        loading={isSendingEmail}
+        className={`mt-1 font-bold ${primaryButtonClasses} ${
+          isSendingEmail ? "cursor-progress" : "disabled:cursor-not-allowed"
+        }`}
+        disabled={formInoperable || isSendingEmail}
       >
+        {isSendingEmail && (
+          <svg
+            aria-hidden="true"
+            className="-ml-1 animate-spin w-6 h-6 mr-2"
+            xmlns="http://www.w3.org/2000/svg"
+            fill="none"
+            viewBox="0 0 24 24"
+          >
+            <circle
+              className="opacity-25"
+              cx="12"
+              cy="12"
+              r="10"
+              stroke="currentColor"
+              strokeWidth="4"
+            />
+            <path
+              className="opacity-75"
+              fill="currentColor"
+              d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"
+            />
+          </svg>
+        )}
         Send Message
-      </Button>
+      </button>
       {/* Always in the tree and empty until there is something to say, and marked
           a live region up front rather than inserted at the moment it gains text:
           the inserted-then-populated shape is the less dependable of the two

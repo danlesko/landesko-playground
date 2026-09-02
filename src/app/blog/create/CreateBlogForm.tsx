@@ -1,7 +1,6 @@
 "use client";
 
 import { useActionState, useId } from "react";
-import { Button } from "@rewind-ui/core";
 import { createBlog, type CreateBlogState } from "@/lib/actions";
 import {
   formCheckboxClasses,
@@ -102,13 +101,12 @@ const CreateBlogForm = () => {
         </label>
       </div>
 
-      <Button
-        variant="primary"
+      <button
         type="submit"
         className={`mt-2 font-bold ${primaryButtonClasses}`}
       >
         Create Post
-      </Button>
+      </button>
     </form>
   );
 };
