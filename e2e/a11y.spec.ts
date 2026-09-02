@@ -86,6 +86,10 @@ const OVERLAPPED_MODAL_TEXT = {
 const ROUTES: {
   path: string;
   blockThirdParty?: true;
+  // Which viewports to scan. Absent means both, which is what every real route wants --
+  // reflow is exactly the kind of thing this suite should see at 400px. It exists for the
+  // fixture, whose incomplete set is not assertable at the narrow width; see there.
+  onlyViewports?: string[];
   ready: (page: Page) => Promise<unknown>;
   unevaluable: { rule: string; tag: string; gradient: boolean }[];
 }[] = [
@@ -119,6 +123,25 @@ const ROUTES: {
     // clicking would add nothing that `/` does not already cover -- a closed modal is not
     // in the accessibility tree.
     path: "/e2e-fixture/blog-card",
+    // DESKTOP ONLY, and the reason is a measured instability rather than a shortcut.
+    //
+    // axe reports the modal's body copy as `color-contrast: incomplete` at 1280px -- its
+    // `elmPartiallyObscured` path, meaning no background-painting ancestor fully encompassed
+    // the text rectangles. At the narrow width the panel is wide relative to its content and
+    // DOES encompass them, so the same text becomes evaluable and the incomplete set has one
+    // fewer entry.
+    //
+    // That would be fine if it were stable. It is not: at 400px it came out unevaluable on a
+    // developer machine and evaluable in CI, which is a font-metrics difference changing
+    // which text rectangles are covered. Whichever way the declaration is written, one of
+    // the two environments fails -- so the honest move is not to assert an incomplete set at
+    // that width. Adding tolerance instead would defeat the point of this file, which is
+    // that "axe could not evaluate this" is stated explicitly rather than ignored.
+    //
+    // What it costs: the modal is not scanned for VIOLATIONS at 400px either, since the two
+    // tests share a route list. The modal's own contrast is measured directly in
+    // e2e/modal.spec.ts, which is the specific thing this would have covered.
+    onlyViewports: ["desktop"],
     ready: async (page) => {
       await page
         .getByRole("button", { name: "Delete post: Fixture post" })
@@ -271,6 +294,9 @@ const RULE_FLOOR = 62;
 
 for (const viewport of VIEWPORTS) {
   for (const route of ROUTES) {
+    if (route.onlyViewports && !route.onlyViewports.includes(viewport.name)) {
+      continue;
+    }
     const label = `${route.path} at ${viewport.name}`;
 
     test(`${label} has no automatically detectable WCAG violations`, async ({
