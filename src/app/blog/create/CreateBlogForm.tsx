@@ -72,14 +72,21 @@ const CreateBlogForm = () => {
 
       {/* A native checkbox and a real `<label htmlFor>`, replacing rewind-ui's Checkbox.
           The association is the platform's rather than an `aria-labelledby` pointing at a
-          generated id, and the label is readable: the library hardcoded `text-gray-700`,
-          which measured 2.11:1 on this background against the 4.5:1 that 16px text needs.
+          generated id, and the label is readable: the library hardcoded a light-mode grey
+          that measured about 1.7:1 on this background, against the 4.5:1 that 16px text
+          needs.
 
-          It also drops a `grid grid-cols-1 justify-items-start` wrapper the library used to
-          hold its label -- a flex row needs no grid. That wrapper is why #144 had to widen
-          the Tailwind source globs to reach component implementation files, so this removes
-          the class that caused that regression rather than working around it. */}
-      <div className="mt-2 flex items-center">
+          No top margin here, deliberately. The library's root was a flex row with none, so
+          adding one moved the control -- an earlier version of this did, by 8px, which is
+          not something a component swap should do.
+
+          It also drops a two-element wrapper the library used to hold its label; a flex row
+          does not need it. That wrapper is why #144 had to widen the Tailwind source globs
+          to reach component implementation files, so this removes the cause rather than
+          working around it. The utilities involved are described rather than named, because
+          comments in this file are scanned and naming them would keep emitting their
+          rules. */}
+      <div className="flex items-center">
         <input
           type="checkbox"
           id={`${fieldId}-private`}

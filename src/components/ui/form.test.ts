@@ -16,12 +16,18 @@ import {
  * of that defect is the reason it is a test. rewind-ui's Checkbox labelled itself
  * `text-gray-700` -- a light-mode default it never exposed as a prop, so unlike the Input's
  * palette it could not be overridden at the call site. On this site's background that
- * measured 2.11:1 against the 4.5:1 that 16px text requires, so "Make this post private"
- * was effectively unreadable, and had been since the control was added.
+ * measured about 1.7:1 against the 4.5:1 that 16px text requires, so "Make this post
+ * private" was effectively unreadable, and had been since the control was added.
  *
- * Nothing caught it. The create form needs a session, so no unit test renders it and no e2e
- * test reaches it; axe never ran against it for the same reason. It was found by rendering
- * the component on a throwaway route and measuring, which is not something CI can do.
+ * Nothing caught it, and not for the reason you would guess: a unit test DOES render this
+ * form's markup, in src/test/form-labels.test.ts. It just never asserted a colour. The
+ * create form needs a session, so no e2e test reaches it and axe never ran against it.
+ *
+ * The number is also a correction. A first pass reported 2.11:1, measured by reading the
+ * label's computed colour in a browser -- but Tailwind 4 returns `oklch()` for its palette,
+ * and the probe's parser took the three numbers as sRGB channels, so lightness and hue
+ * angle landed where red and blue belonged. The conclusion survived only because the true
+ * figure is lower.
  *
  * So this checks the property from the source instead: the label must name a colour whose
  * token clears 4.5:1 against `--background`. That cannot catch every way the label could go
@@ -106,7 +112,7 @@ describe("the checkbox label", () => {
     expect(
       ratio,
       `text-${token} measures ${ratio.toFixed(2)}:1 on --background, and 16px text needs ` +
-        `${REQUIRED_RATIO}:1. rewind-ui's own label was 2.11:1 here.`,
+        `${REQUIRED_RATIO}:1. rewind-ui's own label was about 1.7:1 here.`,
     ).toBeGreaterThanOrEqual(REQUIRED_RATIO);
   });
 });
@@ -125,14 +131,27 @@ describe("the text field strings", () => {
     ).not.toContain("h-10");
   });
 
-  it("suppresses the outline in the way that survives forced colors", () => {
-    // Tailwind 4 split these: `outline-none` genuinely removes the outline, while
-    // `outline-hidden` keeps a transparent one that high-contrast mode can paint. The
-    // library used the former, which is why globals.css needs a forced-colors fallback for
-    // the components still coming from it.
+  it("suppresses the outline without painting one under forced colors", () => {
+    // Tailwind 4 split these. `outline-none` removes the outline; `outline-hidden` keeps a
+    // TRANSPARENT one, which forced-colors mode paints. `outline-hidden` looks like the
+    // accessible choice and is the wrong one here, because a utility is unconditional: every
+    // field would carry a visible outline in high-contrast mode while unfocused. The
+    // forced-colors fallback belongs in globals.css, where it is scoped to `:focus-visible`.
     for (const classes of [formInputClasses, formTextareaClasses]) {
-      expect(classes).toContain("outline-hidden");
-      expect(classes).not.toMatch(/(^|\s)outline-none(\s|$)/);
+      expect(classes).toContain("outline-none");
+      expect(
+        classes,
+        "outline-hidden is unconditional, so it would paint an outline on an unfocused field",
+      ).not.toContain("outline-hidden");
+    }
+  });
+
+  it("clears any box shadow, as the library did explicitly", () => {
+    // Preflight does not clear input shadows on every engine, so this is not redundant --
+    // the library named it and dropping it would be a cross-browser difference rather than
+    // a no-op.
+    for (const classes of [formInputClasses, formTextareaClasses]) {
+      expect(classes).toContain("shadow-none");
     }
   });
 });
