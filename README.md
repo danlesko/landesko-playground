@@ -114,17 +114,28 @@ hold the schema, so the database half is a connection away rather than unknown.
 
 ## Known limitations
 
-**`pnpm audit` is not clean, and one entry is a deliberate decision rather than an
-oversight.** `sharp` carries a high-severity advisory for four inherited libvips
-CVEs, patched only in a version outside the range `next` declares. It was accepted
-rather than overridden.
+**`pnpm audit` is clean**, and this section used to explain at length why it was not.
+Both halves of that were resolved by upgrades rather than by a decision to accept
+them:
 
-The reasoning is that current reachability is low, **not that the CVEs do not
-matter**: no route in this app was found that lets a visitor introduce
-attacker-chosen image bytes for the optimizer to decode — there is no upload, no
-image proxy, no response reflection, and no configured `remotePatterns`, so absolute
-URLs are rejected. A visitor does still choose the same-origin path, the width, the
-quality and the output format.
+- The `sharp` advisory — four inherited libvips CVEs, patched only outside the range
+  `next` then declared — went when Next 16 moved its optional `sharp` dependency from
+  `^0.34.3` to `^0.35.4`. It was never overridden; the framework caught up.
+- The dev-only advisories in lint and build tooling — ReDoS and DoS entries reaching
+  `minimatch`, `brace-expansion`, `ajv`, `flatted`, `picomatch`, `@humanfs/node` and
+  `@eslint/plugin-kit` — went with a refresh of those resolutions inside the ranges
+  their parents already declared. No `pnpm.overrides` entry was needed for any of
+  them, which matters: an override replaces a dependency's declared specification,
+  and one of them silently rewired `micromatch`'s `picomatch@^2.3.1` across a major
+  to 4.x before being reverted in favour of the plain refresh.
+
+The reachability reasoning that justified accepting the sharp advisory is worth
+keeping, because it is the standing answer if another one appears there. It was that
+current reachability is low, **not that the CVEs did not matter**: no route in this
+app was found that lets a visitor introduce attacker-chosen image bytes for the
+optimizer to decode — there is no upload, no image proxy, no response reflection, and
+no configured `remotePatterns`, so absolute URLs are rejected. A visitor does still
+choose the same-origin path, the width, the quality and the output format.
 
 That reasoning explicitly does **not** cover self-hosted deployments, an exposed
 development server, a maliciously contributed asset, or any future route that accepts
@@ -132,7 +143,8 @@ image input. If you add one of those, revisit it. Full analysis and its limits a
 [#123](https://github.com/danlesko/landesko-playground/pull/123) — `next.config.ts`
 discusses sharp's effect on image size, not this risk.
 
-Every other advisory is dev-only, in lint and build tooling.
+A clean audit is the point rather than a milestone: it means the next real advisory is
+visible instead of buried under known ones.
 
 **Dependency majors are behind deliberately**, each with its own issue recording the
 repo-side surface that actually breaks. See the
