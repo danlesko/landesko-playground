@@ -39,6 +39,11 @@ export default defineConfig({
     reuseExistingServer: false,
     env: {
       PORT: String(PORT),
+      // Switches on src/app/e2e-fixture/**, which 404s without it. Production never sets
+      // it. The fixture exists because the confirmation modal is otherwise unrenderable --
+      // its trigger sits behind a session and its card comes from Postgres -- so it had no
+      // coverage of any kind, and two regressions shipped through that gap in one evening.
+      E2E_FIXTURES: "1",
       // Regenerated per run and never persisted. Auth.js only requires that a
       // secret exist -- these tests never complete a sign-in -- so there is
       // nothing to be gained by fixing its value, and a constant published in

@@ -69,9 +69,27 @@ const VIEWPORTS = [
 // assertion below would be wrong if it guessed.
 const GRADIENT_TITLE = { rule: "color-contrast", tag: "span", gradient: true };
 
+// The open modal's body text. axe cannot judge its contrast because the panel partially
+// overlaps the page beneath it -- the same `elmPartiallyObscured` path that took four
+// headings out of this gate when the content column briefly painted a background.
+//
+// So the modal reaching axe does NOT mean its contrast is machine-checked; that specific
+// result is unavailable by construction. It is covered instead by the token pair: the panel
+// is `bg-surface` and the text inherits `--foreground`, a combination measured elsewhere in
+// this suite. Declared rather than ignored so the distinction is visible.
+const OVERLAPPED_MODAL_TEXT = {
+  rule: "color-contrast",
+  tag: "p",
+  gradient: false,
+};
+
 const ROUTES: {
   path: string;
   blockThirdParty?: true;
+  // Which viewports to scan. Absent means both, which is what every real route wants --
+  // reflow is exactly the kind of thing this suite should see at 400px. It exists for the
+  // fixture, whose incomplete set is not assertable at the narrow width; see there.
+  onlyViewports?: string[];
   ready: (page: Page) => Promise<unknown>;
   unevaluable: { rule: string; tag: string; gradient: boolean }[];
 }[] = [
@@ -92,6 +110,49 @@ const ROUTES: {
     ready: (page) =>
       expect(page.getByRole("heading", { level: 1 })).toBeVisible(),
     unevaluable: [GRADIENT_TITLE],
+  },
+  {
+    // The e2e fixture, which exists so the confirmation modal can be rendered at all --
+    // see e2e/modal.spec.ts for why nothing else reaches it. Adding it here closed a real
+    // gap: axe had never seen that dialog, and it was shipping a SERIOUS
+    // `aria-dialog-name` violation, because rewind-ui sets `role="dialog"` and
+    // `aria-modal` and no name. Fixed in the same change by pointing `aria-labelledby` at
+    // the heading.
+    //
+    // `ready` OPENS the modal, which is the whole point. Scanning this route without
+    // clicking would add nothing that `/` does not already cover -- a closed modal is not
+    // in the accessibility tree.
+    path: "/e2e-fixture/blog-card",
+    // DESKTOP ONLY, and the reason is a measured instability rather than a shortcut.
+    //
+    // axe reports the modal's body copy as `color-contrast: incomplete` at 1280px -- its
+    // `elmPartiallyObscured` path, meaning no background-painting ancestor fully encompassed
+    // the text rectangles. At the narrow width the panel is wide relative to its content and
+    // DOES encompass them, so the same text becomes evaluable and the incomplete set has one
+    // fewer entry.
+    //
+    // That would be fine if it were stable. It is not: at 400px it came out unevaluable on a
+    // developer machine and evaluable in CI, which is a font-metrics difference changing
+    // which text rectangles are covered. Whichever way the declaration is written, one of
+    // the two environments fails -- so the honest move is not to assert an incomplete set at
+    // that width. Adding tolerance instead would defeat the point of this file, which is
+    // that "axe could not evaluate this" is stated explicitly rather than ignored.
+    //
+    // What it costs: the modal is not scanned for VIOLATIONS at 400px either, since the two
+    // tests share a route list. The modal's own contrast is measured directly in
+    // e2e/modal.spec.ts, which is the specific thing this would have covered.
+    onlyViewports: ["desktop"],
+    ready: async (page) => {
+      await page
+        .getByRole("button", { name: "Delete post: Fixture post" })
+        .click();
+      await expect(page.locator('[role="dialog"]')).toBeVisible();
+      // Past the open animation. The dialog is scannable before it settles, but its
+      // focus trap is not yet active and its transform is mid-flight, so contrast and
+      // overlap results would be read off a moving target.
+      await page.waitForTimeout(250);
+    },
+    unevaluable: [GRADIENT_TITLE, OVERLAPPED_MODAL_TEXT],
   },
   {
     path: "/contact",
@@ -233,6 +294,9 @@ const RULE_FLOOR = 62;
 
 for (const viewport of VIEWPORTS) {
   for (const route of ROUTES) {
+    if (route.onlyViewports && !route.onlyViewports.includes(viewport.name)) {
+      continue;
+    }
     const label = `${route.path} at ${viewport.name}`;
 
     test(`${label} has no automatically detectable WCAG violations`, async ({

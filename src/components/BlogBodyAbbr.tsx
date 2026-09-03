@@ -131,13 +131,29 @@ const BlogBodyAbbr = ({ session, blog, deleteBlogPost }: BlogBodyAbbrProps) => {
       <p aria-live="polite" className={formErrorClasses}>
         {deleteError}
       </p>
+      {/* `aria-labelledby`, because the dialog had no accessible name at all. rewind-ui
+          sets `role="dialog"`, `aria-modal`, `aria-hidden` and an id, but no
+          name-giving attribute, so a screen reader announced a dialog with no name --
+          axe reports it as a serious `aria-dialog-name` violation. It went unnoticed
+          because nothing could render this modal until
+          `src/app/e2e-fixture/blog-card` existed; axe never reached it.
+
+          Pointed at the heading rather than duplicating the string in an `aria-label`,
+          so the visible title and the announced name cannot drift apart. The id is
+          derived from the post so two cards on one page do not collide. */}
       <Modal
         open={openModal}
         className="bg-surface"
         onClose={() => setOpenModal(false)}
+        aria-labelledby={`${blog.id}-delete-heading`}
       >
         <div className="p-4">
-          <h2 className="text-2xl font-semibold">Delete Blog Post</h2>
+          <h2
+            id={`${blog.id}-delete-heading`}
+            className="text-2xl font-semibold"
+          >
+            Delete Blog Post
+          </h2>
           <p className="text-lg">
             Are you sure you want to delete this blog post?
           </p>
