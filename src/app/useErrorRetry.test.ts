@@ -27,7 +27,7 @@ vi.mock("react", async (importOriginal) => ({
 import useErrorRetry from "./useErrorRetry";
 import RootError from "./error";
 import GlobalError from "./global-error";
-import BlogError from "./blog/[id]/error";
+import BlogError from "./blog/error";
 
 type Boundary = (props: {
   error: Error & { digest?: string };
@@ -89,7 +89,7 @@ describe("useErrorRetry", () => {
 describe.each([
   ["error.tsx", RootError as Boundary],
   ["global-error.tsx", GlobalError as Boundary],
-  ["blog/[id]/error.tsx", BlogError as Boundary],
+  ["blog/error.tsx", BlogError as Boundary],
 ])("%s", (_name, Boundary) => {
   it("refreshes and clears the boundary on the first click", () => {
     retryButton(Boundary).props.onClick();
