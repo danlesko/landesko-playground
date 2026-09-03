@@ -129,9 +129,18 @@ describe("formatBlogDateRelative", () => {
     // absolute date, and no run produced a hydration error. That cannot run in
     // CI, hence this.
     const source = readFileSync("src/components/BlogBodyAbbr.tsx", "utf8");
+    // Comments removed BEFORE the structural match, not only before the count
+    // below, and for the same underlying reason: a comment inside the effect body
+    // is not a change to the effect. #125 proved that the hard way -- adding an
+    // `eslint-disable-next-line` above the `setNow` call, which react-hooks 7
+    // needs on the call itself, put a line between `useEffect(() => {` and
+    // `setNow(...)` and failed this assertion while the code it guards was
+    // untouched. A guard that fails on its own subject's comments is a guard
+    // people delete.
+    const code = stripComments(source);
 
     expect(source).toContain("formatBlogDateRelative");
-    expect(source).toMatch(
+    expect(code).toMatch(
       /useEffect\(\(\) => \{\s*setNow\(Date\.now\(\)\);\s*\}, \[\]\);/,
     );
     // Exactly one clock read in the whole file, so the match above accounts for
@@ -139,7 +148,6 @@ describe("formatBlogDateRelative", () => {
     // that call site explains the hazard by naming `Date.now()` -- over the raw
     // text this counts two and fails while the code is correct, which is how it
     // was first written.
-    const code = stripComments(source);
     expect(code.match(/Date\.now\(\)/g)).toHaveLength(1);
 
     // And no clock read spelled some other way, which is the mutation the count

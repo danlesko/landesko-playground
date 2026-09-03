@@ -6,31 +6,35 @@ import type { NextConfig } from "next";
 // `Access-Control-Allow-Credentials: true` to all of /api/*, including the
 // next-auth handler.
 
-// p5 1.x resolves to a minified UMD build (`lib/p5.min.js`, its `main`), whose
-// minifier reuses the name `o` for both a defaulted parameter and a `var` inside
-// the same function body. That is legal — `var` may redeclare a parameter — but
-// Turbopack's transform downlevels the defaulted parameter into a body-level
-// `let o`, which then collides with the `var o`. The whole p5 chunk fails to
-// parse with `SyntaxError: Identifier 'o' has already been declared`, and the
-// canvas never mounts (#16).
+// NO `turbopack.resolveAlias` for p5 any more, and its absence is the change
+// rather than an oversight.
 //
-// The package also ships an unminified `lib/p5.js`: the same library and version
-// from the same source, but with real identifiers, so there is nothing to
-// collide. Only Turbopack rewrites the bundle, so only Turbopack needs
-// redirecting — `next build` and `next dev` without `--turbopack` both pass
-// p5.min.js through untouched and already work, which is why there is no
-// matching `webpack.resolve.alias`. Left ungated so that a future
-// `next build --turbopack` inherits the fix instead of silently regressing.
+// It existed for #16. p5 1.x's `main` is a minified UMD build whose minifier
+// reuses the name `o` for both a defaulted parameter and a `var` inside the same
+// function body -- legal, since `var` may redeclare a parameter -- and Turbopack
+// downlevelled the defaulted parameter into a body-level `let o`, which collided.
+// The whole p5 chunk failed to parse with `SyntaxError: Identifier 'o' has
+// already been declared` and the canvas never mounted. Aliasing p5 to its
+// unminified `lib/p5.js` sidestepped it, at the cost of a 5.2MB file in place of
+// a 1MB one.
 //
-// Tradeoff: the unminified build is ~5.2MB rather than ~1MB and, because it has
-// no `IS_MINIFIED` guard, it runs p5's Friendly Error System parameter
-// validation. That costs some dev-time work; it reports nothing for this sketch.
-// Aliasing here rather than importing `p5/lib/p5.js` at the call site keeps
-// `react-p5-wrapper`, which hard-imports bare `p5` and cannot take an injected
-// instance.
-const nextConfig: NextConfig = {
-  turbopack: { resolveAlias: { p5: "p5/lib/p5.js" } },
+// Two things changed in Next 16. Turbopack became the default builder for
+// `next build`, so an alias that only ever affected `next dev` would now have
+// applied to production too. And the bug is gone: with the alias removed the
+// canvas mounts at 1178x734 with no redeclaration error, in `next build` +
+// `next start` AND in `next dev`, which is where it originally showed. Checked
+// the dev server log as well as the browser console.
+//
+// So removing it is worth 368,473 bytes of client JavaScript -- 2,092,396 down to
+// 1,723,923 across `.next/static/chunks`, -17.6%. Much less than the 5.2MB vs 1MB
+// file sizes suggest, because production minification recovers most of the
+// difference; the honest figure is +369KB for keeping it, not 5x.
+//
+// If the parse error ever returns, `e2e/smoke.spec.ts` fails on the canvas rather
+// than reporting a bundle size, which is the right signal: the alias was never
+// about bytes.
 
+const nextConfig: NextConfig = {
   // `formats` defaults to `["image/webp"]`, which is why the optimizer answered
   // with WebP even when the browser advertised AVIF: an unlisted format is never a
   // candidate. Adding AVIF is what changes the outcome -- NOT putting it first.
@@ -49,31 +53,43 @@ const nextConfig: NextConfig = {
   // the decoded AVIF and the decoded WebP, 0-255:
   //
   //     candidate      WebP     AVIF     saving   RMS
-  //     hero  640w    23,562   18,899    -19.8%   2.61
-  //     hero 1080w    45,924   32,550    -29.1%   2.08
-  //     hero 1920w    60,014   40,622    -32.3%   1.95
-  //     mark   96w     3,522    2,499    -29.0%   7.15
+  //     hero  640w    23,562   17,041    -27.7%   3.10
+  //     hero 1080w    45,924   34,441    -25.0%   2.42
+  //     hero 1920w    60,014   46,255    -22.9%   2.30
+  //     mark   96w     3,522    2,116    -39.9%   8.43
   //
-  // The WebP column matched what www.landesko.dev serves to within 4 bytes, so the
-  // local procedure reproduces production for that format. That does not make the
-  // AVIF byte counts a production figure: Vercel runs its own optimizer, so its
-  // sizes will differ. What this line decides is the format; the magnitude is a
-  // local measurement. Production served 17,058 / 34,347 / 46,255 for those same
-  // three widths after this deployed -- same direction, smaller than their WebP
-  // counterparts, but different absolute bytes from the local encoder.
+  // RE-MEASURED for #125, which is exactly the trigger the previous version of
+  // this comment asked for: Next 16 declares `sharp: ^0.35.4` where 15 declared
+  // `^0.34.3`, so upgrading the framework moved the encoder. The old table, taken
+  // on 0.34.5, read 18,899 / 32,550 / 40,622 / 2,499 at RMS 2.61 / 2.08 / 1.95 /
+  // 7.15. The WebP column did not move at all, which localises the change to the
+  // AVIF path.
   //
-  // THE AVIF COLUMN IS SPECIFIC TO THE CURRENTLY LOCKED sharp, 0.34.5. `next`
-  // declares `sharp: ^0.34.3` as an optional dependency; the lockfile resolves
-  // 0.34.5. Trialled on 0.35.4, twice, with `.next/cache/images` emptied:
-  // 22,489 / 47,764 / 68,074, which against the same WebP is -4.6% / +4.0% /
-  // +13.4% in this table's convention -- so AVIF comes out LARGER than WebP at two
-  // of the three candidate widths. Next still asks for quality 55 and `effort: 3`,
-  // but libaom, libheif and libvips all moved underneath and 0.35.4 adds a default
-  // HEIF `tune`, so equal options are not equal output and this is a size result
-  // rather than a quality-adjusted one.
+  // TWO things moved on that path, not one, and an earlier draft of this comment
+  // wrongly credited it all to sharp. Next 16 also lowered the AVIF quality it
+  // requests, from 55 to 47 for a `q=75` URL -- see the note further down. So the
+  // smaller bytes and the slightly higher RMS are the combined effect of a new
+  // encoder AND a lower quality target, and this table cannot separate them.
   //
-  // The point being: re-measure this table if sharp ever moves. It is not a
-  // property of the codec choice alone, and nothing in the suite would notice --
+  // AVIF is still smaller at every width, so #121's decision stands. Note that the
+  // previous comment recorded a 0.35.4 trial coming out LARGER than WebP at two of
+  // three widths (22,489 / 47,764 / 68,074); that does not reproduce here. Same
+  // sharp version, different result, so something else in the 16 image pipeline
+  // differs too -- worth knowing before treating a lone sharp bump as predictive.
+  //
+  // The local numbers now agree with production, where before they did not. The
+  // old comment recorded www.landesko.dev serving 17,058 / 34,347 / 46,255 for the
+  // three hero widths against a local table of 18,899 / 32,550 / 40,622; this
+  // table reads 17,041 / 34,441 / 46,255, matching the 1920w figure to the byte.
+  // One reading is that Vercel was already running a newer sharp and this upgrade
+  // brings local into line with it. A second is that Vercel was already applying
+  // Next 16's quality formula. Both would produce agreeing bytes and this
+  // measurement cannot choose between them, so treat the agreement as a useful
+  // coincidence rather than as an identified cause -- agreeing bytes are evidence
+  // of agreeing OUTPUT, not of an agreeing pipeline.
+  //
+  // Re-measure if sharp moves again. It is not a property of the codec choice
+  // alone, and nothing in the suite would notice --
   // the e2e assertion pins the negotiated FORMAT, not the byte count.
   //
   // Whether any of this reaches a visitor is a separate question and not one this
@@ -83,13 +99,21 @@ const nextConfig: NextConfig = {
   // output, not a different encoder.
   //
   // NOT free of a quality judgement, which is worth being exact about because an
-  // earlier version of this comment claimed it was. Next asks sharp for AVIF at
-  // `quality - 20` with `effort: 3`, so a `q=75` request is AVIF quality 55
-  // against WebP's 75 -- the -20 is the codec heuristic, not an identity. Part of
+  // earlier version of this comment claimed it was, and because #125 changed the
+  // number. Next 15 asked sharp for AVIF at `quality - 20`, so a `q=75` request
+  // was AVIF quality 55 against WebP's 75. Next 16 computes
+  // `Math.max(Math.round(quality * (50 / 80)), 1)` instead
+  // (`server/image-optimizer.js`), so the same request is now quality 47. Part of
   // the saving above is therefore a lower quality target rather than pure codec
-  // efficiency. The RMS column and a side-by-side look are the evidence that it
-  // does not show: no visible artefact, no colour shift, and the mark's hard edges
-  // are intact.
+  // efficiency, and a larger part of it than before.
+  //
+  // The RMS column and a side-by-side look are the evidence that it does not show,
+  // and both were RE-TAKEN for #125 rather than carried over, because the quality
+  // target moved: a 520px 1:1 crop of the 1080w candidate, WebP 75 beside AVIF 47,
+  // is marginally softer in the hair and in the background poster and otherwise
+  // indistinguishable. No blocking, no banding, no colour shift -- and the page
+  // renders that candidate smaller than 1:1, so this looks at it harder than a
+  // reader does. The mark's hard edges are intact.
   //
   // This is deliberately NOT the "re-encode public/danPool.jpeg" that #8 asks for,
   // and the reason is that a normal page load never downloads that file --

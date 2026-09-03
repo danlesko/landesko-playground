@@ -49,6 +49,17 @@ const ProcessingDrawing = () => {
   return (
     <div ref={wrapperRef}>
       <ReactP5Wrapper
+        // The ref OBJECT is passed, never its value. react-hooks 7, new in
+        // eslint-config-next 16, cannot tell those apart at a call site and warns
+        // that a function handed a ref "may read its value during render". This
+        // one does not: `createFishTankSketch` returns the sketch function
+        // immediately, without touching the ref. Everything that reads
+        // `wrapperRef.current` is inside that function -- once at sketch
+        // construction, then from `setup()` and on resize -- and p5 only runs it
+        // when `react-p5-wrapper` instantiates the sketch from an effect. So every
+        // read is after mount. Handing a ref to an imperative library this way is
+        // the supported pattern, so there is nothing to restructure.
+        // eslint-disable-next-line react-hooks/refs
         sketch={createFishTankSketch(wrapperRef, prefersReducedMotion)}
       />
     </div>
