@@ -77,7 +77,7 @@ The code change to drop the prefix has already shipped — `contact-actions.ts` 
 
 Sign-in is GitHub OAuth, and the `signIn` callback in `src/auth.ts` allows an explicit list of two email addresses — anyone else is rejected after authenticating. This is a personal site, so signing in only unlocks authoring: creating posts, deleting posts, and reading private ones.
 
-`/blog/create` is additionally protected by `src/middleware.ts`, which redirects unauthenticated requests to the home page.
+`/blog/create` is additionally protected by `src/proxy.ts`, which redirects unauthenticated requests to the home page. It was `src/middleware.ts` until #153 — Next 16 deprecated that filename, and `proxy` runs on Node rather than Edge, which is why the rename came with a test that mints a real session cookie.
 
 ## Pages
 

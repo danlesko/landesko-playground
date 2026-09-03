@@ -6,6 +6,30 @@ import { randomBytes } from "node:crypto";
 const PORT = 3210;
 const baseURL = `http://localhost:${PORT}`;
 
+// Generated once and shared with the TEST process, not only the server.
+//
+// Still per-run and still never persisted, which is the part that matters: a
+// constant published in a public repo would be a valid signing key for forged
+// cookies against anyone running this suite. What changed is that the tests now
+// need it. `e2e/auth-gate.spec.ts` mints a session cookie to check that the
+// authoring gate admits a real one -- the only way to cover the authenticated
+// path, since the GitHub OAuth app has a single callback URL registered against
+// production and no local sign-in can complete.
+//
+// Read-then-generate, and the order is the whole trick. Playwright re-imports this
+// config in every WORKER process, so a plain `randomBytes()` runs again there and
+// each worker signs with a different key than the server was given -- which looks
+// exactly like a rejected session, and cost a debugging round to find. The runner
+// generates it and puts it in its own environment; workers are spawned after that
+// and inherit it, so `??` finds it already set and reuses it.
+//
+// Consequence worth naming: if AUTH_SECRET is already in your environment, the
+// suite uses that instead of generating one. That is harmless -- the server and the
+// tests still agree, which is all this needs -- but it does mean the value is not
+// unconditionally per-run.
+const AUTH_SECRET = process.env.AUTH_SECRET ?? randomBytes(32).toString("hex");
+process.env.AUTH_SECRET = AUTH_SECRET;
+
 export default defineConfig({
   testDir: "./e2e",
   fullyParallel: true,
@@ -44,12 +68,9 @@ export default defineConfig({
       // its trigger sits behind a session and its card comes from Postgres -- so it had no
       // coverage of any kind, and two regressions shipped through that gap in one evening.
       E2E_FIXTURES: "1",
-      // Regenerated per run and never persisted. Auth.js only requires that a
-      // secret exist -- these tests never complete a sign-in -- so there is
-      // nothing to be gained by fixing its value, and a constant published in
-      // a public repo would be a valid signing key for forged cookies against
-      // anyone running this suite.
-      AUTH_SECRET: randomBytes(32).toString("hex"),
+      // See the note on the constant above for why it is generated rather than
+      // fixed, and why the tests now need the same value the server gets.
+      AUTH_SECRET,
       // AUTH_URL rather than AUTH_TRUST_HOST: both satisfy the `trustHost`
       // check, but this one names the single origin we expect instead of
       // trusting whatever Host header shows up.
@@ -58,7 +79,7 @@ export default defineConfig({
       // assertion *before* it ever looks at the secret, `auth()` swallows the
       // resulting UntrustedHost error and returns null, and every route still
       // renders as anonymous. The /blog/create redirect test would then pass
-      // because auth is broken rather than because the middleware predicate
+      // because auth is broken rather than because the proxy predicate
       // works -- a green suite proving nothing. See e2e/smoke.spec.ts.
       AUTH_URL: baseURL,
     },
