@@ -118,7 +118,21 @@ const BlogBodyAbbr = ({ session, blog, deleteBlogPost }: BlogBodyAbbrProps) => {
   // a tab left open keeps whatever label it had, including after a
   // back/forward-cache restore -- accepted, not overlooked.
   const [now, setNow] = useState<number | null>(null);
+  // The cascading render is the mechanism here, not an oversight. react-hooks 7,
+  // new in eslint-config-next 16, flags setState in an effect body and points at
+  // "you might not need an effect". This one is needed: it is the only thing that
+  // makes the server's markup and the client's first render identical by
+  // construction. A `Date.now()` taken during render is taken twice, on two
+  // machines, and a post sitting on a bucket boundary formats differently either
+  // side of it -- a React #418 mismatch. See the longer note above. So the extra
+  // render is the price, and it is paid once per mount.
+  //
+  // The directive sits on the setState CALL rather than on `useEffect`, because
+  // that is where the rule reports. Placed above the hook it lints clean *and*
+  // reports itself as an unused directive, which is a confusing pair to leave
+  // behind -- `--max-warnings=0` fails on the unused one either way.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setNow(Date.now());
   }, []);
 

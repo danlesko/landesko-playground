@@ -1,8 +1,8 @@
-This is Dan Lesko's personal website written in [Next.js 15](https://nextjs.org). The goal of creating this website was to learn the new feature's of Next.js, including but not limited to learning how to use the app router, layouts, and [Auth.js](https://authjs.dev/), previously known as Next Auth.
+This is Dan Lesko's personal website written in [Next.js 16](https://nextjs.org). The goal of creating this website was to learn the new feature's of Next.js, including but not limited to learning how to use the app router, layouts, and [Auth.js](https://authjs.dev/), previously known as Next Auth.
 
 ## Stack
 
-- [Next.js 15](https://nextjs.org) App Router, React 19, TypeScript
+- [Next.js 16](https://nextjs.org) App Router, React 19, TypeScript
 - [Tailwind CSS](https://tailwindcss.com/) for styling. There is no component library: the form controls and buttons are plain HTML elements styled by shared class strings in `src/components/ui/`, and the confirmation modal is a native `<dialog>` whose panel, backdrop and open/close transition live in `src/app/globals.css`.
 - [Auth.js](https://authjs.dev/) (`next-auth` v5) with GitHub as the only provider
 - Postgres via `@vercel/postgres`, hosted on [Neon](https://neon.tech)

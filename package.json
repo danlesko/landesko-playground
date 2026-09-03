@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
@@ -26,7 +26,7 @@
     "@vercel/postgres": "0.10.0",
     "@vercel/speed-insights": "2.0.0",
     "clsx": "2.1.1",
-    "next": "15.5.23",
+    "next": "16.3.4",
     "next-auth": "5.0.0-beta.32",
     "p5": "1.11.8",
     "react": "^19.0.0",
@@ -36,7 +36,6 @@
     "zod": "4.5.4"
   },
   "devDependencies": {
-    "@eslint/eslintrc": "^3",
     "@playwright/test": "1.62.1",
     "@tailwindcss/postcss": "^4.3.3",
     "@types/node": "^22",
@@ -45,7 +44,7 @@
     "@types/react-google-recaptcha": "2.1.9",
     "axe-core": "4.10.3",
     "eslint": "^9",
-    "eslint-config-next": "15.5.23",
+    "eslint-config-next": "16.3.4",
     "husky": "9.1.7",
     "jsdom": "30.0.1",
     "lint-staged": "17.4.1",
