@@ -13,7 +13,7 @@ This is Dan Lesko's personal website written in [Next.js 15](https://nextjs.org)
 
 Requires [pnpm](https://pnpm.io). CI builds on Node 22, matching the version pinned on the Vercel project — which is also why `@types/node` tracks 22 rather than the latest, so the types cannot describe APIs the deployed runtime lacks.
 
-Locally, `jsdom` — which one test file uses for DOM-level component coverage — declares `^22.22.2 || ^24.15.0 || >=26.0.0`. Note that is a disjunction rather than a floor: 22.22.2+ and 24.15.0+ qualify, 23.x and 24.0–24.14 do not. Node 20 installs but cannot run the full test suite. There is deliberately no `engines` field: the honest range is jsdom's, and declaring it would warn on a Node 24.12 machine that in practice runs every test here green, which is noise rather than information.
+Locally, `jsdom` — which one test file uses for DOM-level component coverage — declares `^22.22.2 || ^24.15.0 || >=26.0.0`. Note that is a disjunction rather than a floor: 22.22.2–22.x, 24.15.0–24.x and 26+ qualify; 23.x, 24.0–24.14 and 25.x do not. Node 20 installs but cannot run the full test suite. There is deliberately no `engines` field: the honest range is jsdom's, and declaring it would warn on a Node 24.12 machine that in practice runs every test here green, which is noise rather than information.
 
 ```bash
 pnpm install
@@ -101,7 +101,7 @@ Unit tests are Vitest, running in Node with no DOM by default. One file,
 `src/components/ContactForm.interaction.test.ts`, opts into jsdom with a
 `// @vitest-environment jsdom` docblock so it can mount a component and drive a real
 submit — that is the only way to cover event-handler wiring here, and it is why the
-Node floor above exists.
+Node requirement above is jsdom's rather than Next.js's.
 
 Four end-to-end tests are **skipped**, and a skipped test is a declared gap rather
 than coverage:
