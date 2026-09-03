@@ -105,9 +105,15 @@ const nextConfig: NextConfig = {
   // `Math.max(Math.round(quality * (50 / 80)), 1)` instead
   // (`server/image-optimizer.js`), so the same request is now quality 47. Part of
   // the saving above is therefore a lower quality target rather than pure codec
-  // efficiency, and a LARGER part of it than before. The RMS column and a side-by-side look are the evidence that it
-  // does not show: no visible artefact, no colour shift, and the mark's hard edges
-  // are intact.
+  // efficiency, and a larger part of it than before.
+  //
+  // The RMS column and a side-by-side look are the evidence that it does not show,
+  // and both were RE-TAKEN for #125 rather than carried over, because the quality
+  // target moved: a 520px 1:1 crop of the 1080w candidate, WebP 75 beside AVIF 47,
+  // is marginally softer in the hair and in the background poster and otherwise
+  // indistinguishable. No blocking, no banding, no colour shift -- and the page
+  // renders that candidate smaller than 1:1, so this looks at it harder than a
+  // reader does. The mark's hard edges are intact.
   //
   // This is deliberately NOT the "re-encode public/danPool.jpeg" that #8 asks for,
   // and the reason is that a normal page load never downloads that file --
