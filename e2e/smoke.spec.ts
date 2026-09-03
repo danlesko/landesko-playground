@@ -1675,6 +1675,56 @@ test.skip(
   unimplemented("an unknown id still needs a blogs table to come back empty"),
 );
 
+/**
+ * The one thing about /blog that a database-less runner CAN check, and it was not
+ * checked (#154).
+ *
+ * Every other /blog test in this file is skipped because CI has no `blogs` table.
+ * That same absence makes the FAILURE path the one path CI exercises for real:
+ * without `POSTGRES_URL` the read throws, so the route renders an error boundary
+ * on every run. Which boundary was never asserted, and it was the wrong one.
+ *
+ * `blog/[id]/error.tsx` could not catch the read at all. A segment's `error.tsx`
+ * wraps that segment's children, not its own layout, and the read is in
+ * `blog/[id]/layout.tsx` -- deliberately, because that is what lets `notFound()`
+ * still set a real 404 (#52). Measured before the fix: `/blog/<uuid>` rendered the
+ * root "Something Went Wrong". The boundary named for this error was unreachable
+ * from it, and `/blog` had no boundary of its own at all.
+ *
+ * Skipped rather than failed when a database IS present, because then the routes
+ * render normally and there is no error to attribute. A skip that says so is
+ * honest; failing would punish the better-configured runner.
+ */
+for (const path of ["/blog", "/blog/11111111-1111-4111-8111-111111111111"]) {
+  test(`a failed read on ${path} renders the blog boundary, not the generic one`, async ({
+    page,
+  }) => {
+    await page.goto(path);
+    // Both boundaries are client components, so the fallback appears after
+    // hydration rather than in the server's HTML. Waiting on either heading is
+    // what distinguishes "not yet" from "rendered the wrong one".
+    const blogBoundary = page.getByRole("heading", {
+      name: "Error Fetching Blog",
+    });
+    const genericBoundary = page.getByRole("heading", {
+      name: "Something Went Wrong",
+    });
+    await expect(blogBoundary.or(genericBoundary)).toBeVisible();
+
+    const body = await page.locator("body").innerText();
+    test.skip(
+      !/Error Fetching Blog|Something Went Wrong/.test(body),
+      "this run has a working database, so the read does not fail and there is no boundary to attribute",
+    );
+
+    await expect(
+      blogBoundary,
+      `${path} rendered a boundary, but not the blog one -- a read that throws past blog/error.tsx is the #154 regression`,
+    ).toBeVisible();
+    await expect(genericBoundary).toHaveCount(0);
+  });
+}
+
 // The happy path stops at the captcha guard above. Getting past it needs a real
 // NEXT_PUBLIC_REACT_APP_SITE_KEY_RECAPTCHA plus a live token, and the send
 // beyond it needs mail credentials, none of which belong in CI.
