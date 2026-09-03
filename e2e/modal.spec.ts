@@ -385,42 +385,63 @@ test("without the preference it still animates", async ({ page }) => {
 test("closing animates too, not just opening", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "no-preference" });
   const dialog = await openModal(page);
+
+  // Wait for the OPENING transition to finish before closing, and this is the flakiness fix
+  // rather than politeness. Measured: Playwright reports the dialog visible while its computed
+  // opacity is still exactly 0, so `openModal` returns before the fade has made any progress.
+  // Close it then and the closing transition runs from wherever opacity had got to -- often
+  // still near zero -- so it fades 0 to 0, produces no intermediate value, and this test failed
+  // about one run in three. Settling first makes the fade a full 1 to 0 every time.
+  await dialog.evaluate((element) =>
+    Promise.all(element.getAnimations().map((animation) => animation.finished)),
+  );
+
   await dialog.getByRole("button", { name: "Cancel" }).click();
 
-  // Opacity of the element while it is on the way out, read through the DOM rather than a
-  // locator: `getByRole("dialog")` stops matching a closed dialog, so a locator-based read
-  // here fails on the selector at exactly the moment this test cares about.
-  const opacities = new Set<string>();
-  for (let sample = 0; sample < 12; sample += 1) {
-    opacities.add(
+  const samples: { open: boolean; rendered: boolean; opacity: number }[] = [];
+  for (let sample = 0; sample < 40; sample += 1) {
+    samples.push(
       await page.evaluate(() => {
         const dialog = document.querySelector("dialog")!;
         const style = getComputedStyle(dialog);
-        return style.display === "none"
-          ? "gone"
-          : Number(style.opacity).toFixed(1);
+        return {
+          open: dialog.open,
+          rendered: style.display !== "none",
+          opacity: Number(style.opacity),
+        };
       }),
     );
-    await page.waitForTimeout(20);
+    await page.waitForTimeout(10);
   }
 
+  // All three conditions in ONE sample, which is what makes this hard to satisfy accidentally:
+  //
+  //   - CLOSED but still RENDERED is what the discrete `display` transition buys, and what a
+  //     keyframe animation on `[open]` cannot do, since `close()` drops the attribute at once.
+  //   - An opacity strictly between 0 and 1 is the fade actually interpolating. Unrounded on
+  //     purpose: an earlier version compared `opacity.toFixed(1)`, and rounding is not the only
+  //     way to lose this -- an opacity transition given a DELAY longer than the display
+  //     transition would still be a running `CSSTransition` with the right
+  //     `transitionProperty` while opacity sat at exactly 1 the whole time and nothing faded.
+  //     Requiring progress rather than a transition object closes that.
+  //
+  // Requiring them together also rules out reading the closed-and-rendered state from one
+  // sample and the interpolation from another, which two separate assertions would allow.
+  const fading = samples.filter(
+    (s) => !s.open && s.rendered && s.opacity > 0 && s.opacity < 1,
+  );
   expect(
-    opacities.has("gone"),
-    "the dialog never finished closing, so it is stuck rendered",
-  ).toBe(true);
-  // STRICTLY between 0 and 1, which is the assertion rather than pedantry. "not 1.0" was the
-  // first version and it was dead: dropping the opacity transition while keeping the 150ms
-  // discrete `display` one snaps opacity to 0 and still holds the element rendered, giving
-  // 1.0 -> 0.0 -> gone, and 0.0 counted as an intermediate value. Interpolation is the
-  // property, and only a fraction is evidence of it.
-  const interpolated = [...opacities].filter((value) => {
-    const number = Number(value);
-    return Number.isFinite(number) && number > 0 && number < 1;
-  });
+    fading.length,
+    `no sample caught the dialog closed, still rendered and mid-fade -- opacities seen while rendered were ${JSON.stringify(
+      [...new Set(samples.filter((s) => s.rendered).map((s) => s.opacity))],
+    )}`,
+  ).toBeGreaterThan(0);
+
+  // And it finishes. Without this the assertion above is satisfied by a dialog stuck rendered.
   expect(
-    interpolated,
-    `saw only ${[...opacities].join(", ")} -- opacity never took an intermediate value, so the dialog snapped rather than faded`,
-  ).not.toEqual([]);
+    samples.at(-1)?.rendered,
+    "the dialog is still rendered after ~400ms, so it never finished closing",
+  ).toBe(false);
 });
 
 test("a click on the backdrop closes it, and a click on the panel does not", async ({

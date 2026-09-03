@@ -37,7 +37,7 @@ const DeleteBlogSchema = z.object({ id: z.string().uuid() });
 export type CreateBlogState = {
   fieldErrors?: z.inferFlattenedErrors<typeof CreateBlog>["fieldErrors"];
   // React resets an uncontrolled form on every action submission -- react-dom
-  // 19.1's startHostTransition calls requestFormReset before running the
+  // react-dom's startHostTransition calls requestFormReset before running the
   // action, with no opt-out -- so a rejected submission has to carry the text
   // back or the reader loses what they wrote along with being told it is wrong.
   values?: { title: string; content: string; privateBlog: boolean };

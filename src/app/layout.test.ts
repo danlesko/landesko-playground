@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { renderToStaticMarkup } from "react-dom/server";
-import { isValidElement, type ReactElement } from "react";
+import { createElement, isValidElement, type ReactElement } from "react";
 
 import {
   auth,
@@ -26,8 +26,20 @@ vi.mock("next/font/google", () => ({
   Montserrat: () => ({ className: "mont" }),
 }));
 vi.mock("@/components/MainNav", () => ({ default: () => null }));
-vi.mock("@vercel/analytics/next", () => ({ Analytics: () => null }));
-vi.mock("@vercel/speed-insights/next", () => ({ SpeedInsights: () => null }));
+// These two render a MARKER rather than null, and the markers are asserted below.
+//
+// The real components render null, so mocking them to null was indistinguishable from not
+// mocking them at all -- and worse, from the mock silently going inert. `vi.mock` keyed on a
+// module path that nothing imports is a no-op with zero diagnostics, so if either package ever
+// moves its `/next` subpath, these lines would stop applying and the real components would load
+// in a unit test without anything failing. #130 bumped both across a major (1.x -> 2.x) and the
+// subpaths happened to survive; the marker is so that the next major cannot pass quietly.
+vi.mock("@vercel/analytics/next", () => ({
+  Analytics: () => createElement("div", { "data-mock": "analytics" }),
+}));
+vi.mock("@vercel/speed-insights/next", () => ({
+  SpeedInsights: () => createElement("div", { "data-mock": "speed-insights" }),
+}));
 
 import RootLayout from "@/app/layout";
 
@@ -110,4 +122,31 @@ describe("the header auth control", () => {
       expect(authApi.signOut).toHaveBeenCalledTimes(signsIn ? 0 : 1);
     },
   );
+});
+
+/**
+ * That the two Vercel scripts are still mounted, and that the mocks above are still live.
+ *
+ * Both assertions come from the same markup on purpose, because the interesting failure is
+ * shared: `vi.mock` on a module path that nothing imports does nothing at all and reports
+ * nothing. If `@vercel/analytics` moves its `/next` subpath in some future major, the import in
+ * layout.tsx changes, the `vi.mock` path stops matching, and the real component -- which renders
+ * null -- loads instead. Every existing assertion in this file would still pass.
+ *
+ * So the mocks render a marker and this looks for it. A missing marker means either the layout
+ * stopped mounting the component or the mock went inert, and both are worth failing over.
+ */
+describe("the Vercel analytics scripts", () => {
+  it.each([
+    ["analytics", "@vercel/analytics/next"],
+    ["speed-insights", "@vercel/speed-insights/next"],
+  ])("mounts %s, and its mock is not inert", async (marker, module) => {
+    auth.mockResolvedValue(null);
+    const markup = renderToStaticMarkup(await renderTree());
+
+    expect(
+      markup,
+      `no marker for ${marker}: either layout.tsx stopped rendering it, or the vi.mock on "${module}" no longer matches what layout.tsx imports and has silently stopped applying`,
+    ).toContain(`data-mock="${marker}"`);
+  });
 });
