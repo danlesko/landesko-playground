@@ -32,13 +32,17 @@ const eslintConfig = [
   // JSON" the moment eslint-config-next moved to 16.
   //
   // `@eslint/eslintrc` was a devDependency for this one import and is now
-  // uninstalled, which also takes its `ajv@6` / `minimatch@3` /
-  // `brace-expansion@1` subtree out of the lockfile.
+  // uninstalled. That does NOT clear its `ajv@6` / `minimatch@3` /
+  // `brace-expansion@1` subtree, which an earlier draft claimed: eslint 9 depends
+  // on `@eslint/eslintrc` itself, so all four are still in the lockfile
+  // transitively. Removing a direct dependency removes a direct dependency. The
+  // advisories #127 is about need eslint 10, not this.
   //
-  // Still core-web-vitals rather than the bare entry: it is a superset, adding 22
-  // rules on top of the same base `next` config that the bare entry carries. The
-  // old warning about not re-extending base `next` afterwards still applies for
-  // the same reason -- doing so would reset `no-html-link-for-pages` and
+  // Still core-web-vitals rather than the bare entry: it is a superset, appending
+  // a 22-entry override block on top of the same base `next` config the bare entry
+  // carries. Only two of those 22 differ in effect from the base -- the two named
+  // next. The old warning about not re-extending base `next` afterwards applies
+  // for exactly that reason -- doing so would reset `no-html-link-for-pages` and
   // `no-sync-scripts` from error back to warn, which is the only thing
   // core-web-vitals adds.
   ...nextCoreWebVitals,

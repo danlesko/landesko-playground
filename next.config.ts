@@ -62,8 +62,14 @@ const nextConfig: NextConfig = {
   // this comment asked for: Next 16 declares `sharp: ^0.35.4` where 15 declared
   // `^0.34.3`, so upgrading the framework moved the encoder. The old table, taken
   // on 0.34.5, read 18,899 / 32,550 / 40,622 / 2,499 at RMS 2.61 / 2.08 / 1.95 /
-  // 7.15. The WebP column did not move at all, which is the control: only the AVIF
-  // encoder changed underneath.
+  // 7.15. The WebP column did not move at all, which localises the change to the
+  // AVIF path.
+  //
+  // TWO things moved on that path, not one, and an earlier draft of this comment
+  // wrongly credited it all to sharp. Next 16 also lowered the AVIF quality it
+  // requests, from 55 to 47 for a `q=75` URL -- see the note further down. So the
+  // smaller bytes and the slightly higher RMS are the combined effect of a new
+  // encoder AND a lower quality target, and this table cannot separate them.
   //
   // AVIF is still smaller at every width, so #121's decision stands. Note that the
   // previous comment recorded a 0.35.4 trial coming out LARGER than WebP at two of
@@ -75,10 +81,12 @@ const nextConfig: NextConfig = {
   // old comment recorded www.landesko.dev serving 17,058 / 34,347 / 46,255 for the
   // three hero widths against a local table of 18,899 / 32,550 / 40,622; this
   // table reads 17,041 / 34,441 / 46,255, matching the 1920w figure to the byte.
-  // The economical reading is that Vercel was already running a newer sharp and
-  // this upgrade brings local into line with it -- which makes the table
-  // predictive of production where it previously was not. Still circumstantial:
-  // agreeing bytes are evidence of an agreeing encoder, not proof of one.
+  // One reading is that Vercel was already running a newer sharp and this upgrade
+  // brings local into line with it. A second is that Vercel was already applying
+  // Next 16's quality formula. Both would produce agreeing bytes and this
+  // measurement cannot choose between them, so treat the agreement as a useful
+  // coincidence rather than as an identified cause -- agreeing bytes are evidence
+  // of agreeing OUTPUT, not of an agreeing pipeline.
   //
   // Re-measure if sharp moves again. It is not a property of the codec choice
   // alone, and nothing in the suite would notice --
@@ -91,11 +99,13 @@ const nextConfig: NextConfig = {
   // output, not a different encoder.
   //
   // NOT free of a quality judgement, which is worth being exact about because an
-  // earlier version of this comment claimed it was. Next asks sharp for AVIF at
-  // `quality - 20` with `effort: 3`, so a `q=75` request is AVIF quality 55
-  // against WebP's 75 -- the -20 is the codec heuristic, not an identity. Part of
+  // earlier version of this comment claimed it was, and because #125 changed the
+  // number. Next 15 asked sharp for AVIF at `quality - 20`, so a `q=75` request
+  // was AVIF quality 55 against WebP's 75. Next 16 computes
+  // `Math.max(Math.round(quality * (50 / 80)), 1)` instead
+  // (`server/image-optimizer.js`), so the same request is now quality 47. Part of
   // the saving above is therefore a lower quality target rather than pure codec
-  // efficiency. The RMS column and a side-by-side look are the evidence that it
+  // efficiency, and a LARGER part of it than before. The RMS column and a side-by-side look are the evidence that it
   // does not show: no visible artefact, no colour shift, and the mark's hard edges
   // are intact.
   //
