@@ -3,7 +3,7 @@ This is Dan Lesko's personal website written in [Next.js 15](https://nextjs.org)
 ## Stack
 
 - [Next.js 15](https://nextjs.org) App Router, React 19, TypeScript
-- [Tailwind CSS](https://tailwindcss.com/) for styling, with [Rewind UI](https://rewind-ui.dev/) used minimally for form controls
+- [Tailwind CSS](https://tailwindcss.com/) for styling. Form controls, buttons and the modal are plain HTML elements styled by shared class strings in `src/components/ui/`; there is no component library.
 - [Auth.js](https://authjs.dev/) (`next-auth` v5) with GitHub as the only provider
 - Postgres via `@vercel/postgres`, hosted on [Neon](https://neon.tech)
 - [p5.js](https://p5js.org/) (through `react-p5-wrapper`) for the animation page

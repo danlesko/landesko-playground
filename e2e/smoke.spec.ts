@@ -444,17 +444,20 @@ test("/credits attributes all four outbound resources", async ({ page }) => {
 
   // The count is load-bearing on its own: it fails if an entry is dropped, and
   // also if one is duplicated, neither of which a per-href check would catch.
-  await expect(outbound).toHaveCount(4);
+  await expect(outbound).toHaveCount(3);
 
-  // Compared as a sorted set rather than in order. The obligation is that all
-  // four are credited, not that they appear in a fixed sequence -- #10 may well
-  // reorder this list, and a test that fails on a reorder gets muted.
+  // Compared as a sorted set rather than in order. The obligation is that each
+  // expected entry is credited, not that they appear in a fixed sequence -- #10
+  // may well reorder this list, and a test that fails on a reorder gets muted.
+  //
+  // Three, not four: Rewind UI was credited until #143 replaced its last
+  // component with a native `<dialog>` and uninstalled the dependency. Crediting
+  // a library the site no longer ships is its own kind of wrong.
   const hrefs = await outbound.evaluateAll((links) =>
     links.map((link) => link.getAttribute("href")).sort(),
   );
   expect(hrefs).toEqual([
     "https://nextjs.org/",
-    "https://rewind-ui.dev/",
     "https://tailwindcss.com/",
     "https://www.flaticon.com",
   ]);

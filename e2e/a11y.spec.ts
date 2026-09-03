@@ -69,20 +69,6 @@ const VIEWPORTS = [
 // assertion below would be wrong if it guessed.
 const GRADIENT_TITLE = { rule: "color-contrast", tag: "span", gradient: true };
 
-// The open modal's body text. axe cannot judge its contrast because the panel partially
-// overlaps the page beneath it -- the same `elmPartiallyObscured` path that took four
-// headings out of this gate when the content column briefly painted a background.
-//
-// So the modal reaching axe does NOT mean its contrast is machine-checked; that specific
-// result is unavailable by construction. It is covered instead by the token pair: the panel
-// is `bg-surface` and the text inherits `--foreground`, a combination measured elsewhere in
-// this suite. Declared rather than ignored so the distinction is visible.
-const OVERLAPPED_MODAL_TEXT = {
-  rule: "color-contrast",
-  tag: "p",
-  gradient: false,
-};
-
 const ROUTES: {
   path: string;
   blockThirdParty?: true;
@@ -115,9 +101,10 @@ const ROUTES: {
     // The e2e fixture, which exists so the confirmation modal can be rendered at all --
     // see e2e/modal.spec.ts for why nothing else reaches it. Adding it here closed a real
     // gap: axe had never seen that dialog, and it was shipping a SERIOUS
-    // `aria-dialog-name` violation, because rewind-ui sets `role="dialog"` and
+    // `aria-dialog-name` violation, because the library set `role="dialog"` and
     // `aria-modal` and no name. Fixed in the same change by pointing `aria-labelledby` at
-    // the heading.
+    // the heading -- and still authored after #143 replaced that library with a native
+    // `<dialog>`, which supplies the role implicitly but no name of its own either.
     //
     // `ready` OPENS the modal, which is the whole point. Scanning this route without
     // clicking would add nothing that `/` does not already cover -- a closed modal is not
@@ -125,18 +112,16 @@ const ROUTES: {
     path: "/e2e-fixture/blog-card",
     // DESKTOP ONLY, and the reason is a measured instability rather than a shortcut.
     //
-    // axe reports the modal's body copy as `color-contrast: incomplete` at 1280px -- its
-    // `elmPartiallyObscured` path, meaning no background-painting ancestor fully encompassed
-    // the text rectangles. At the narrow width the panel is wide relative to its content and
-    // DOES encompass them, so the same text becomes evaluable and the incomplete set has one
-    // fewer entry.
-    //
-    // That would be fine if it were stable. It is not: at 400px it came out unevaluable on a
-    // developer machine and evaluable in CI, which is a font-metrics difference changing
-    // which text rectangles are covered. Whichever way the declaration is written, one of
-    // the two environments fails -- so the honest move is not to assert an incomplete set at
-    // that width. Adding tolerance instead would defeat the point of this file, which is
-    // that "axe could not evaluate this" is stated explicitly rather than ignored.
+    // At 1280px axe evaluates everything on this route. At 400px the panel is narrow relative
+    // to its content and axe declines both the heading and the body copy as
+    // `color-contrast: incomplete` -- its `elmPartiallyObscured` path, meaning no
+    // background-painting ancestor fully encompassed the text rectangles. That set was already
+    // unstable before #143: it came out unevaluable on a developer machine and evaluable in CI
+    // at the same width, which is a font-metrics difference changing which rectangles are
+    // covered. Whichever way the declaration is written, one of the two environments fails --
+    // so the honest move is not to assert an incomplete set at that width. Adding tolerance
+    // instead would defeat the point of this file, which is that "axe could not evaluate this"
+    // is stated explicitly rather than ignored.
     //
     // What it costs: the modal is not scanned for VIOLATIONS at 400px either, since the two
     // tests share a route list. The modal's own contrast is measured directly in
@@ -146,13 +131,34 @@ const ROUTES: {
       await page
         .getByRole("button", { name: "Delete post: Fixture post" })
         .click();
-      await expect(page.locator('[role="dialog"]')).toBeVisible();
-      // Past the open animation. The dialog is scannable before it settles, but its
-      // focus trap is not yet active and its transform is mid-flight, so contrast and
-      // overlap results would be read off a moving target.
-      await page.waitForTimeout(250);
+      const dialog = page.getByRole("dialog");
+      await expect(dialog).toBeVisible();
+      // Past the open animation, waited for BY the animation rather than by a duration.
+      // The dialog is scannable while its transform is mid-flight, so contrast and overlap
+      // results would otherwise be read off a moving target. This replaced a 250ms sleep:
+      // the native dialog's animation is a CSS one, so `getAnimations()` sees it, and a
+      // promise that resolves when it finishes cannot be wrong about the duration or go
+      // stale if the duration changes.
+      await dialog.evaluate((element) =>
+        Promise.all(
+          element.getAnimations().map((animation) => animation.finished),
+        ),
+      );
     },
-    unevaluable: [GRADIENT_TITLE, OVERLAPPED_MODAL_TEXT],
+    // EMPTY, and both of the entries that used to be here went for reasons worth recording.
+    //
+    // The gradient title is gone from this route's set even though the header is still in the
+    // document, and that absence is a measurement of inertness rather than an oversight.
+    // `showModal()` puts the dialog in the top layer and makes everything else inert, and
+    // inert content is out of the accessibility tree, so axe does not reach the header here at
+    // all. It is still scanned on every other route. `e2e/modal.spec.ts` asserts the same
+    // property directly by trying to focus an element behind the dialog; this is the second,
+    // independent instrument that says so.
+    //
+    // The overlapped body copy is gone because it became EVALUABLE: axe used to decline the
+    // library modal's `<p>` and now computes its ratio and passes it. So the modal's contrast
+    // is machine-checked at this width for the first time.
+    unevaluable: [],
   },
   {
     path: "/contact",
@@ -245,8 +251,8 @@ const analyse = async (
 // `impact` and `any`/`all` array in the diff, which buries the two facts a
 // reader needs -- which rule, and which element.
 //
-// Identified by rule and by markup, never by axe's `target` selector. On this
-// app the failing element is a rewind-ui `<button>` whose only selector is its
+// Identified by rule and by markup, never by axe's `target` selector. When this
+// was written the failing element was a `<button>` whose only selector was its
 // React-generated id (`#_R_2bb_`), which changes between builds, so a target
 // here would send the next reader looking for a name nothing has any more.
 const summarise = (results: AxeResult[]): string[] =>
@@ -265,32 +271,44 @@ const summarise = (results: AxeResult[]): string[] =>
   );
 
 /**
- * The floor that catches a hollow run, and it counts rules *considered* rather
- * than rules passed.
+ * The floor that catches a hollow run, and it counts DISTINCT rules considered.
  *
- * A `runOnly` that matches no rules makes axe return zero violations, which
- * would make every assertion below pass while checking nothing -- one typo in
- * WCAG_TAGS is enough. An earlier draft floored `passes.length` at 15, and the
- * precise reason that is the wrong instrument is worth stating, because the
- * obvious version of the complaint is false: a total typo does trip it, since
- * `["wcag2a-typo"]` measures 0 passes. What it does not trip is the loss of a
- * single tag, which is the realistic edit. Dropping `wcag21aa` was measured at
- * 60 rules considered with `passes` at 19-24 -- above 15 on all eight
- * combinations, so that mutant survived a `passes` floor and dies here.
+ * A `runOnly` that matches no rules makes axe return zero violations, which would make every
+ * assertion below pass while checking nothing -- one typo in WCAG_TAGS is enough. An earlier
+ * draft floored `passes.length` at 15, and the precise reason that is the wrong instrument is
+ * worth stating, because the obvious version of the complaint is false: a total typo does trip
+ * it, since `["wcag2a-typo"]` measures 0 passes. What it does not trip is the loss of a single
+ * tag, which is the realistic edit. Dropping `wcag21aa` was measured at 19-24 passes -- above
+ * 15 on all eight combinations, so that mutant survived a `passes` floor and dies here.
  *
- * Raising the `passes` floor is not the fix either: `passes` is markup-dependent
- * (24 on /contact at desktop, 19 on / at mobile in that same run), so a floor
- * tight enough to catch 19 would fail on a legitimate page.
+ * Raising the `passes` floor is not the fix either: `passes` is markup-dependent (24 on
+ * /contact at desktop, 19 on / at mobile in that same run), so a floor tight enough to catch
+ * 19 would fail on a legitimate page.
  *
- * Every rule axe considers lands in exactly one of the four buckets, so their
- * total is the size of the selected rule set -- measured 62 on all eight
- * route/viewport combinations, invariant to the markup. Dropping tags moves it:
- * 62 with all four, 60 with the two 2.1 tags removed, 56 with `wcag2a` alone.
- * So `>= 62` fails on the loss of any tag while tolerating a future axe adding
- * rules. (axe-core is pinned exactly in package.json, so it cannot drift here
- * without someone choosing to bump it.)
+ * This counted `passes + violations + incomplete + inapplicable` until #143, on the stated
+ * reasoning that every rule lands in exactly one bucket so the sum is the rule set's size.
+ * That reasoning is wrong, and the modal fixture is what exposed it: a rule with some nodes
+ * passing and others unevaluable appears in TWO buckets, so the sum double-counts it.
+ * `color-contrast` did exactly that on every route, which is why the sum measured a suspiciously
+ * round 62 while the rule set has only 61 rules in it. When the dialog moved to a native
+ * `<dialog>` its text became evaluable, `incomplete` emptied, and the sum fell to 61 on that
+ * route alone -- a floor tripping on an accessibility IMPROVEMENT, and for a reason that had
+ * nothing to do with the tags it exists to guard.
+ *
+ * Counting distinct ids is what the comment always claimed. Measured 61 on every
+ * route/viewport combination, and unlike the sum it does not move with markup or with whether
+ * an animation has settled. Tag drops still trip it: 59 without `wcag21aa`, 58 without
+ * `wcag2aa`, 56 with `wcag2a` alone, 5 without `wcag2a`, 0 on a typo.
+ *
+ * One gap, stated rather than papered over: removing `wcag21a` leaves 61, because in axe's
+ * current mapping every rule it selects is also selected by another tag. No count-based floor
+ * can catch that -- the old sum measured 62 either way too -- and inventing a per-tag
+ * assertion to cover a tag that contributes nothing would be theatre.
+ *
+ * (axe-core is pinned exactly in package.json, so this cannot drift without someone choosing
+ * to bump it.)
  */
-const RULE_FLOOR = 62;
+const RULE_FLOOR = 61;
 
 for (const viewport of VIEWPORTS) {
   for (const route of ROUTES) {
@@ -304,11 +322,14 @@ for (const viewport of VIEWPORTS) {
     }) => {
       const results = await analyse(page, route, viewport);
 
-      const considered =
-        results.passes.length +
-        results.violations.length +
-        results.incomplete.length +
-        results.inapplicable.length;
+      const considered = new Set(
+        [
+          ...results.passes,
+          ...results.violations,
+          ...results.incomplete,
+          ...results.inapplicable,
+        ].map((result) => result.id),
+      ).size;
       expect(
         considered,
         "axe considered too few rules -- check WCAG_TAGS for a typo or a dropped tag",

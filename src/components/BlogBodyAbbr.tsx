@@ -1,10 +1,9 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Trash } from "@phosphor-icons/react/dist/ssr";
 import type { Blog } from "@/lib/definitions";
 import { BLOG_DATE_TIME_FORMAT, formatBlogDateRelative } from "@/lib/blogDate";
 import type { Session } from "next-auth";
-import { Modal } from "@rewind-ui/core";
 import TextLink from "@/components/ui/TextLink";
 import { formErrorClasses } from "@/components/ui/form";
 import {
@@ -55,6 +54,33 @@ export const attemptDelete = async (
 const BlogBodyAbbr = ({ session, blog, deleteBlogPost }: BlogBodyAbbrProps) => {
   const [openModal, setOpenModal] = useState(false);
   const [deleteError, setDeleteError] = useState("");
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  // Drives the element from the state, guarded both ways. `showModal()` throws if the
+  // dialog is already open and `close()` on a closed one fires a spurious `close` event,
+  // which would set the state again -- so both calls check `open` first. That also makes
+  // this safe under React's development double-invoke.
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    if (openModal && !dialog.open) dialog.showModal();
+    if (!openModal && dialog.open) dialog.close();
+  }, [openModal]);
+
+  // Scroll lock, which is the one piece of the previous behaviour the platform does NOT
+  // provide. `showModal()` makes the background inert and unclickable but leaves it
+  // scrollable, and the library was locking it -- measured, `body` computed
+  // `overflow: hidden` while the old modal was open. A class rather than an inline style
+  // so the value lives with the rest of the CSS.
+  //
+  // The cleanup runs on unmount as well as on close, which matters here specifically:
+  // confirming a delete removes the card this component renders, so it can unmount while
+  // the dialog is open and would otherwise leave the page unscrollable.
+  useEffect(() => {
+    if (!openModal) return;
+    document.body.classList.add("modal-open");
+    return () => document.body.classList.remove("modal-open");
+  }, [openModal]);
 
   // `now` starts null and is only ever set from an effect, and the reason is
   // hydration. This component is server-rendered and then hydrated, so a
@@ -131,54 +157,80 @@ const BlogBodyAbbr = ({ session, blog, deleteBlogPost }: BlogBodyAbbrProps) => {
       <p aria-live="polite" className={formErrorClasses}>
         {deleteError}
       </p>
-      {/* `aria-labelledby`, because the dialog had no accessible name at all. rewind-ui
-          sets `role="dialog"`, `aria-modal`, `aria-hidden` and an id, but no
-          name-giving attribute, so a screen reader announced a dialog with no name --
-          axe reports it as a serious `aria-dialog-name` violation. It went unnoticed
-          because nothing could render this modal until
-          `src/app/e2e-fixture/blog-card` existed; axe never reached it.
+      {/* A NATIVE `<dialog>`, replacing rewind-ui's Modal and removing the last reason
+          that library was installed (#143).
 
-          Pointed at the heading rather than duplicating the string in an `aria-label`,
-          so the visible title and the announced name cannot drift apart. The id is
-          derived from the post so two cards on one page do not collide. */}
-      <Modal
-        open={openModal}
-        className="bg-surface"
-        onClose={() => setOpenModal(false)}
-        aria-labelledby={`${blog.id}-delete-heading`}
-      >
-        <div className="p-4">
-          <h2
-            id={`${blog.id}-delete-heading`}
-            className="text-2xl font-semibold"
-          >
-            Delete Blog Post
-          </h2>
-          <p className="text-lg">
-            Are you sure you want to delete this blog post?
-          </p>
-          <div className="flex justify-end mt-4">
-            {/* `type="button"` on both, explicitly. rewind-ui's Button defaulted to it;
-                a native one inside a form defaults to submitting it. These portal out of
-                any form and this page has none, so nothing depended on it -- but a
-                default worth relying on is a default worth naming. */}
-            <button
-              type="button"
-              className={`mr-2 ${primaryButtonClasses}`}
-              onClick={() => setOpenModal(false)}
+          The platform supplies, for free, four things the library hand-rolled: a focus
+          trap, Escape-to-close, an inert background, and top-layer rendering that needs
+          no portal. It also fixes a defect the library had -- its trap was gated on an
+          animation's `onfinish`, so for roughly 150ms after opening, focus could tab out
+          to the header and nav. `showModal()` makes the rest of the document inert
+          immediately, and `e2e/modal.spec.ts` no longer needs the wait that gap forced.
+
+          `openModal` stays the single source of truth and an effect drives the element to
+          match, rather than the element being the state. The alternative -- calling
+          `showModal()` in the click handler -- puts the DOM and React out of step the
+          moment anything else closes the dialog.
+
+          `aria-labelledby` points at the heading. The library set `role="dialog"`,
+          `aria-modal`, `aria-hidden` and an id but no name-giving attribute, so a screen
+          reader announced an unnamed dialog -- a serious `aria-dialog-name` violation
+          that shipped because nothing could render this component until the fixture
+          existed. A native dialog is no better on its own; the name is still ours to
+          supply. The id is derived from the post so two cards cannot collide.
+
+          NO `role="dialog"` attribute: the element has that role implicitly, and adding
+          it would be redundant. Tests locate it by role rather than by selector.
+
+          Gated on `session?.user`, matching the trigger, and that gate is NOT redundant with
+          this being a dialog. The library rendered nothing until it was opened, so a signed-out
+          visitor never received this markup; a native `<dialog>` is always in the document and
+          merely `display: none`, so without the gate every anonymous reader would be served
+          the confirmation copy and both buttons for every card on the page. A unit test caught
+          exactly that. Nothing is exploitable either way -- `deleteBlogPost` re-checks the
+          session server-side, which is the control that matters -- but markup nobody can use
+          should not be sent. */}
+      {session?.user && (
+        <dialog
+          ref={dialogRef}
+          aria-labelledby={`${blog.id}-delete-heading`}
+          onClose={() => setOpenModal(false)}
+          className="modal-panel bg-surface text-foreground"
+        >
+          <div className="p-4">
+            <h2
+              id={`${blog.id}-delete-heading`}
+              className="text-2xl font-semibold"
             >
-              Cancel
-            </button>
-            <button
-              type="button"
-              className={dangerButtonClasses}
-              onClick={handleDelete}
-            >
-              Delete
-            </button>
+              Delete Blog Post
+            </h2>
+            <p className="text-lg">
+              Are you sure you want to delete this blog post?
+            </p>
+            <div className="flex justify-end mt-4">
+              {/* `type="button"` on both, explicitly, and this is now load-bearing rather
+                  than tidy. The library's Button defaulted to it and portalled these out of
+                  the document's tree; a native `<dialog>` renders in the top layer but STAYS
+                  where it is written, so if this card is ever placed inside a form these are
+                  inside it and a bare `<button>` submits it. */}
+              <button
+                type="button"
+                className={`mr-2 ${primaryButtonClasses}`}
+                onClick={() => setOpenModal(false)}
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                className={dangerButtonClasses}
+                onClick={handleDelete}
+              >
+                Delete
+              </button>
+            </div>
           </div>
-        </div>
-      </Modal>
+        </dialog>
+      )}
     </div>
   );
 };

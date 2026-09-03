@@ -65,42 +65,6 @@
    nothing used, and before that a single unused PLUGIN cost 12,309 bytes (#133). Audit
    plugins and globs; do not police vocabulary. */
 @source not "../**/*.test.{js,ts,jsx,tsx}";
-/* rewind-ui ships compiled class strings; without this its utilities stop being emitted
-   and every Button, Input, Textarea, Checkbox and Modal renders unstyled. `node_modules`
-   is excluded by default in v4, so this has to be explicit.
-
-   TWO FILES, NOT ALL 33 (#134, then #143). This used to be `*.js`, which harvested
-   candidates from
-   Accordion, Calendar, Table, Tooltip and the rest, none of which can render here.
-   It was ten files until #143 started replacing the library. The form controls going native
-   removed Checkbox, FormControl, Input and Textarea; the buttons going native removed Button,
-   Dropdown, InputGroup and Spinner. Only Modal is still imported, and it reaches Overlay.
-
-   Two and not one, which is the part worth getting right. Modal renders an Overlay, so
-   narrowing to `Modal` alone still builds and strips the Overlay's fill and blur -- the
-   backdrop stops being drawn at all. There are no dynamic imports in that subtree to miss.
-
-   `src/components/ui/rewindSources.test.ts` recomputes that closure and fails if it stops
-   matching, because the failure mode is silent. Add a rewind-ui import without touching
-   these lines and that test tells you -- as long as it is a named import,
-   `import { X } from "@rewind-ui/core"`, which is how every call site is written today. A
-   namespace import or a re-export through another module would slip past it. */
-@source "../../node_modules/@rewind-ui/core/dist/theme/styles/{Modal,Overlay}.styles.js";
-/* AND the component implementations, not only their theme styles. This was missed on the
-   first pass and codex caught it: a component can hardcode classes in its own JSX rather
-   than take them from the theme. `Checkbox.js` does exactly that -- `grid grid-cols-1
-   justify-items-start` is inline in the component.
-
-   Under the old wildcard that class was emitted by ACCIDENT, because Combobox's style file
-   happens to contain it too. Excluding Combobox took it away, and the authenticated create
-   form's checkbox lost its layout with a green build, a passing suite, and no warning.
-
-   That is also a lesson about the audit rather than just the glob. I verified "nothing was
-   lost" by diffing class tokens across the ten retained STYLE files, which is the wrong
-   set: it cannot see a class that only ever appears in an implementation file. Re-run
-   across all 24 reachable implementation files, exactly one class was missing, and this is
-   it. */
-@source "../../node_modules/@rewind-ui/core/dist/components/{Modal,Overlay}/**/*.js";
 
 /* NO `tailwind-scrollbar` PLUGIN. It was declared and nothing used it -- the same shape
    as the `@tailwindcss/typography` finding in #133, and found the same way.
@@ -260,52 +224,22 @@ body {
     scroll-behavior: auto !important;
   }
 
-  /* rewind-ui's Modal slides in regardless of the preference, and its animation is
-     unreachable from JS — it drives the Web Animations API directly. CSS reaches it
-     anyway, because the cascade puts `!important` author declarations above
-     animation declarations. Note it would NOT beat a CSS transition, which sits
-     above important-author; the Modal does not use one for the movement.
+  /* The `transform: none !important` override for the old modal is GONE from here, and its
+     absence is the point rather than an oversight.
 
-     Measured through a scratch route, since the Modal needs a signed-in session.
-     Sampling computed style every frame under emulated `reduce`, before this rule
-     the modal ran through 17 distinct transforms, sliding 100px; after it, one,
-     pinned at `none`. With `no-preference` it still ran (13 distinct).
+     It existed because rewind-ui's Modal drove its slide through the Web Animations API,
+     which no JS in this app could reach, and `!important` author declarations outrank
+     animation declarations in the cascade -- so CSS was the only lever. Measured: under
+     emulated `reduce` that modal ran through 17 distinct transforms and slid 100px without
+     the rule, and one pinned transform with it. See #60 and #64.
 
-     That harness is no longer gone. `src/app/e2e-fixture/blog-card` renders the Modal
-     without needing a session, so `e2e/modal.spec.ts` re-runs this: it asserts the transform
-     never varies from `none` under `reduce`, with a control proving it DOES vary without the
-     preference, so neither half can pass vacuously. The numbers above stay as a record; the
-     property itself is now guarded.
+     #143 replaced it with a native `<dialog>` animated by a CSS `animation` (bottom of this
+     file), which the block above already covers -- `animation-duration` collapses and it
+     does not move. Nothing authors a `role="dialog"` attribute any more either: the element
+     carries that role implicitly, so the old selector would match nothing.
 
-     `transform` only, never `opacity`, because the preference is about movement and
-     a fade is not movement. An earlier version of this comment justified it instead
-     by claiming that forcing opacity would leave a closed modal on screen — that is
-     false, and worth recording as false: a closed `[role="dialog"]` is
-     `visibility: hidden` as well as `opacity: 0`, so visibility would still hide
-     it. Right decision, wrong reason.
-
-     It does not stop the animation running, only its visible effect, and that is
-     what makes it safe rather than merely narrow. The Modal gates `useFocusTrap` on
-     the animation's `onfinish`; cancelling or skipping the animation is the naive
-     fix #60 warns breaks the focus trap. The timeline still completes on schedule,
-     so the callback still fires.
-
-     A companion `div:has(> [role="alert"])` rule used to sit here for rewind-ui's
-     Toast, whose framer-motion is *vendored* inside
-     `@rewind-ui/core/dist/node_modules/` and imported by relative path. It is gone
-     because the Toast is: #120 replaced /contact's toasts with an inline live
-     region, which also retired the one defect that rule could not reach — the Toast
-     drove a progress bar by writing `style.width` from a requestAnimationFrame
-     timer, and width is not transform.
-
-     Deliberately broad: nothing in this app authors `role="dialog"`, and rewind-ui's
-     Modal is the only thing that renders one — checked, along with the fact that the
-     app imports no Drawer, Alert, Popover or Tooltip. If a component is ever added
-     whose dialog needs a transform to be positioned, this is where it breaks, so
-     scope it then. See #60 and #64. */
-  [role="dialog"] {
-    transform: none !important;
-  }
+     `e2e/modal.spec.ts` asserts the pinned transform under `reduce`, with a control proving
+     it does move without the preference, so this is guarded rather than trusted. */
 }
 
 /* Two rules restoring behaviour v4's preflight dropped. Both are deliberate: the point of
@@ -372,4 +306,72 @@ body {
     outline: 2px solid transparent;
     outline-offset: 2px;
   }
+}
+
+/* THE CONFIRMATION DIALOG, a native `<dialog>` since #143 removed rewind-ui.
+   `src/components/BlogBodyAbbr.tsx` explains why the element changed; this is what it has
+   to look like, and most of it is undoing user-agent defaults.
+
+   A native dialog arrives with a border, padding, a white background, `width: fit-content`
+   and automatic centring, none of which is wanted. It is also `display: none` until open,
+   which is why the visual rules are scoped to `[open]`.
+
+   The geometry reproduces what the library rendered rather than improving on it: the panel
+   sits near the top of the viewport with a margin, not vertically centred, and is capped so
+   it does not span a wide screen. Measured on the previous implementation before the swap. */
+dialog.modal-panel {
+  border: 0;
+  padding: 0;
+  /* The UA sheet gives `dialog` a white background and black text. Utility classes on the
+     element override both, but they are named here too so the panel is never momentarily
+     light if a class stops applying. */
+  background: var(--surface);
+  color: var(--foreground);
+  border-radius: 0.375rem;
+  max-width: min(32rem, calc(100vw - 1rem));
+  width: 100%;
+  /* `auto` horizontally, a fixed offset vertically. `auto` on all sides centres it, which is
+     not what the previous modal did. */
+  margin: 3.5rem auto auto;
+  box-shadow:
+    0 10px 15px -3px rgb(0 0 0 / 0.3),
+    0 4px 6px -4px rgb(0 0 0 / 0.3);
+}
+
+/* The dim and the blur, which the library rendered as a real DOM element and the platform
+   gives as a pseudo-element in the top layer. Values carried over from measuring that
+   element: a half-opacity near-black and an 8px blur.
+
+   `::backdrop` is NOT reachable by DOM queries, which is why the e2e test reads
+   `getComputedStyle(dialog, "::backdrop")` instead of looking for an element. */
+dialog.modal-panel[open]::backdrop {
+  background: rgb(24 24 27 / 0.5);
+  backdrop-filter: blur(8px);
+}
+
+/* Body scroll lock. `showModal()` makes the background inert -- unclickable and out of the
+   tab order -- but leaves it scrollable, and the previous modal did lock it. Applied from an
+   effect in BlogBodyAbbr, which removes it on unmount too, because confirming a delete
+   unmounts the card while the dialog is open. */
+body.modal-open {
+  overflow: hidden;
+}
+
+/* The open animation. Deliberately on the dialog and NOT on `::backdrop`: the
+   `prefers-reduced-motion` block above targets `*, *::before, *::after`, which does not
+   include `::backdrop`, so an animated backdrop would keep moving for a reader who asked it
+   not to. */
+@keyframes modal-panel-in {
+  from {
+    opacity: 0;
+    transform: translateY(-1rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+dialog.modal-panel[open] {
+  animation: modal-panel-in 150ms ease-out;
 }
