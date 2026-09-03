@@ -375,11 +375,12 @@ test("without the preference it still animates", async ({ page }) => {
  * CLOSING animates, which is a separate claim from opening and the one that constrains how
  * `globals.css` is written.
  *
- * A keyframe animation on `[open]` cannot do this: `close()` makes the element non-rendered
- * immediately, so there is nothing left to animate. Only a transition with `allow-discrete` on
- * `display` and `overlay` holds the element rendered on the way out. The library animated both
- * directions, so this asserts the half that a natural-looking implementation silently drops --
- * and it fails if anyone swaps the transition back for keyframes.
+ * A keyframe animation attached to `[open]` cannot do this: `close()` removes the attribute, so
+ * the animation stops applying and the element is non-rendered with nothing left to animate.
+ * Keyframes are not disqualified in general -- an animation that itself animates `display` can
+ * do it -- but the shape this replaced cannot, so this asserts the half a natural-looking
+ * implementation silently drops. `globals.css` uses a transition with `allow-discrete` on
+ * `display` and `overlay` instead.
  */
 test("closing animates too, not just opening", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "no-preference" });
@@ -407,11 +408,19 @@ test("closing animates too, not just opening", async ({ page }) => {
     opacities.has("gone"),
     "the dialog never finished closing, so it is stuck rendered",
   ).toBe(true);
+  // STRICTLY between 0 and 1, which is the assertion rather than pedantry. "not 1.0" was the
+  // first version and it was dead: dropping the opacity transition while keeping the 150ms
+  // discrete `display` one snaps opacity to 0 and still holds the element rendered, giving
+  // 1.0 -> 0.0 -> gone, and 0.0 counted as an intermediate value. Interpolation is the
+  // property, and only a fraction is evidence of it.
+  const interpolated = [...opacities].filter((value) => {
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0 && number < 1;
+  });
   expect(
-    [...opacities].filter((value) => value !== "gone" && value !== "1.0")
-      .length,
-    `saw only ${[...opacities].join(", ")} -- the dialog went straight from opaque to gone, so closing is not animating`,
-  ).toBeGreaterThan(0);
+    interpolated,
+    `saw only ${[...opacities].join(", ")} -- opacity never took an intermediate value, so the dialog snapped rather than faded`,
+  ).not.toEqual([]);
 });
 
 test("a click on the backdrop closes it, and a click on the panel does not", async ({
@@ -450,6 +459,65 @@ test("a click on the backdrop closes it, and a click on the panel does not", asy
     await page.evaluate(() => document.querySelector("dialog")?.open ?? false),
     "a click inside the panel closed the dialog, so reading the copy dismisses it",
   ).toBe(true);
+});
+
+/**
+ * Split-target presses, which is where the first version of the dismissal was wrong.
+ *
+ * A click's target is the nearest common ancestor of the press and the release. Both gestures
+ * below therefore report the DIALOG, exactly as a clean backdrop press does, and a single
+ * `event.target === event.currentTarget` check on `click` dismissed on both -- measured, not
+ * theorised. Dragging out of the panel is what a reader does when they select the confirmation
+ * text and overshoot, and losing the dialog for that is a bad outcome on a destructive
+ * confirmation.
+ *
+ * Two gestures rather than one because they exercise opposite halves of the check: the first
+ * presses the panel and releases on the backdrop, the second the reverse.
+ */
+test("a press that starts or ends on the panel does not dismiss", async ({
+  page,
+}) => {
+  const dialog = await openModal(page);
+  const box = (await dialog.boundingBox())!;
+  const insidePanel = [box.x + box.width / 2, box.y + box.height / 2] as const;
+  // Below the panel rather than beside it, so it is backdrop at every viewport this runs at.
+  const onBackdrop = [20, box.y + box.height + 200] as const;
+
+  // The `open` property after the exit transition would have run, for the same reason the test
+  // above uses it: a closing dialog stays displayed while it fades.
+  const stillOpen = async () => {
+    await page.waitForTimeout(300);
+    return page.evaluate(() => document.querySelector("dialog")?.open ?? false);
+  };
+
+  await page.mouse.move(...insidePanel);
+  await page.mouse.down();
+  await page.mouse.move(...onBackdrop, { steps: 6 });
+  await page.mouse.up();
+  expect(
+    await stillOpen(),
+    "dragging from the panel out to the backdrop dismissed the dialog, so selecting the copy and overshooting loses it",
+  ).toBe(true);
+
+  await page.mouse.move(...onBackdrop);
+  await page.mouse.down();
+  await page.mouse.move(...insidePanel, { steps: 6 });
+  await page.mouse.up();
+  expect(
+    await stillOpen(),
+    "pressing the backdrop and releasing on the panel dismissed the dialog",
+  ).toBe(true);
+});
+
+test("keyboard activation of the cancel control still closes it", async ({
+  page,
+}) => {
+  // The control for the three tests above. Dismissal moved from `click` to pointer events to
+  // fix the split-target cases, and the way to get that wrong is to break activation with no
+  // pointer events behind it -- which is how a keyboard user operates both buttons.
+  const dialog = await openModal(page);
+  await dialog.getByRole("button", { name: "Cancel" }).press("Enter");
+  await expect(dialog).toBeHidden();
 });
 
 /**

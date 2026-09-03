@@ -49,8 +49,9 @@
 // 121,409 to 109,100 bytes -- 10.1% -- and the before and after files turned out to
 // share an identical 4,964-byte prefix and 104,136-byte suffix, so the removal was
 // literally one contiguous block and nothing else moved. `max-w-prose` survived,
-// as it had to: that one is a CORE width utility and is the only form rewind-ui
-// actually uses.
+// as it had to: that one is a CORE width utility, and it was also the only form
+// rewind-ui used -- that library is gone as of #143, so only the core utility
+// matters now.
 //
 // So the durable lesson is not "never write a utility word in a comment", which
 // contorts a sentence for about thirty bytes at a time. It is that a PLUGIN can

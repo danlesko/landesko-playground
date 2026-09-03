@@ -55,6 +55,9 @@ const BlogBodyAbbr = ({ session, blog, deleteBlogPost }: BlogBodyAbbrProps) => {
   const [openModal, setOpenModal] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const dialogRef = useRef<HTMLDialogElement>(null);
+  // Whether the press that is currently in progress started on the backdrop. See the dialog's
+  // pointer handlers below for why a click event cannot answer that on its own.
+  const pressStartedOnBackdrop = useRef(false);
 
   // Drives the element from the state. `openModal` stays the single source of truth and the
   // element is made to match, rather than the element being the state -- calling `showModal()`
@@ -209,21 +212,45 @@ const BlogBodyAbbr = ({ session, blog, deleteBlogPost }: BlogBodyAbbrProps) => {
           aria-labelledby={`${blog.id}-delete-heading`}
           onClose={() => setOpenModal(false)}
           // Click-to-dismiss on the backdrop, which the platform does NOT give: a modal
-          // dialog's default close request is Escape only. The library closed on an overlay
+          // dialog's only default close request is Escape. The library closed on an overlay
           // click (`overlayCloseOnClick` defaulted to true, and this call site never opted
           // out), so without this the change would quietly remove an interaction.
           //
-          // `event.target === event.currentTarget` is what identifies a backdrop press.
-          // `::backdrop` is a pseudo-element and cannot be an event target, so a press over it
+          // `event.target === event.currentTarget` is what identifies the backdrop, because
+          // `::backdrop` is a pseudo-element and cannot be an event target: a press over it
           // reports the dialog itself, while a press on the panel reports the child it landed
-          // on -- measured both ways. The panel fills the dialog's padding box, which has no
-          // border and no padding, so there is no sliver that looks like panel and reports
-          // dialog.
+          // on. The panel fills the dialog's padding box, which has no border and no padding,
+          // so there is no sliver that looks like panel and reports dialog.
           //
-          // Not `closedby="any"`, which does this declaratively, because that attribute is
-          // considerably newer than everything else this element relies on.
-          onClick={(event) => {
-            if (event.target === event.currentTarget) setOpenModal(false);
+          // POINTERDOWN AND POINTERUP, not `click`, and that is a fix rather than a style
+          // choice. A click's target is the nearest common ancestor of the press and the
+          // release, so both split-target gestures resolve to the dialog and a single
+          // `onClick` check closed on both -- measured: dragging from inside the panel out to
+          // the backdrop dismissed the dialog, and so did pressing the backdrop and releasing
+          // on the panel. Selecting the confirmation text with the mouse and overshooting is
+          // enough to do the first. Requiring both ends to be the backdrop is what the
+          // platform's own light-dismiss algorithm does for `closedby="any"`, which this
+          // deliberately does not use because that attribute is much newer than everything
+          // else here.
+          //
+          // Keyboard activation of Cancel or Delete cannot reach this: it dispatches `click`
+          // with no pointer events at all, and nothing here listens for `click`.
+          onPointerDown={(event) => {
+            pressStartedOnBackdrop.current =
+              event.target === event.currentTarget;
+          }}
+          onPointerUp={(event) => {
+            const releasedOnBackdrop = event.target === event.currentTarget;
+            if (pressStartedOnBackdrop.current && releasedOnBackdrop) {
+              setOpenModal(false);
+            }
+            pressStartedOnBackdrop.current = false;
+          }}
+          // A press that ends outside the window, or is taken over by a scroll or a gesture,
+          // never produces `pointerup` -- so without this the next release anywhere would be
+          // judged against a stale press.
+          onPointerCancel={() => {
+            pressStartedOnBackdrop.current = false;
           }}
           className="modal-panel bg-surface text-foreground"
         >

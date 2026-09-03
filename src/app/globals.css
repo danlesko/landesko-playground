@@ -241,13 +241,20 @@ body {
      emulated `reduce` that modal ran through 17 distinct transforms and slid 100px without
      the rule, and one pinned transform with it. See #60 and #64.
 
-     #143 replaced it with a native `<dialog>` animated by a CSS `animation` (bottom of this
-     file), which the block above already covers -- `animation-duration` collapses and it
-     does not move. Nothing authors a `role="dialog"` attribute any more either: the element
-     carries that role implicitly, so the old selector would match nothing.
+     #143 replaced it with a native `<dialog>` moved by a CSS TRANSITION (bottom of this
+     file). The selector could not survive that in any case: nothing authors a
+     `role="dialog"` attribute any more, because the element carries that role implicitly.
 
-     `e2e/modal.spec.ts` asserts the pinned transform under `reduce`, with a control proving
-     it does move without the preference, so this is guarded rather than trusted. */
+     The rule above is NOT sufficient on its own, which is worth stating because it looks as
+     though it should be. Measured, sampling from the click: a collapsed duration still renders
+     one frame at the transition's from-state, so the dialog moved 16px under `reduce` -- for a
+     frame, but really. There is a separate `transform: none` rule beside the dialog's own
+     styles at the bottom of this file that removes it, and it needs no `!important`, because a
+     transition's endpoints come from the author cascade where an animation's values do not.
+
+     `e2e/modal.spec.ts` asserts the pinned transform under `reduce`, sampling from the click so
+     that first frame is reachable, with a control proving it does move without the preference.
+     Deleting that override fails the test. */
 }
 
 /* Two rules restoring behaviour v4's preflight dropped. Both are deliberate: the point of
@@ -386,11 +393,14 @@ body.modal-open {
    become visible usually consumed that frame.
 
    The rule below removes the movement properly, and it is why the transition form wins on this
-   point too: a transition takes its value from the author declaration, so a later author rule
-   overrides it. A keyframe animation's declarations outrank author declarations, which is why
-   the version of this file before #143 needed `transform: none !important` to reach the
-   library's animation at all. Same outcome, no `!important`, and now genuinely still rather
-   than still-after-one-frame.
+   point too -- though not by "overriding the transition", which is the wrong description. A
+   running transition sits above every author declaration in the cascade, `!important`
+   included. What the rule does is win the UNDERLYING author cascade and make both endpoints
+   `none`, so no transform transition is ever generated and there is nothing to outrank. A
+   keyframe animation's values also outrank normal author declarations, which is why the
+   version of this file before #143 needed `transform: none !important` to reach the library's
+   animation at all. Same outcome, no `!important`, and now genuinely still rather than
+   still-after-one-frame.
 
    Deliberately NOT on `::backdrop`: the `prefers-reduced-motion` block far above targets
    `*, *::before, *::after`, which does not include `::backdrop`, so an animated backdrop would
