@@ -7,16 +7,31 @@ import { auth } from "@/auth";
 import { deleteBlog } from "@/lib/data";
 
 const NewBlogSchema = z.object({
-  id: z.string().uuid(),
+  id: z.guid(),
   // Messages are shown verbatim to the reader, so they say what to do rather
   // than describing the constraint. A missing field arrives as null, which
   // trips invalid_type before min ever runs.
+  //
+  // The callback form, not `error: "Title is required"`, and the difference is
+  // not stylistic. v3's `invalid_type_error` applied to exactly one issue code;
+  // v4's `error` is a fallback for EVERY issue the schema raises, so the plain
+  // string would also answer for a future `.regex()` or `.length()` added
+  // without its own message. Returning undefined for other codes defers to the
+  // check's own message, which is what v3 did. The `.min`/`.max` below both
+  // carry messages, so today either form behaves identically -- this is about
+  // the next edit, not this one.
   title: z
-    .string({ invalid_type_error: "Title is required" })
+    .string({
+      error: (issue) =>
+        issue.code === "invalid_type" ? "Title is required" : undefined,
+    })
     .min(1, "Title is required")
     .max(100, "Title must be 100 characters or fewer"),
   content: z
-    .string({ invalid_type_error: "Content is required" })
+    .string({
+      error: (issue) =>
+        issue.code === "invalid_type" ? "Content is required" : undefined,
+    })
     .min(1, "Content is required"),
   privateBlog: z.union([
     z.string().transform((data) => data === "on"),
@@ -30,12 +45,27 @@ const NewBlogSchema = z.object({
 // and described a format the column never held.
 const CreateBlog = NewBlogSchema.omit({ id: true });
 
-const DeleteBlogSchema = z.object({ id: z.string().uuid() });
+// `z.guid()` rather than `z.uuid()`, and NOT because guid reads better.
+//
+// v4 tightened uuid validation: a UUID whose variant bits are not RFC-4122
+// (`…-4111-c111-…`) is accepted by v3's `.uuid()` and rejected by v4's, measured
+// both ways. Postgres's own `UUID` type accepts those bit patterns, so the column
+// can legally hold one even though the only writer is `uuid_generate_v4()`, which
+// does not produce them.
+//
+// This schema and `BlogRowSchema` in data.ts have to agree, and that is the real
+// argument: under `z.uuid()` a row Postgres accepted would neither render nor be
+// deletable. `z.guid()` keeps exactly v3's predicate, so upgrading zod does not
+// quietly change which posts exist. Adopting RFC UUIDs as an app invariant would
+// be a deliberate tightening and a separate decision.
+const DeleteBlogSchema = z.object({ id: z.guid() });
 
 // Derived from the schema rather than written out, so adding a field to
 // CreateBlog cannot leave this type quietly behind.
 export type CreateBlogState = {
-  fieldErrors?: z.inferFlattenedErrors<typeof CreateBlog>["fieldErrors"];
+  fieldErrors?: z.core.$ZodFlattenedError<
+    z.output<typeof CreateBlog>
+  >["fieldErrors"];
   // React resets an uncontrolled form on every action submission -- react-dom
   // react-dom's startHostTransition calls requestFormReset before running the
   // action, with no opt-out -- so a rejected submission has to carry the text
@@ -63,7 +93,7 @@ export async function createBlog(
   });
   if (!parsed.success) {
     return {
-      fieldErrors: parsed.error.flatten().fieldErrors,
+      fieldErrors: z.flattenError(parsed.error).fieldErrors,
       values: {
         title: asText(formData.get("title")),
         content: asText(formData.get("content")),

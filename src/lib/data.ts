@@ -27,7 +27,9 @@ import { Session } from "next-auth";
  * every read on an additive migration, which is too much.
  */
 const BlogRowSchema: z.ZodType<Blog> = z.object({
-  id: z.string().uuid(),
+  // `z.guid()`, matching DeleteBlogSchema in actions.ts -- see the note there for
+  // why v4's stricter `z.uuid()` is not used on either side.
+  id: z.guid(),
   title: z.string(),
   content: z.string(),
   // Rejects more than a string date. Postgres `timestamp` also admits
@@ -47,36 +49,49 @@ const BlogRowSchema: z.ZodType<Blog> = z.object({
 });
 
 /**
- * What the catches below log in place of a parse failure.
+ * What the catches below log in place of a parse failure: an allowlisted
+ * projection of the `ZodError` rather than the error itself.
  *
- * A `ZodError` cannot be given to `console.error` at all. Measured on this
- * project's Node 24.12.0: `console.error("…", zodError)` raises
- * `TypeError: Cannot read properties of undefined (reading 'value')` from
- * `formatProperty` in `node:internal/util/inspect`, because zod defines `stack`
- * as an own *accessor* and the inspector reads a descriptor it has already
- * consumed. That `TypeError` would replace the generic error the catch means to
- * throw, so a drifted column would reach the reader as an inspector crash with
- * nothing logged — the opposite of what sharing the catch is for.
+ * The original reason no longer applies, and saying so is the point of this
+ * paragraph. Under zod 3 a `ZodError` could not be given to `console.error` at
+ * all: on this project's Node 24.12.0 it raised `TypeError: Cannot read
+ * properties of undefined (reading 'value')` from `formatProperty` in
+ * `node:internal/util/inspect`, because zod defined `stack` as an own *accessor*
+ * and the inspector read a descriptor it had already consumed. That `TypeError`
+ * replaced the generic error the catch means to throw, so a drifted column
+ * reached the reader as an inspector crash with nothing logged. Measured again
+ * under zod 4.5.4: `inspect(error)` and `console.error("…", error)` both
+ * succeed, even though `stack` is still an own accessor. The crash is gone.
  *
- * Reducing the error also pins what is allowed into the log, which a comment on
- * its own could not. Only `code` and `path` are copied, plus `received` for
- * `invalid_type`, where zod sets it to a `ZodParsedType` name and never to the
- * value. That matters because `ZodError.message` serialises the issues array
- * whole, and a literal or an enum issue *does* carry the offending value — on
- * `received`, which is not copied for those codes. So growing this schema in
- * either direction cannot start leaking a row.
+ * The other reason survives, and it is now the only one: this pins what is
+ * allowed into the log. Only `code` and `path` are copied, plus `expected` for
+ * `invalid_type`, which is a type name (`"string"`, `"date"`) and never a value.
+ * Deliberately NOT copied: `message`, which zod composes from the issue and
+ * which for some codes quotes what it saw.
  *
- * One case is not covered by construction: a custom refinement chooses its own
- * `path`, which `makeIssue` appends verbatim (zod 3.24.2,
- * `helpers/parseUtil.js`), so `ctx.addIssue({ path: [someValue] })` would put a
- * value somewhere this function copies. Nothing here does that, and a refinement
- * that did would be the thing to fix — but the guarantee below is about the
- * declared fields, not about any issue zod can be asked to produce.
+ * It would be wrong to conclude from v4 that nothing needs allowlisting. v4 is
+ * better here than v3 -- a literal or enum issue used to carry the offending
+ * value on `received`, and in v4 those carry `values`, the list of *accepted*
+ * ones -- but the issue model still declares an optional `input`, `reportInput`
+ * puts the offending value on finalized issues, and a custom issue can carry
+ * anything through its `params` or its `path`. Nothing here enables any of that.
+ * An allowlist keeps it that way whatever a later refinement does, which a
+ * comment could not.
+ *
+ * One case remains outside the guarantee by construction: a custom refinement
+ * chooses its own `path`, which zod appends verbatim, so
+ * `ctx.addIssue({ path: [someValue] })` would put a value somewhere this
+ * function copies. Nothing does that, and a refinement that did would be the
+ * thing to fix.
  *
  * Anything that is not a `ZodError` passes through untouched, so a driver error
  * is still logged as itself, with its stack. The only two things thrown inside
- * these `try` blocks are the driver and `parse`, and driver errors carry a
- * normal `stack` value and inspect fine.
+ * these `try` blocks are the driver and `parse`.
+ *
+ * `src/lib/data.test.ts` asserts the exact projection rather than only that the
+ * post's content is absent from it. That matters: with the inspect crash gone,
+ * every other assertion about this function passes if the reduction is deleted
+ * and the raw error is logged, so the shape is what has to be pinned.
  */
 function loggable(error: unknown): unknown {
   if (!(error instanceof z.ZodError)) return error;
@@ -85,7 +100,10 @@ function loggable(error: unknown): unknown {
     issues: error.issues.map((issue) => ({
       code: issue.code,
       path: issue.path,
-      ...(issue.code === "invalid_type" ? { received: issue.received } : {}),
+      // `expected`, not v3's `received`, which v4 removed. Both are type names
+      // rather than values; `expected` says what the column should have held,
+      // which is the more useful half when a column's type drifts.
+      ...(issue.code === "invalid_type" ? { expected: issue.expected } : {}),
     })),
   };
 }
@@ -113,7 +131,9 @@ const CountRowSchema = z.object({
     const total = Number(value);
     if (!Number.isSafeInteger(total) || total < 0) {
       ctx.addIssue({
-        code: z.ZodIssueCode.custom,
+        // The raw string rather than `z.ZodIssueCode.custom`, which v4
+        // deprecates in favour of the literal codes.
+        code: "custom",
         // No value in the message: `loggable` copies `path` and `code`, and for a
         // custom issue it copies neither `received` nor `message`, but a row must
         // not be one edit away from the log either way.

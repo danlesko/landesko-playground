@@ -102,13 +102,18 @@ beforeEach(() => {
   resetSqlMock();
   resetNextMocks();
   // The stand-in still runs Node's real formatter over every argument, rather
-  // than being an empty function. `console.error` formats its arguments eagerly,
-  // and on this runtime it *throws* on some of them: handed a `ZodError`, the
-  // inspector raises `TypeError: Cannot read properties of undefined (reading
-  // 'value')`, which would replace the generic error data.ts means to throw. A
-  // no-op mock cannot see that, so it hid the defect until a review reproduced
-  // it outside the suite. Formatting here means any un-loggable payload fails
-  // the test that logs it, wherever in this file that happens.
+  // than being an empty function, because `console.error` formats eagerly and a
+  // payload that cannot be formatted throws where it is logged rather than where
+  // it is built.
+  //
+  // Under zod 3 that was not hypothetical: handed a `ZodError`, this runtime's
+  // inspector raised `TypeError: Cannot read properties of undefined (reading
+  // 'value')`, which replaced the generic error data.ts means to throw. A no-op
+  // mock could not see it, so it hid the defect until a review reproduced it
+  // outside the suite. zod 4 no longer trips that (measured: `inspect` and
+  // `console.error` both succeed on a v4 `ZodError`), so this is now a general
+  // tripwire rather than a guard on a known crash -- kept because it costs one
+  // line and the class of bug is invisible to a silent spy.
   consoleError = vi.spyOn(console, "error").mockImplementation((...args) => {
     args.forEach((arg) => inspect(arg));
   });
@@ -545,31 +550,51 @@ describe("blog row validation", () => {
   });
 
   /**
-   * The regression test for the reason data.ts reduces the error at all: given
-   * the `ZodError` itself, `console.error` throws
-   * `TypeError: Cannot read properties of undefined (reading 'value')` on this
-   * runtime, and that `TypeError` replaces the generic error below — so the
-   * reader gets an inspector crash and the log is lost. Asserting the message
-   * here is what pins it: the `beforeEach` stand-in formats what it is given, so
-   * an un-inspectable payload makes this reject with the wrong error.
+   * The EXACT projection, which is what makes the reducer in data.ts undeletable.
+   *
+   * This replaced a test asserting only that the payload could be formatted. That
+   * was the original reason the reducer existed — under zod 3 a raw `ZodError`
+   * made `console.error` throw on this runtime — and zod 4 fixed it, which left
+   * that assertion passing whatever data.ts logged. Measured after the upgrade:
+   * with the reduction removed and the raw error logged, the formatting
+   * assertion passed and so did the content one.
+   *
+   * So the shape is pinned instead. Deep equality rather than a `toContain`,
+   * because the property being protected is that NOTHING ELSE is copied: a field
+   * added to this projection has to be added here too, which is the review moment
+   * the reducer's comment asks for. `message` in particular is absent on purpose
+   * — zod composes it from the issue and for some codes it quotes what was seen.
    */
-  it("logs something Node can actually format, so the generic error survives", async () => {
+  it("logs exactly the allowlisted projection of the error, and nothing else", async () => {
     queueBlogPage([{ ...validRow(), date: "2026-01-01" }]);
 
     await expect(fetchBlogPage(session(), 1)).rejects.toThrow(
       "Failed to fetch blogs.",
     );
 
-    expect(() =>
-      inspect(loggedPayload("Failed to fetch blogs:")),
-    ).not.toThrow();
+    expect(loggedPayload("Failed to fetch blogs:")).toEqual({
+      name: "ZodError",
+      issues: [
+        // `expected` is zod 4's replacement for v3's `received`; both name a
+        // type, never a value.
+        { code: "invalid_type", path: [0, "date"], expected: "date" },
+      ],
+    });
   });
 
-  // Guards the claim in data.ts that nothing from a private post reaches the
-  // log. A validation error that quoted the offending row would put post bodies
-  // into the server log on every schema drift — and zod does carry the offending
-  // value for some issue types, so this holds because of the reduction rather
-  // than because ZodError is inherently value-free.
+  // Guards the claim in data.ts that nothing from a private post reaches the log.
+  // A validation error that quoted the offending row would put post bodies into
+  // the server log on every schema drift.
+  //
+  // Worth being honest about what this does and does not prove. It does NOT
+  // independently show the reduction is necessary: measured on zod 4, removing
+  // the reduction and logging the raw error still passes this, because a v4
+  // invalid-type issue does not carry the offending value and a literal or enum
+  // issue now carries `values`, the accepted ones, where v3 carried the received
+  // one. The test above is what pins the reduction. This is defence in depth
+  // against the paths that still could carry a value — `reportInput`, a custom
+  // issue's `params`, a refinement choosing its own `path` — none of which the
+  // schemas here use.
   it("keeps the post's content out of what it logs", async () => {
     queueBlogPage([{ ...validRow(), date: "2026-01-01" }]);
     await expect(fetchBlogPage(session(), 1)).rejects.toThrow();

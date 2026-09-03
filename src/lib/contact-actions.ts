@@ -6,7 +6,12 @@ const EMAILJS_SEND_URL = "https://api.emailjs.com/api/v1.0/email/send";
 
 const ContactSchema = z.object({
   name: z.string().trim().min(1).max(100),
-  email: z.string().trim().email().max(254),
+  // Trim FIRST, then validate, which is why this is a pipe and not
+  // `z.email().trim()`. v4 runs checks in order, so putting the format check
+  // first validates untrimmed input: measured, `z.email().trim()` rejects
+  // "  a@b.com  " where v3's `.trim().email()` trims it and accepts. A trailing
+  // space is exactly what a reader pastes.
+  email: z.string().trim().pipe(z.email().max(254)),
   message: z.string().trim().min(1).max(5000),
   captchaToken: z.string().min(1).max(4096),
 });
