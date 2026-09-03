@@ -299,36 +299,47 @@ test("the page behind the dialog is inert, not merely covered", async ({
  * The one behaviour `globals.css` documented as measured but could not re-run.
  *
  * Against the library version, under emulated `reduce`, the modal ran through 17 distinct
- * transforms and slid 100px, and a `[role="dialog"] { transform: none !important }` rule
- * pinned it to one. `!important` was the only lever available: the slide was driven through
- * the Web Animations API, which no JS in this app could reach, and an author `!important`
- * declaration outranks an animation declaration in the cascade. Those numbers came from a
- * scratch route that was then deleted, so the comment recording them was a record rather than
- * a guard, and said so.
+ * transforms and slid 100px, and a `[role="dialog"] { transform: none !important }` rule pinned
+ * it to one. `!important` was the only lever available: the slide was driven through the Web
+ * Animations API, which no JS in this app could reach, and an author `!important` declaration
+ * outranks an animation declaration in the cascade. Those numbers came from a scratch route
+ * that was then deleted, so the comment recording them was a record rather than a guard, and
+ * said so.
  *
- * That rule is now GONE and this test still passes, which is the useful result. The native
- * dialog animates through a CSS `animation`, so the blanket `animation-duration: 0.01ms`
- * already in the `prefers-reduced-motion` block reaches it -- no special-casing, and nothing
- * left that only a `!important` override can hold down.
+ * It is a guard again, and it caught something. Sampling starts at the CLICK rather than after
+ * the dialog becomes visible, and that is the point rather than a detail: waiting for
+ * visibility consumed the first frame, and this assertion was passing on that timing. Measured
+ * from the click, a collapsed duration still renders one frame at the from-state, so both a
+ * keyframe animation and a transition moved 16px under `reduce` -- for one frame, but
+ * genuinely. `globals.css` now zeroes the transform outright under the preference, which is
+ * clean for a transition where it needed `!important` for an animation.
  *
  * Sampling rather than asserting a single value: the job is to stop MOVEMENT, so what matters
  * is that the transform never varies, not what it happens to be.
  */
 test("reduced motion stops the dialog moving", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  const dialog = await openModal(page);
+  await page.goto(FIXTURE);
+  await page.getByRole("button", { name: TRIGGER }).click();
 
   const transforms = new Set<string>();
-  for (let sample = 0; sample < 12; sample += 1) {
+  for (let sample = 0; sample < 16; sample += 1) {
     transforms.add(
-      await dialog.evaluate((element) => getComputedStyle(element).transform),
+      await page.evaluate(() => {
+        const dialog = document.querySelector("dialog[open]");
+        // A throw rather than a sentinel. An earlier version of the control below returned a
+        // placeholder string when the dialog was absent, which counted as a distinct value and
+        // let a dialog that never rendered satisfy the assertion.
+        if (!dialog) throw new Error("the dialog is not open");
+        return getComputedStyle(dialog).transform;
+      }),
     );
-    await page.waitForTimeout(25);
+    await page.waitForTimeout(12);
   }
 
   expect(
     [...transforms],
-    "the dialog's transform changed under reduced motion, so it is still animating",
+    "the dialog's transform changed under reduced motion, so it is still moving",
   ).toEqual(["none"]);
 });
 
@@ -361,14 +372,100 @@ test("without the preference it still animates", async ({ page }) => {
 });
 
 /**
- * The dialog's text contrast, measured here because axe cannot.
+ * CLOSING animates, which is a separate claim from opening and the one that constrains how
+ * `globals.css` is written.
  *
- * axe reports the modal's body copy as `color-contrast: incomplete` -- its
+ * A keyframe animation on `[open]` cannot do this: `close()` makes the element non-rendered
+ * immediately, so there is nothing left to animate. Only a transition with `allow-discrete` on
+ * `display` and `overlay` holds the element rendered on the way out. The library animated both
+ * directions, so this asserts the half that a natural-looking implementation silently drops --
+ * and it fails if anyone swaps the transition back for keyframes.
+ */
+test("closing animates too, not just opening", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const dialog = await openModal(page);
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+
+  // Opacity of the element while it is on the way out, read through the DOM rather than a
+  // locator: `getByRole("dialog")` stops matching a closed dialog, so a locator-based read
+  // here fails on the selector at exactly the moment this test cares about.
+  const opacities = new Set<string>();
+  for (let sample = 0; sample < 12; sample += 1) {
+    opacities.add(
+      await page.evaluate(() => {
+        const dialog = document.querySelector("dialog")!;
+        const style = getComputedStyle(dialog);
+        return style.display === "none"
+          ? "gone"
+          : Number(style.opacity).toFixed(1);
+      }),
+    );
+    await page.waitForTimeout(20);
+  }
+
+  expect(
+    opacities.has("gone"),
+    "the dialog never finished closing, so it is stuck rendered",
+  ).toBe(true);
+  expect(
+    [...opacities].filter((value) => value !== "gone" && value !== "1.0")
+      .length,
+    `saw only ${[...opacities].join(", ")} -- the dialog went straight from opaque to gone, so closing is not animating`,
+  ).toBeGreaterThan(0);
+});
+
+test("a click on the backdrop closes it, and a click on the panel does not", async ({
+  page,
+}) => {
+  // The platform does not give this: a modal dialog's only default close request is Escape.
+  // The library closed on an overlay click, so without the handler in BlogBodyAbbr the change
+  // would have quietly removed an interaction -- which is why both directions are asserted.
+  // A handler that closes on ANY click inside the dialog would pass the first half of this
+  // test and make the Cancel button the only way to read the copy.
+  const dialog = await openModal(page);
+  const panel = await dialog.boundingBox();
+
+  await page.mouse.click(20, (panel?.y ?? 0) + (panel?.height ?? 0) + 200);
+  await expect(
+    dialog,
+    "a click on the backdrop did not close the dialog",
+  ).toBeHidden();
+
+  const reopened = await openModal(page);
+  const box = await reopened.boundingBox();
+  // Inside the panel but not on a control: the bottom edge, below the buttons.
+  await page.mouse.click(
+    (box?.x ?? 0) + (box?.width ?? 0) / 2,
+    (box?.y ?? 0) + (box?.height ?? 0) - 4,
+  );
+
+  // Read as the element's `open` property after the exit transition would have finished, and
+  // NOT as `toBeVisible`. That is a mutation-tested distinction rather than a preference: a
+  // handler that closes on any click inside the dialog survived a `toBeVisible` assertion here,
+  // because `allow-discrete` keeps a closing dialog `display: block` while it fades and
+  // `toBeVisible` is satisfied on the first poll. `open` flips synchronously in `close()`, so
+  // it cannot be raced by the animation.
+  await page.waitForTimeout(300);
+  expect(
+    await page.evaluate(() => document.querySelector("dialog")?.open ?? false),
+    "a click inside the panel closed the dialog, so reading the copy dismisses it",
+  ).toBe(true);
+});
+
+/**
+ * The dialog's text contrast, measured here because axe could not.
+ *
+ * axe declined the library modal's body copy as `color-contrast: incomplete` -- its
  * `elmPartiallyObscured` path, meaning no background-painting ancestor fully encompassed the
- * text rectangles. So the a11y suite records that result as expected-unevaluable, and that
- * declaration is keyed on the element's TAG, which cannot distinguish this `<p>` from the
- * card's. Rather than make the declaration cleverer, the property it would have guarded is
- * asserted directly here.
+ * text rectangles. The a11y suite recorded that as expected-unevaluable, keyed on the
+ * element's TAG, which cannot tell this `<p>` from the card's; rather than make the
+ * declaration cleverer, the property it would have guarded was asserted directly here.
+ *
+ * As of #143 axe DOES evaluate it at the desktop width, so `e2e/a11y.spec.ts` covers it too
+ * and that route's unevaluable set is empty. This is kept regardless, and not because it is
+ * free: at 400px axe still declines both this `<p>` and the heading, which is why the fixture
+ * is scanned at desktop only. So on the narrow width this remains the sole check on the
+ * property, and it also pins the exact ratio rather than only clearing axe's threshold.
  */
 test("the dialog's text has enough contrast against its panel", async ({
   page,

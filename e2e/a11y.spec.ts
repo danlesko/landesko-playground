@@ -149,11 +149,15 @@ const ROUTES: {
     //
     // The gradient title is gone from this route's set even though the header is still in the
     // document, and that absence is a measurement of inertness rather than an oversight.
-    // `showModal()` puts the dialog in the top layer and makes everything else inert, and
-    // inert content is out of the accessibility tree, so axe does not reach the header here at
-    // all. It is still scanned on every other route. `e2e/modal.spec.ts` asserts the same
-    // property directly by trying to focus an element behind the dialog; this is the second,
-    // independent instrument that says so.
+    // `showModal()` puts the dialog in the top layer and makes everything else inert, and axe
+    // models that itself -- it detects the modal dialog and treats nodes outside it as inert in
+    // its own virtual tree, rather than querying the browser's accessibility tree -- so it does
+    // not reach the header here at all. It is still scanned on every other route.
+    //
+    // Worth being exact about, because it means this is axe agreeing about inertness rather
+    // than the platform reporting it. `e2e/modal.spec.ts` measures the platform directly, by
+    // trying to focus a control behind the dialog and finding that it refuses. Two independent
+    // instruments; replacing `showModal()` with `show()` trips both.
     //
     // The overlapped body copy is gone because it became EVALUABLE: axe used to decline the
     // library modal's `<p>` and now computes its ratio and passes it. So the modal's contrast

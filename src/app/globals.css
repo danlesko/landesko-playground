@@ -39,12 +39,13 @@
                              reported zero. The threshold was doing the work.
 
    NOT REACHED by any of that, and genuinely able to differ:
-     - the create form, which needs a session. Its Checkbox uses stock `purple-100`,
-       `purple-300`, `purple-500` and `purple-600`.
-     - the Modal, which needs blog data. Its overlay uses stock `bg-gray-900/50`.
-     - disabled Buttons (`disabled:bg-purple-300`) and the focus borders on Input and
-       Textarea, all stock colours.
+     - the create form, which needs a session.
+     - disabled buttons and the focus rings on the text fields, which use stock colours.
      - hover states anywhere.
+
+   The confirmation modal was on that list until #143. It is reachable now -- the e2e fixture
+   renders it -- and it no longer draws on the stock palette for its overlay, because the
+   overlay is a `::backdrop` styled at the bottom of this file.
 
    None of those is expected to move by more than the 1-2/255 seen on /contact, since the
    cause is the same oklch re-derivation. That is a prediction, not a measurement. */
@@ -98,9 +99,12 @@
    four danger, and focus.
 
    EXTENDS the default palette rather than replacing it. v4 would let us clear it with
-   `--color-*: initial`, and that would be wrong here -- rewind-ui's own styles reference
-   `ring-purple-100`, `ring-gray-200`, `bg-gray-100` and friends, so the stock colours have
-   to stay reachable. */
+   `--color-*: initial`, and that would be wrong here. The original reason was that
+   rewind-ui's compiled styles referenced `ring-purple-100`, `ring-gray-200` and friends. That
+   library is gone as of #143, but the reason outlived it: the class strings in
+   `src/components/ui/` inherited those stock names, so `focus:ring-purple-100`,
+   `disabled:bg-purple-300`, `focus:ring-red-100` and `disabled:bg-red-300` are shipping from
+   this repo's own source now. Clearing the palette would silently drop them. */
 @theme {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -197,8 +201,11 @@
   --header-gradient-end: #06b6d4;
 }
 
-/* Set on body rather than only on <main> so content portaled out of <main>
-   (the rewind-ui Modal) inherits a readable colour instead of near-black. */
+/* Set on body rather than only on <main>, so anything outside <main> inherits a readable
+   colour instead of near-black. Written for the library modal, which portalled to body. The
+   native `<dialog>` that replaced it does NOT portal -- it stays in the tree and is only
+   painted in the top layer -- and it names both colours on itself anyway. The header and
+   footer are the live reason now. */
 body {
   color: var(--foreground);
   background: var(--background);
@@ -209,11 +216,12 @@ body {
    on its final keyframe instead of reverting to the pre-animation state. Nothing
    here listens for those events today; this is about not depending on that.
 
-   The first rule covers only what CSS drives: the `animate-pulse` skeletons under
-   blog/, the contact form's own submit spinner, and the `transition-*` on the buttons and
-   fields. The second covers the
-   one JS-driven animation it can reach. The p5 sketch on /animation is neither — it
-   reads `matchMedia` itself and stops (#79). */
+   The rule covers what CSS drives: the `animate-pulse` skeletons under blog/, the contact
+   form's own submit spinner, the `transition-*` on the buttons and fields, and the
+   confirmation dialog's open/close transition at the bottom of this file. It used to be
+   followed by a second rule pinning a transform, for a JS-driven animation that CSS was the
+   only way to reach; #143 removed the thing that needed it. The p5 sketch on /animation is in
+   neither category -- it reads `matchMedia` itself and stops (#79). */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -357,21 +365,68 @@ body.modal-open {
   overflow: hidden;
 }
 
-/* The open animation. Deliberately on the dialog and NOT on `::backdrop`: the
-   `prefers-reduced-motion` block above targets `*, *::before, *::after`, which does not
-   include `::backdrop`, so an animated backdrop would keep moving for a reader who asked it
-   not to. */
-@keyframes modal-panel-in {
-  from {
-    opacity: 0;
-    transform: translateY(-1rem);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-  }
+/* The open and close animation, as a transition rather than a keyframe animation. Both halves
+   of that choice were measured, and the obvious reasoning for the other one turned out to be
+   wrong.
+
+   A keyframe animation on `[open]` cannot animate CLOSING, because `close()` makes the element
+   non-rendered at once. The library animated both directions, so keyframes alone drops a
+   behaviour. `allow-discrete` on `display` and `overlay` is what makes the closing half
+   possible: both are discrete properties that would otherwise flip instantly, and it keeps the
+   element rendered and in the top layer until opacity and transform have finished.
+   `@starting-style` supplies the from-state for opening, which a transition needs because the
+   element goes from not-rendered to rendered with no start value to work from.
+
+   Keyframes looked preferable on reduced-motion grounds and were not. Measured, sampling from
+   the click under emulated `reduce`: BOTH forms render one frame at translateY(-16px) before
+   settling. The blanket `animation-duration`/`transition-duration: 0.01ms` still needs a frame
+   to leave the from-state, whether that state comes from a `from` block or from
+   `@starting-style`. So reduced motion did not favour either form -- and the pre-existing test
+   asserting a constant transform was passing on timing luck, since waiting for the dialog to
+   become visible usually consumed that frame.
+
+   The rule below removes the movement properly, and it is why the transition form wins on this
+   point too: a transition takes its value from the author declaration, so a later author rule
+   overrides it. A keyframe animation's declarations outrank author declarations, which is why
+   the version of this file before #143 needed `transform: none !important` to reach the
+   library's animation at all. Same outcome, no `!important`, and now genuinely still rather
+   than still-after-one-frame.
+
+   Deliberately NOT on `::backdrop`: the `prefers-reduced-motion` block far above targets
+   `*, *::before, *::after`, which does not include `::backdrop`, so an animated backdrop would
+   keep moving for a reader who asked it not to.
+
+   16px, not the ~100px the library slid. A shorter move over the same 150ms reads as less
+   abrupt at desktop sizes; a deliberate change, not a failed attempt at parity. */
+dialog.modal-panel {
+  opacity: 0;
+  transform: translateY(-1rem);
+  transition:
+    opacity 150ms ease-out,
+    transform 150ms ease-out,
+    overlay 150ms ease-out allow-discrete,
+    display 150ms ease-out allow-discrete;
 }
 
 dialog.modal-panel[open] {
-  animation: modal-panel-in 150ms ease-out;
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@starting-style {
+  dialog.modal-panel[open] {
+    opacity: 0;
+    transform: translateY(-1rem);
+  }
+}
+
+/* AFTER the three rules above, and that order is the whole rule. It matches them at equal
+   specificity, so it only wins by coming later -- moved above them it would be inert while
+   looking exactly as intentional. Opacity is left alone: it is collapsed to 0.01ms by the
+   blanket rule and fading in is not movement. */
+@media (prefers-reduced-motion: reduce) {
+  dialog.modal-panel,
+  dialog.modal-panel[open] {
+    transform: none;
+  }
 }

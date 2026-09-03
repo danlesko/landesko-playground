@@ -56,15 +56,22 @@ const BlogBodyAbbr = ({ session, blog, deleteBlogPost }: BlogBodyAbbrProps) => {
   const [deleteError, setDeleteError] = useState("");
   const dialogRef = useRef<HTMLDialogElement>(null);
 
-  // Drives the element from the state, guarded both ways. `showModal()` throws if the
-  // dialog is already open and `close()` on a closed one fires a spurious `close` event,
-  // which would set the state again -- so both calls check `open` first. That also makes
-  // this safe under React's development double-invoke.
+  // Drives the element from the state. `openModal` stays the single source of truth and the
+  // element is made to match, rather than the element being the state -- calling `showModal()`
+  // straight from the click handler puts the DOM and React out of step the moment anything
+  // else closes the dialog, and Escape is exactly that.
+  //
+  // Neither call is guarded on `dialog.open`, and an earlier version guarded both for reasons
+  // that turned out to be false. Measured: a second `showModal()` on an already-open modal is
+  // a no-op rather than a throw, and `close()` on a closed dialog returns before queueing
+  // anything, so it fires no `close` event and cannot feed the state back. React's development
+  // double-invoke is therefore already safe. The `dialogRef.current` check IS load-bearing --
+  // the dialog is not rendered at all for a viewer who cannot delete.
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
-    if (openModal && !dialog.open) dialog.showModal();
-    if (!openModal && dialog.open) dialog.close();
+    if (openModal) dialog.showModal();
+    else dialog.close();
   }, [openModal]);
 
   // Scroll lock, which is the one piece of the previous behaviour the platform does NOT
@@ -76,6 +83,12 @@ const BlogBodyAbbr = ({ session, blog, deleteBlogPost }: BlogBodyAbbrProps) => {
   // The cleanup runs on unmount as well as on close, which matters here specifically:
   // confirming a delete removes the card this component renders, so it can unmount while
   // the dialog is open and would otherwise leave the page unscrollable.
+  //
+  // NOT reference-counted, and that is a deliberate limit rather than an oversight. Every card
+  // toggles the same class, so if two dialogs were open at once, closing either would unlock
+  // the page while the other stayed open. Nothing can get there: the first dialog makes the
+  // rest of the document inert, so its own card's trigger is the last one anybody can press.
+  // A counter would be dead code guarding a state the platform prevents.
   useEffect(() => {
     if (!openModal) return;
     document.body.classList.add("modal-open");
@@ -195,6 +208,23 @@ const BlogBodyAbbr = ({ session, blog, deleteBlogPost }: BlogBodyAbbrProps) => {
           ref={dialogRef}
           aria-labelledby={`${blog.id}-delete-heading`}
           onClose={() => setOpenModal(false)}
+          // Click-to-dismiss on the backdrop, which the platform does NOT give: a modal
+          // dialog's default close request is Escape only. The library closed on an overlay
+          // click (`overlayCloseOnClick` defaulted to true, and this call site never opted
+          // out), so without this the change would quietly remove an interaction.
+          //
+          // `event.target === event.currentTarget` is what identifies a backdrop press.
+          // `::backdrop` is a pseudo-element and cannot be an event target, so a press over it
+          // reports the dialog itself, while a press on the panel reports the child it landed
+          // on -- measured both ways. The panel fills the dialog's padding box, which has no
+          // border and no padding, so there is no sliver that looks like panel and reports
+          // dialog.
+          //
+          // Not `closedby="any"`, which does this declaratively, because that attribute is
+          // considerably newer than everything else this element relies on.
+          onClick={(event) => {
+            if (event.target === event.currentTarget) setOpenModal(false);
+          }}
           className="modal-panel bg-surface text-foreground"
         >
           <div className="p-4">
