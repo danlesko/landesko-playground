@@ -630,15 +630,63 @@ test("the home page LCP image loads eagerly at a declared size", async ({
   // fails against a correctly configured image, so assert the preload instead,
   // and tie it to this image by comparing srcset rather than merely counting
   // that some preload exists.
-  const srcSet = await image.getAttribute("srcset");
-  expect(srcSet).toContain("/_next/image");
-  await expect(
-    page.locator('head link[rel="preload"][as="image"]'),
-  ).toHaveAttribute("imagesrcset", srcSet!);
+  // Both attributes and both elements read in ONE evaluation, and that is a
+  // flakiness fix rather than tidying (#151).
+  //
+  // The previous shape took four separate round trips: read the tag's `srcset`,
+  // then assert the hint's `imagesrcset` equals it, then the same pair for
+  // `sizes`. Each read is its own trip, so the value asserted against could be
+  // read before a re-render and compared after one -- and `toHaveAttribute` with
+  // an expected value auto-retries, so it would sit re-checking the HINT against
+  // a stale TAG value until it timed out. That produces exactly
+  // `expect(locator).toHaveAttribute(expected) failed` with no useful diff, which
+  // is what was observed once in roughly 600 runs and never reproduced.
+  //
+  // Polled rather than read once, because a single snapshot could equally catch a
+  // genuinely mid-flight state. The poll waits for the tag and the hint to AGREE,
+  // then the assertions below run against that same settled snapshot, so nothing
+  // is compared across a re-render.
+  const readPreloadPair = () =>
+    page.evaluate(() => {
+      const img = document.querySelector<HTMLImageElement>(
+        'img[alt="Lan Playing Pool"]',
+      );
+      const link = document.querySelector<HTMLLinkElement>(
+        'head link[rel="preload"][as="image"]',
+      );
+      return {
+        srcset: img?.getAttribute("srcset") ?? null,
+        sizes: img?.getAttribute("sizes") ?? null,
+        loading: img?.getAttribute("loading") ?? null,
+        imagesrcset: link?.getAttribute("imagesrcset") ?? null,
+        imagesizes: link?.getAttribute("imagesizes") ?? null,
+      };
+    });
+
+  let pair = await readPreloadPair();
+  await expect
+    .poll(
+      async () => {
+        pair = await readPreloadPair();
+        return (
+          pair.srcset !== null &&
+          pair.srcset === pair.imagesrcset &&
+          pair.sizes === pair.imagesizes
+        );
+      },
+      {
+        message:
+          "the <img> and its <link rel=preload> never agreed on srcset/sizes; last seen " +
+          JSON.stringify(pair),
+      },
+    )
+    .toBe(true);
+
+  expect(pair.srcset).toContain("/_next/image");
 
   // Dropping `priority` would add loading="lazy", which defers the LCP fetch
   // until layout -- the exact regression this guards.
-  expect(await image.getAttribute("loading")).not.toBe("lazy");
+  expect(pair.loading).not.toBe("lazy");
 
   // Without `sizes` the browser assumes 100vw and picks a candidate far wider than the
   // capped column this sits in. Both the tag and the preload hint have to carry it, or
@@ -650,12 +698,13 @@ test("the home page LCP image loads eagerly at a declared size", async ({
   // condition while the column's cap was `lg:`-prefixed, and it stopped as soon as the
   // cap became unprefixed and the breakpoint went away. The requirement was never that
   // there be a breakpoint.
-  const declaredSizes = await image.getAttribute("sizes");
-  expect(declaredSizes).toBeTruthy();
-  expect(declaredSizes).not.toBe("100vw");
-  await expect(
-    page.locator('head link[rel="preload"][as="image"]'),
-  ).toHaveAttribute("imagesizes", declaredSizes!);
+  //
+  // The equality half of this is what the poll above established; these pin the
+  // value itself, which agreement alone would not -- two nulls agree.
+  expect(pair.sizes).toBeTruthy();
+  expect(pair.sizes).not.toBe("100vw");
+  expect(pair.imagesizes).toBe(pair.sizes);
+  expect(pair.imagesrcset).toBe(pair.srcset);
 
   // The declared intrinsic size, which is what reserves the box before the
   // bytes arrive. This is a separate guarantee from the rendered ratio below:
