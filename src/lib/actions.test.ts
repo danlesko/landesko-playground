@@ -233,6 +233,45 @@ describe("createBlog when signed in", () => {
     expect(onlySqlCall().values).toContain("a".repeat(100));
   });
 
+  /**
+   * What "100 characters" counts, which the zod 4 upgrade in #126 changed and
+   * which no typechecker and no ASCII fixture can see.
+   *
+   * zod 3 measured `.max()` in UTF-16 code units, so an astral character cost
+   * two: 51 emoji were 102 units and were REJECTED. zod 4 measures code points,
+   * so the same title is 51 and is accepted. Measured both ways.
+   *
+   * Pinned as the wanted behaviour rather than merely recorded. The message this
+   * field shows says "100 characters or fewer", and someone typing 51 emoji has
+   * typed 51 characters by any definition they would recognise — the surrogate
+   * pair is an encoding detail. The column is TEXT with no length limit, so
+   * nothing downstream cares either. Content and message got the same change for
+   * the same reason.
+   */
+  it("counts a title in characters, not UTF-16 units", async () => {
+    // 51 emoji: 51 code points, 102 UTF-16 units. Over the limit under zod 3's
+    // measure and under it in zod 4's.
+    const title = "\u{1F642}".repeat(51);
+    expect(title.length).toBe(102);
+    expect([...title]).toHaveLength(51);
+
+    await expectRedirect(() => submitBlog(blogForm({ title })), "/blog");
+    expect(onlySqlCall().values).toContain(title);
+  });
+
+  it("still rejects a title of 101 characters when they are astral", async () => {
+    // The control. Without it the test above passes for a schema that stopped
+    // enforcing a maximum at all.
+    const title = "\u{1F642}".repeat(101);
+
+    const state = await submitBlog(blogForm({ title }));
+
+    expect(state.fieldErrors?.title).toEqual([
+      "Title must be 100 characters or fewer",
+    ]);
+    expect(sqlCalls()).toHaveLength(0);
+  });
+
   it("returns empty content as a field error", async () => {
     const state = await submitBlog(blogForm({ content: "" }));
 
