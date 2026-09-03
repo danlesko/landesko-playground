@@ -387,40 +387,57 @@ test("closing animates too, not just opening", async ({ page }) => {
   const dialog = await openModal(page);
   await dialog.getByRole("button", { name: "Cancel" }).click();
 
-  // Opacity of the element while it is on the way out, read through the DOM rather than a
-  // locator: `getByRole("dialog")` stops matching a closed dialog, so a locator-based read
-  // here fails on the selector at exactly the moment this test cares about.
-  const opacities = new Set<string>();
-  for (let sample = 0; sample < 12; sample += 1) {
-    opacities.add(
+  // Polled for SIGNALS rather than sampling opacity values, and that is a flakiness fix rather
+  // than a style change. The first version read `opacity.toFixed(1)` and required a value
+  // strictly between 0 and 1, which failed about one run in three: the fade is `ease-out`, so
+  // opacity leaves 0.95 and reaches 0.05 quickly and then sits below the rounding threshold,
+  // reading "0.0" for most of the 150ms. The band that produced a fraction was far shorter than
+  // the transition, so a 20ms sampler could step over it.
+  //
+  // The two signals below are each open for the whole transition instead.
+  const samples: { open: boolean; rendered: boolean; properties: string[] }[] =
+    [];
+  for (let sample = 0; sample < 40; sample += 1) {
+    samples.push(
       await page.evaluate(() => {
         const dialog = document.querySelector("dialog")!;
-        const style = getComputedStyle(dialog);
-        return style.display === "none"
-          ? "gone"
-          : Number(style.opacity).toFixed(1);
+        return {
+          open: dialog.open,
+          rendered: getComputedStyle(dialog).display !== "none",
+          properties: dialog
+            .getAnimations()
+            .map((animation) =>
+              animation instanceof CSSTransition
+                ? animation.transitionProperty
+                : "",
+            )
+            .filter(Boolean),
+        };
       }),
     );
-    await page.waitForTimeout(20);
+    await page.waitForTimeout(10);
   }
 
+  // The core of what `allow-discrete` buys, and the thing a keyframe animation on `[open]`
+  // cannot do: the element is CLOSED but still rendered. `close()` drops the attribute
+  // synchronously, so without the discrete `display` transition this state never exists.
   expect(
-    opacities.has("gone"),
-    "the dialog never finished closing, so it is stuck rendered",
+    samples.some((s) => !s.open && s.rendered),
+    "the dialog was never both closed and still rendered, so it stopped being displayed the moment it closed and nothing could animate out",
   ).toBe(true);
-  // STRICTLY between 0 and 1, which is the assertion rather than pedantry. "not 1.0" was the
-  // first version and it was dead: dropping the opacity transition while keeping the 150ms
-  // discrete `display` one snaps opacity to 0 and still holds the element rendered, giving
-  // 1.0 -> 0.0 -> gone, and 0.0 counted as an intermediate value. Interpolation is the
-  // property, and only a fraction is evidence of it.
-  const interpolated = [...opacities].filter((value) => {
-    const number = Number(value);
-    return Number.isFinite(number) && number > 0 && number < 1;
-  });
+
+  // The fade specifically, named rather than "some transition ran": `transform` also changes on
+  // close, so a check for any running transition would survive removing the opacity one.
   expect(
-    interpolated,
-    `saw only ${[...opacities].join(", ")} -- opacity never took an intermediate value, so the dialog snapped rather than faded`,
-  ).not.toEqual([]);
+    samples.some((s) => s.properties.includes("opacity")),
+    `no opacity transition was ever running while closing -- saw ${JSON.stringify([...new Set(samples.flatMap((s) => s.properties))])}`,
+  ).toBe(true);
+
+  // And it finishes. Without this the two above are satisfied by a dialog that hangs rendered.
+  expect(
+    samples.at(-1)?.rendered,
+    "the dialog is still rendered 400ms after closing, so it is stuck",
+  ).toBe(false);
 });
 
 test("a click on the backdrop closes it, and a click on the panel does not", async ({
