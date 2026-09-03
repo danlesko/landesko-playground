@@ -7,15 +7,15 @@ import { sessionWithoutUser, signedInSession } from "@/test/auth-mock";
 // Pass-through so the predicate itself runs for real: only session resolution
 // is replaced, which would otherwise read AUTH_* secrets and reach GitHub.
 vi.mock("@/auth", () => ({
-  auth: (handler: MiddlewareHandler) => handler,
+  auth: (handler: ProxyHandler) => handler,
 }));
 
-// Hoisted above this import, so `middleware.ts` receives the mock.
-import middleware from "@/middleware";
+// Hoisted above this import, so `proxy.ts` receives the mock.
+import proxy from "@/proxy";
 
-/** The shape next-auth passes to a middleware handler. */
+/** The shape next-auth passes to the handler. */
 type AuthedRequest = NextRequest & { auth: Session | null };
-type MiddlewareHandler = (req: AuthedRequest) => Response | undefined;
+type ProxyHandler = (req: AuthedRequest) => Response | undefined;
 
 const ORIGIN = "https://example.test";
 const PROTECTED_URL = `${ORIGIN}/blog/create`;
@@ -30,7 +30,7 @@ async function requestWith(session: Session | null): Promise<AuthedRequest> {
 }
 
 function run(req: AuthedRequest): Response | undefined {
-  return (middleware as unknown as MiddlewareHandler)(req);
+  return (proxy as unknown as ProxyHandler)(req);
 }
 
 function expectRedirectToHome(response: Response | undefined): void {
@@ -39,7 +39,7 @@ function expectRedirectToHome(response: Response | undefined): void {
   expect(response?.headers.get("location")).toBe(`${ORIGIN}/`);
 }
 
-describe("middleware on /blog/create", () => {
+describe("proxy on /blog/create", () => {
   it("redirects an anonymous visitor to the home page", async () => {
     expectRedirectToHome(run(await requestWith(null)));
   });
@@ -68,6 +68,6 @@ describe("middleware on /blog/create", () => {
 });
 
 it("only guards the authoring route", async () => {
-  const { config } = await import("@/middleware");
+  const { config } = await import("@/proxy");
   expect(config.matcher).toBe("/blog/create");
 });

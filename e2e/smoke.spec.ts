@@ -958,7 +958,8 @@ test.describe("/contact", () => {
 });
 
 test("/blog/create redirects an anonymous visitor away", async ({ page }) => {
-  // The one test that exercises src/middleware.ts. Its predicate reads
+  // The anonymous half of what exercises src/proxy.ts; e2e/auth-gate.spec.ts
+  // covers a real session. Its predicate reads
   // `req.auth?.user` rather than `req.auth`; a session object carrying no user
   // must still be treated as anonymous. Unit tests cover the predicate, but
   // nothing until now proved the redirect actually happens over HTTP.
