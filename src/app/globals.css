@@ -39,12 +39,13 @@
                              reported zero. The threshold was doing the work.
 
    NOT REACHED by any of that, and genuinely able to differ:
-     - the create form, which needs a session. Its Checkbox uses stock `purple-100`,
-       `purple-300`, `purple-500` and `purple-600`.
-     - the Modal, which needs blog data. Its overlay uses stock `bg-gray-900/50`.
-     - disabled Buttons (`disabled:bg-purple-300`) and the focus borders on Input and
-       Textarea, all stock colours.
+     - the create form, which needs a session.
+     - disabled buttons and the focus rings on the text fields, which use stock colours.
      - hover states anywhere.
+
+   The confirmation modal was on that list until #143. It is reachable now -- the e2e fixture
+   renders it -- and it no longer draws on the stock palette for its overlay, because the
+   overlay is a `::backdrop` styled at the bottom of this file.
 
    None of those is expected to move by more than the 1-2/255 seen on /contact, since the
    cause is the same oklch re-derivation. That is a prediction, not a measurement. */
@@ -65,42 +66,6 @@
    nothing used, and before that a single unused PLUGIN cost 12,309 bytes (#133). Audit
    plugins and globs; do not police vocabulary. */
 @source not "../**/*.test.{js,ts,jsx,tsx}";
-/* rewind-ui ships compiled class strings; without this its utilities stop being emitted
-   and every Button, Input, Textarea, Checkbox and Modal renders unstyled. `node_modules`
-   is excluded by default in v4, so this has to be explicit.
-
-   TWO FILES, NOT ALL 33 (#134, then #143). This used to be `*.js`, which harvested
-   candidates from
-   Accordion, Calendar, Table, Tooltip and the rest, none of which can render here.
-   It was ten files until #143 started replacing the library. The form controls going native
-   removed Checkbox, FormControl, Input and Textarea; the buttons going native removed Button,
-   Dropdown, InputGroup and Spinner. Only Modal is still imported, and it reaches Overlay.
-
-   Two and not one, which is the part worth getting right. Modal renders an Overlay, so
-   narrowing to `Modal` alone still builds and strips the Overlay's fill and blur -- the
-   backdrop stops being drawn at all. There are no dynamic imports in that subtree to miss.
-
-   `src/components/ui/rewindSources.test.ts` recomputes that closure and fails if it stops
-   matching, because the failure mode is silent. Add a rewind-ui import without touching
-   these lines and that test tells you -- as long as it is a named import,
-   `import { X } from "@rewind-ui/core"`, which is how every call site is written today. A
-   namespace import or a re-export through another module would slip past it. */
-@source "../../node_modules/@rewind-ui/core/dist/theme/styles/{Modal,Overlay}.styles.js";
-/* AND the component implementations, not only their theme styles. This was missed on the
-   first pass and codex caught it: a component can hardcode classes in its own JSX rather
-   than take them from the theme. `Checkbox.js` does exactly that -- `grid grid-cols-1
-   justify-items-start` is inline in the component.
-
-   Under the old wildcard that class was emitted by ACCIDENT, because Combobox's style file
-   happens to contain it too. Excluding Combobox took it away, and the authenticated create
-   form's checkbox lost its layout with a green build, a passing suite, and no warning.
-
-   That is also a lesson about the audit rather than just the glob. I verified "nothing was
-   lost" by diffing class tokens across the ten retained STYLE files, which is the wrong
-   set: it cannot see a class that only ever appears in an implementation file. Re-run
-   across all 24 reachable implementation files, exactly one class was missing, and this is
-   it. */
-@source "../../node_modules/@rewind-ui/core/dist/components/{Modal,Overlay}/**/*.js";
 
 /* NO `tailwind-scrollbar` PLUGIN. It was declared and nothing used it -- the same shape
    as the `@tailwindcss/typography` finding in #133, and found the same way.
@@ -134,9 +99,12 @@
    four danger, and focus.
 
    EXTENDS the default palette rather than replacing it. v4 would let us clear it with
-   `--color-*: initial`, and that would be wrong here -- rewind-ui's own styles reference
-   `ring-purple-100`, `ring-gray-200`, `bg-gray-100` and friends, so the stock colours have
-   to stay reachable. */
+   `--color-*: initial`, and that would be wrong here. The original reason was that
+   rewind-ui's compiled styles referenced `ring-purple-100`, `ring-gray-200` and friends. That
+   library is gone as of #143, but the reason outlived it: the class strings in
+   `src/components/ui/` inherited those stock names, so `focus:ring-purple-100`,
+   `disabled:bg-purple-300`, `focus:ring-red-100` and `disabled:bg-red-300` are shipping from
+   this repo's own source now. Clearing the palette would silently drop them. */
 @theme {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -233,8 +201,11 @@
   --header-gradient-end: #06b6d4;
 }
 
-/* Set on body rather than only on <main> so content portaled out of <main>
-   (the rewind-ui Modal) inherits a readable colour instead of near-black. */
+/* Set on body rather than only on <main>, so anything outside <main> inherits a readable
+   colour instead of near-black. Written for the library modal, which portalled to body. The
+   native `<dialog>` that replaced it does NOT portal -- it stays in the tree and is only
+   painted in the top layer -- and it names both colours on itself anyway. The header and
+   footer are the live reason now. */
 body {
   color: var(--foreground);
   background: var(--background);
@@ -245,11 +216,12 @@ body {
    on its final keyframe instead of reverting to the pre-animation state. Nothing
    here listens for those events today; this is about not depending on that.
 
-   The first rule covers only what CSS drives: the `animate-pulse` skeletons under
-   blog/, the contact form's own submit spinner, and the `transition-*` on the buttons and
-   fields. The second covers the
-   one JS-driven animation it can reach. The p5 sketch on /animation is neither — it
-   reads `matchMedia` itself and stops (#79). */
+   The rule covers what CSS drives: the `animate-pulse` skeletons under blog/, the contact
+   form's own submit spinner, the `transition-*` on the buttons and fields, and the
+   confirmation dialog's open/close transition at the bottom of this file. It used to be
+   followed by a second rule pinning a transform, for a JS-driven animation that CSS was the
+   only way to reach; #143 removed the thing that needed it. The p5 sketch on /animation is in
+   neither category -- it reads `matchMedia` itself and stops (#79). */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -260,52 +232,29 @@ body {
     scroll-behavior: auto !important;
   }
 
-  /* rewind-ui's Modal slides in regardless of the preference, and its animation is
-     unreachable from JS — it drives the Web Animations API directly. CSS reaches it
-     anyway, because the cascade puts `!important` author declarations above
-     animation declarations. Note it would NOT beat a CSS transition, which sits
-     above important-author; the Modal does not use one for the movement.
+  /* The `transform: none !important` override for the old modal is GONE from here, and its
+     absence is the point rather than an oversight.
 
-     Measured through a scratch route, since the Modal needs a signed-in session.
-     Sampling computed style every frame under emulated `reduce`, before this rule
-     the modal ran through 17 distinct transforms, sliding 100px; after it, one,
-     pinned at `none`. With `no-preference` it still ran (13 distinct).
+     It existed because rewind-ui's Modal drove its slide through the Web Animations API,
+     which no JS in this app could reach, and `!important` author declarations outrank
+     animation declarations in the cascade -- so CSS was the only lever. Measured: under
+     emulated `reduce` that modal ran through 17 distinct transforms and slid 100px without
+     the rule, and one pinned transform with it. See #60 and #64.
 
-     That harness is no longer gone. `src/app/e2e-fixture/blog-card` renders the Modal
-     without needing a session, so `e2e/modal.spec.ts` re-runs this: it asserts the transform
-     never varies from `none` under `reduce`, with a control proving it DOES vary without the
-     preference, so neither half can pass vacuously. The numbers above stay as a record; the
-     property itself is now guarded.
+     #143 replaced it with a native `<dialog>` moved by a CSS TRANSITION (bottom of this
+     file). The selector could not survive that in any case: nothing authors a
+     `role="dialog"` attribute any more, because the element carries that role implicitly.
 
-     `transform` only, never `opacity`, because the preference is about movement and
-     a fade is not movement. An earlier version of this comment justified it instead
-     by claiming that forcing opacity would leave a closed modal on screen — that is
-     false, and worth recording as false: a closed `[role="dialog"]` is
-     `visibility: hidden` as well as `opacity: 0`, so visibility would still hide
-     it. Right decision, wrong reason.
+     The rule above is NOT sufficient on its own, which is worth stating because it looks as
+     though it should be. Measured, sampling from the click: a collapsed duration still renders
+     one frame at the transition's from-state, so the dialog moved 16px under `reduce` -- for a
+     frame, but really. There is a separate `transform: none` rule beside the dialog's own
+     styles at the bottom of this file that removes it, and it needs no `!important`, because a
+     transition's endpoints come from the author cascade where an animation's values do not.
 
-     It does not stop the animation running, only its visible effect, and that is
-     what makes it safe rather than merely narrow. The Modal gates `useFocusTrap` on
-     the animation's `onfinish`; cancelling or skipping the animation is the naive
-     fix #60 warns breaks the focus trap. The timeline still completes on schedule,
-     so the callback still fires.
-
-     A companion `div:has(> [role="alert"])` rule used to sit here for rewind-ui's
-     Toast, whose framer-motion is *vendored* inside
-     `@rewind-ui/core/dist/node_modules/` and imported by relative path. It is gone
-     because the Toast is: #120 replaced /contact's toasts with an inline live
-     region, which also retired the one defect that rule could not reach — the Toast
-     drove a progress bar by writing `style.width` from a requestAnimationFrame
-     timer, and width is not transform.
-
-     Deliberately broad: nothing in this app authors `role="dialog"`, and rewind-ui's
-     Modal is the only thing that renders one — checked, along with the fact that the
-     app imports no Drawer, Alert, Popover or Tooltip. If a component is ever added
-     whose dialog needs a transform to be positioned, this is where it breaks, so
-     scope it then. See #60 and #64. */
-  [role="dialog"] {
-    transform: none !important;
-  }
+     `e2e/modal.spec.ts` asserts the pinned transform under `reduce`, sampling from the click so
+     that first frame is reachable, with a control proving it does move without the preference.
+     Deleting that override fails the test. */
 }
 
 /* Two rules restoring behaviour v4's preflight dropped. Both are deliberate: the point of
@@ -371,5 +320,123 @@ body {
   textarea:focus-visible {
     outline: 2px solid transparent;
     outline-offset: 2px;
+  }
+}
+
+/* THE CONFIRMATION DIALOG, a native `<dialog>` since #143 removed rewind-ui.
+   `src/components/BlogBodyAbbr.tsx` explains why the element changed; this is what it has
+   to look like, and most of it is undoing user-agent defaults.
+
+   A native dialog arrives with a border, padding, a white background, `width: fit-content`
+   and automatic centring, none of which is wanted. It is also `display: none` until open,
+   which is why the visual rules are scoped to `[open]`.
+
+   The geometry reproduces what the library rendered rather than improving on it: the panel
+   sits near the top of the viewport with a margin, not vertically centred, and is capped so
+   it does not span a wide screen. Measured on the previous implementation before the swap. */
+dialog.modal-panel {
+  border: 0;
+  padding: 0;
+  /* The UA sheet gives `dialog` a white background and black text. Utility classes on the
+     element override both, but they are named here too so the panel is never momentarily
+     light if a class stops applying. */
+  background: var(--surface);
+  color: var(--foreground);
+  border-radius: 0.375rem;
+  max-width: min(32rem, calc(100vw - 1rem));
+  width: 100%;
+  /* `auto` horizontally, a fixed offset vertically. `auto` on all sides centres it, which is
+     not what the previous modal did. */
+  margin: 3.5rem auto auto;
+  box-shadow:
+    0 10px 15px -3px rgb(0 0 0 / 0.3),
+    0 4px 6px -4px rgb(0 0 0 / 0.3);
+}
+
+/* The dim and the blur, which the library rendered as a real DOM element and the platform
+   gives as a pseudo-element in the top layer. Values carried over from measuring that
+   element: a half-opacity near-black and an 8px blur.
+
+   `::backdrop` is NOT reachable by DOM queries, which is why the e2e test reads
+   `getComputedStyle(dialog, "::backdrop")` instead of looking for an element. */
+dialog.modal-panel[open]::backdrop {
+  background: rgb(24 24 27 / 0.5);
+  backdrop-filter: blur(8px);
+}
+
+/* Body scroll lock. `showModal()` makes the background inert -- unclickable and out of the
+   tab order -- but leaves it scrollable, and the previous modal did lock it. Applied from an
+   effect in BlogBodyAbbr, which removes it on unmount too, because confirming a delete
+   unmounts the card while the dialog is open. */
+body.modal-open {
+  overflow: hidden;
+}
+
+/* The open and close animation, as a transition rather than a keyframe animation. Both halves
+   of that choice were measured, and the obvious reasoning for the other one turned out to be
+   wrong.
+
+   A keyframe animation on `[open]` cannot animate CLOSING, because `close()` makes the element
+   non-rendered at once. The library animated both directions, so keyframes alone drops a
+   behaviour. `allow-discrete` on `display` and `overlay` is what makes the closing half
+   possible: both are discrete properties that would otherwise flip instantly, and it keeps the
+   element rendered and in the top layer until opacity and transform have finished.
+   `@starting-style` supplies the from-state for opening, which a transition needs because the
+   element goes from not-rendered to rendered with no start value to work from.
+
+   Keyframes looked preferable on reduced-motion grounds and were not. Measured, sampling from
+   the click under emulated `reduce`: BOTH forms render one frame at translateY(-16px) before
+   settling. The blanket `animation-duration`/`transition-duration: 0.01ms` still needs a frame
+   to leave the from-state, whether that state comes from a `from` block or from
+   `@starting-style`. So reduced motion did not favour either form -- and the pre-existing test
+   asserting a constant transform was passing on timing luck, since waiting for the dialog to
+   become visible usually consumed that frame.
+
+   The rule below removes the movement properly, and it is why the transition form wins on this
+   point too -- though not by "overriding the transition", which is the wrong description. A
+   running transition sits above every author declaration in the cascade, `!important`
+   included. What the rule does is win the UNDERLYING author cascade and make both endpoints
+   `none`, so no transform transition is ever generated and there is nothing to outrank. A
+   keyframe animation's values also outrank normal author declarations, which is why the
+   version of this file before #143 needed `transform: none !important` to reach the library's
+   animation at all. Same outcome, no `!important`, and now genuinely still rather than
+   still-after-one-frame.
+
+   Deliberately NOT on `::backdrop`: the `prefers-reduced-motion` block far above targets
+   `*, *::before, *::after`, which does not include `::backdrop`, so an animated backdrop would
+   keep moving for a reader who asked it not to.
+
+   16px, not the ~100px the library slid. A shorter move over the same 150ms reads as less
+   abrupt at desktop sizes; a deliberate change, not a failed attempt at parity. */
+dialog.modal-panel {
+  opacity: 0;
+  transform: translateY(-1rem);
+  transition:
+    opacity 150ms ease-out,
+    transform 150ms ease-out,
+    overlay 150ms ease-out allow-discrete,
+    display 150ms ease-out allow-discrete;
+}
+
+dialog.modal-panel[open] {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+@starting-style {
+  dialog.modal-panel[open] {
+    opacity: 0;
+    transform: translateY(-1rem);
+  }
+}
+
+/* AFTER the three rules above, and that order is the whole rule. It matches them at equal
+   specificity, so it only wins by coming later -- moved above them it would be inert while
+   looking exactly as intentional. Opacity is left alone: it is collapsed to 0.01ms by the
+   blanket rule and fading in is not movement. */
+@media (prefers-reduced-motion: reduce) {
+  dialog.modal-panel,
+  dialog.modal-panel[open] {
+    transform: none;
   }
 }

@@ -24,11 +24,6 @@ const credits = [
     title: "TailwindCSS",
     label: "Styling - Tailwind CSS",
   },
-  {
-    href: "https://rewind-ui.dev/",
-    title: "RewindUI",
-    label: "Component Library (Used Minimally) - Rewind UI",
-  },
 ];
 
 export default function Credits() {

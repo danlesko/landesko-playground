@@ -28,9 +28,11 @@
 //
 // Nothing was broken, and the reason is narrower than it first looks. Every page has a form
 // -- the header's sign-in control is one, from the root layout -- so "no form on the page" is
-// not the answer. The answer is that the modal portals to `body`, so it is not a DESCENDANT
-// of that form and could not have submitted it. That is a fact about where a portal lands,
-// which is not a thing to leave a default resting on.
+// not the answer. The answer was that the library modal PORTALLED to `body`, putting it
+// outside that form in the tree, so its buttons could not have submitted it. Never a thing to
+// leave a default resting on, and #143 removed even that: a native `<dialog>` is painted in
+// the top layer but stays exactly where it is written, so those buttons are now wherever the
+// card is. Both name `type="button"` explicitly.
 const buttonBase =
   "inline-flex items-center justify-center enabled:cursor-pointer focus:outline-none transition duration-150 ease-in-out focus:z-20 border border-transparent antialiased text-sm rounded-lg shadow-none text-white focus:ring-offset-1 focus:ring-3";
 

@@ -75,6 +75,42 @@ describe("BlogBodyAbbr delete control", () => {
   });
 });
 
+/**
+ * The confirmation dialog's PRESENCE, which is a different question from its behaviour.
+ *
+ * Both sides are asserted because they fail independently and the negative one alone would
+ * accept a component that never renders the dialog at all. That is not hypothetical: the
+ * migration to a native `<dialog>` in #143 initially rendered it unconditionally, and the
+ * negative assertion above is what caught it -- a `<dialog>` is always in the document and
+ * merely `display: none` when closed, where the library it replaced rendered nothing until
+ * opened.
+ *
+ * What the fix must not do is over-correct into never rendering it, which the positive
+ * assertion pins. Its runtime behaviour -- opening, the backdrop, the focus trap, Escape --
+ * needs a browser and lives in e2e/modal.spec.ts.
+ */
+describe("BlogBodyAbbr confirmation dialog", () => {
+  it("renders the dialog for a viewer who can delete", () => {
+    const html = render(signedInSession(), blog());
+
+    expect(html).toMatch(/<dialog[^>]*>/);
+    expect(html).toContain("Are you sure you want to delete this blog post?");
+  });
+
+  it("does not send the dialog to a viewer who cannot delete", () => {
+    // Named separately from the button assertion above even though `<button` currently
+    // covers it: the dialog holds copy and two controls of its own, so a change that kept
+    // the trigger gated and the dialog ungated would be invisible to that test if the
+    // buttons inside it ever moved.
+    for (const session of [null, sessionWithoutUser()]) {
+      const html = render(session, blog());
+
+      expect(html).not.toContain("<dialog");
+      expect(html).not.toContain("Delete Blog Post");
+    }
+  });
+});
+
 /** The message element, so "empty" can be told apart from "absent" — the two
  * render the same under a `toContain` check on the text, and only one of them
  * announces when it later gains a message. */

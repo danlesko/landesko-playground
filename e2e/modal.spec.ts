@@ -16,11 +16,20 @@ import { test, expect } from "@playwright/test";
  * reader has asked for less motion. Every one of those is invisible to `renderToStaticMarkup`
  * and to a class-name assertion.
  *
- * A note on what these are worth after `@rewind-ui/core` goes (#143): the Modal is the last
- * component still coming from it, and the plan is a native `<dialog>`. These tests are
- * written against BEHAVIOUR, not against the library, precisely so they survive that swap and
- * can prove it was behaviour-preserving. If one of them has to change to accommodate a native
- * dialog, that change is the interesting part of the diff.
+ * These were written against BEHAVIOUR rather than against the library that used to render
+ * this modal, so that they could survive the swap to a native `<dialog>` in #143 and say
+ * whether it preserved behaviour. It did not entirely, and both differences are improvements
+ * this file now asserts rather than tolerates:
+ *
+ *   - The focus trap no longer has a dead window. The library gated it on an animation
+ *     callback, so tabbing in the first ~150ms operated the page behind the modal; the wait
+ *     that accommodated that is GONE from the test below, and its absence is the assertion.
+ *   - The backdrop is no longer an element. `::backdrop` in the top layer is not reachable by
+ *     `querySelector`, so the test that identified it relationally now reads it as a
+ *     pseudo-element.
+ *
+ * Everything else -- the name, Escape, cancel, reduced motion, contrast -- passes unchanged
+ * against both implementations, which is the useful half of the result.
  */
 
 const FIXTURE = "/e2e-fixture/blog-card";
@@ -31,7 +40,10 @@ const openModal = async (page: import("@playwright/test").Page) => {
   // The trigger is the only control on the card, and it is named rather than located by tag
   // so the assertion survives the icon button being restructured.
   await page.getByRole("button", { name: TRIGGER }).click();
-  const dialog = page.locator('[role="dialog"]');
+  // By ROLE, not by attribute. Nothing authors `role="dialog"` any more -- a native
+  // `<dialog>` carries it implicitly -- so the old attribute selector would match nothing and
+  // every test here would fail on the locator rather than on its subject.
+  const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   return dialog;
 };
@@ -60,19 +72,24 @@ test("the trigger opens a dialog asking for confirmation", async ({ page }) => {
   // post" -- and an earlier version of this test assumed otherwise and failed. Worth knowing
   // rather than fixing here: a reader with several posts is asked to confirm a deletion
   // without being told which one, and the trigger they clicked is now behind a backdrop.
-  // Recorded on #143 instead of changed, because the copy belongs to a component that is
-  // about to be rewritten.
+  // Still recorded rather than fixed after the #143 rewrite: changing what the dialog says
+  // is a copy decision, and the copy on this site is not mine to author. The rewrite kept
+  // the wording deliberately so that the swap was provably behaviour-only.
   await expect(dialog.getByText("Fixture post")).toHaveCount(0);
 });
 
 test("the dialog has an accessible name", async ({ page }) => {
   const dialog = await openModal(page);
 
-  // It did not, until this change. rewind-ui sets `role="dialog"` and `aria-modal="true"`
-  // and no name, so a screen reader announced an unnamed dialog -- axe reports it as a
-  // serious `aria-dialog-name` violation, and axe had never run against this component
-  // because nothing could render it. `aria-labelledby` points at the visible heading, so
-  // the announced name cannot drift from the one on screen.
+  // It did not, before the fixture existed to show it. The library set `role="dialog"` and
+  // `aria-modal="true"` and no name, so a screen reader announced an unnamed dialog -- a
+  // serious `aria-dialog-name` violation that axe had never reported because nothing in the
+  // repo could render the component for it to scan.
+  //
+  // The native element does not fix this on its own: `<dialog>` has an implicit role and no
+  // implicit name either. `aria-labelledby` is authored, and it points at the VISIBLE
+  // heading rather than repeating the string, so the announced name cannot drift from the
+  // one on screen.
   const labelledBy = await dialog.getAttribute("aria-labelledby");
   expect(labelledBy, "the dialog names nothing").not.toBeNull();
 
@@ -86,85 +103,63 @@ test("the dialog has an accessible name", async ({ page }) => {
   ).toBe("Delete Blog Post");
 });
 
-test("the backdrop covers the page and obscures what is behind it", async ({
+test("the backdrop dims and blurs the page behind the dialog", async ({
   page,
 }) => {
-  await openModal(page);
+  const dialog = await openModal(page);
 
-  const backdrop = await page.evaluate(() => {
-    const dialog = document.querySelector('[role="dialog"]')!;
-
-    // Identified RELATIONALLY: the element painted over the whole viewport that sits
-    // behind the dialog in the stacking order. An earlier version took "the first fixed,
-    // painted element that is not an ancestor of the dialog", which happens to be the
-    // right one here and would equally accept any unrelated scrim.
-    const candidates = [...document.querySelectorAll("body *")].filter(
-      (element) => {
-        if (element.contains(dialog)) return false;
-        const style = getComputedStyle(element);
-        if (style.position !== "fixed") return false;
-        const rect = element.getBoundingClientRect();
-        const spansViewport =
-          rect.left <= 0 &&
-          rect.top <= 0 &&
-          rect.right >= window.innerWidth &&
-          rect.bottom >= window.innerHeight;
-        const obscures =
-          style.backdropFilter !== "none" ||
-          (style.backgroundColor !== "rgba(0, 0, 0, 0)" &&
-            style.backgroundColor !== "transparent");
-        return spansViewport && obscures;
-      },
-    );
-    if (candidates.length !== 1) return { count: candidates.length };
-
-    const found = candidates[0]!;
-    const style = getComputedStyle(found);
-    const dialogZ = Number(getComputedStyle(dialog).zIndex);
+  // `::backdrop` is a pseudo-element in the top layer, not a node, so there is nothing to
+  // find with `querySelector` -- the previous version of this test identified the library's
+  // backdrop relationally among `body *` and would now report zero candidates.
+  const backdrop = await dialog.evaluate((element) => {
+    const style = getComputedStyle(element, "::backdrop");
     return {
-      count: 1,
       background: style.backgroundColor,
       backdropFilter: style.backdropFilter,
-      // Behind the dialog, not merely present. A backdrop painted over the panel would
-      // satisfy every other assertion here while hiding the thing it frames.
-      belowDialog: Number(style.zIndex) < dialogZ,
-      // Sampled at the centre of the DIALOG's own box, not the viewport's. The first
-      // version used the viewport centre and failed: the panel is top-aligned with a
-      // margin rather than vertically centred, so the viewport's middle is over the
-      // backdrop -- which is correct behaviour, not a defect. What matters is that the
-      // backdrop is not on top of the dialog, i.e. not swallowing clicks meant for the
-      // buttons.
-      dialogIsTopmostOverItself: (() => {
-        const box = dialog.getBoundingClientRect();
-        const topmost = document.elementFromPoint(
-          Math.floor(box.left + box.width / 2),
-          Math.floor(box.top + box.height / 2),
-        );
-        return Boolean(topmost && dialog.contains(topmost));
-      })(),
     };
   });
 
+  // The EXACT colour, not merely "something other than transparent", and the difference
+  // matters: Chromium's UA sheet already paints `dialog::backdrop` at rgba(0, 0, 0, 0.1)
+  // (measured), so a non-transparency check passes even if this repo's rule is deleted
+  // entirely. Asserting the authored value is what makes the assertion able to fail.
+  //
+  // A pseudo-element that was never generated reports rgba(0, 0, 0, 0) instead, so this also
+  // catches the dialog being open without a backdrop at all.
   expect(
-    backdrop.count,
-    "expected exactly one viewport-covering obscuring element behind the dialog",
-  ).toBe(1);
+    backdrop.background,
+    "the backdrop is not this repo's dim -- rgba(0, 0, 0, 0.1) means the UA default is showing and the rule was lost, and rgba(0, 0, 0, 0) means no backdrop was generated",
+  ).toBe("rgba(24, 24, 27, 0.5)");
+
+  // Independent of the dim, and this one the UA does not provide: its default is `none`, so
+  // any non-`none` value here came from this repo. Both halves are asserted because losing
+  // either leaves the page behind legible in a different way.
   expect(
-    backdrop.belowDialog,
-    "the backdrop is not behind the dialog in the stacking order",
+    backdrop.backdropFilter,
+    "the backdrop is not blurring the page behind it",
+  ).toBe("blur(8px)");
+
+  // Hit-testing, because a backdrop painted OVER the panel would satisfy both assertions
+  // above while swallowing every click meant for the buttons. Sampled at the centre of the
+  // dialog's own box rather than the viewport's: the panel is top-aligned with a margin, so
+  // the viewport centre is legitimately over backdrop.
+  //
+  // The old z-index comparison is gone: a top-layer dialog computes `z-index: auto`
+  // (measured), so comparing numbers there compared NaN against NaN. Painting order between
+  // a dialog and its own backdrop is a spec guarantee rather than something this repo sets,
+  // and hit-testing is the property that actually matters.
+  const panelIsHittable = await dialog.evaluate((element) => {
+    const box = element.getBoundingClientRect();
+    const topmost = document.elementFromPoint(
+      Math.floor(box.left + box.width / 2),
+      Math.floor(box.top + box.height / 2),
+    );
+    return Boolean(topmost && element.contains(topmost));
+  });
+  expect(
+    panelIsHittable,
+    "something is painted on top of the dialog, so it would swallow clicks meant for the buttons",
   ).toBe(true);
-  expect(
-    backdrop.dialogIsTopmostOverItself,
-    "the backdrop is painted on top of the dialog, so it would swallow clicks meant for the buttons",
-  ).toBe(true);
-  // Both halves, because they fail independently: the dim is a background colour and the
-  // blur is a filter, and losing either leaves the page behind legible in a different way.
-  expect(backdrop.background, "the backdrop is not dimming anything").not.toBe(
-    "rgba(0, 0, 0, 0)",
-  );
-  expect(backdrop.backdropFilter, "the backdrop is not blurring").not.toBe(
-    "none",
-  );
 });
 
 test("Escape closes it", async ({ page }) => {
@@ -182,93 +177,169 @@ test("the cancel control closes it without deleting", async ({ page }) => {
 });
 
 /**
- * The focus trap, and the wait in it is the finding rather than a workaround.
+ * The focus trap. Two things in this test are the finding: the absence of a wait, and what
+ * "trapped" is asserted to mean.
  *
- * rewind-ui gates `useFocusTrap` on its open animation's `onfinish`, so the trap is not
- * active while the dialog is sliding in. Measured through this fixture, tabbing immediately
- * after the dialog becomes visible: the first two presses stay on Cancel and Delete, and the
- * next four land on the site title, the sign-in control, and the first two nav links. From a
- * 150ms settle onwards it wraps correctly and never escapes.
+ * The library gated `useFocusTrap` on its open animation's `onfinish`, so the trap was not
+ * active while the dialog slid in. Measured through this fixture against that version, tabbing
+ * immediately after the dialog became visible: the first two presses stayed on Cancel and
+ * Delete, and the next four landed on the site title, the sign-in control, and the first two
+ * nav links. Only from a 150ms settle onwards did it wrap. So there was a real window, about
+ * the length of the animation, in which a keyboard user who tabbed straight after opening
+ * ended up operating the page behind an open modal. This test carried a 250ms `waitForTimeout`
+ * to assert the behaviour after that window, because a suite cannot carry a failing test, with
+ * the gap filed on #143.
  *
- * So there is a real window -- roughly the animation's length -- in which a keyboard user who
- * tabs straight after opening ends up operating the page behind an open modal. This test
- * asserts the behaviour AFTER that window, because a suite cannot carry a failing test; the
- * gap is filed on #143.
+ * #143 closed it: `showModal()` makes the rest of the document inert the moment it is called,
+ * with no animation to wait for. The wait is deleted rather than shortened -- if the trap were
+ * gated on anything again this test would fail, which is the point of removing it entirely.
  *
- * It is also the clearest argument for the replacement being a native `<dialog>`:
- * `showModal()` makes the rest of the document inert the moment it is called, with no
- * animation to wait for. When that lands, this wait should be removable -- and if it is not,
- * the trap is still gated on something.
+ * The other change is the invariant. "Focus stays inside the dialog" is what a JS trap does and
+ * is NOT what the platform does, so asserting it would have failed against a correct native
+ * dialog. Measured, tabbing from Cancel: Delete, then `<body>`, then back to Cancel, cycling
+ * forever. That `<body>` step is the browser passing focus out of the document -- to its own UI
+ * in a real window -- and bringing it back, and it is normal. Nothing is reachable there.
+ *
+ * So the property asserted is the one that actually matters, and it is strictly stronger than
+ * "never leaves the dialog" would be for the failure mode that shipped: focus never lands on
+ * an element BEHIND the dialog. A press that reached the header's sign-in control fails; a
+ * press that parks on `<body>` does not.
  */
-test("focus cannot leave the dialog once it has opened", async ({ page }) => {
-  const dialog = await openModal(page);
-  // Not an arbitrary settle: it is longer than the open animation, which is what the trap
-  // waits for. See above.
-  await page.waitForTimeout(250);
+test("no amount of tabbing reaches a control behind the dialog", async ({
+  page,
+}) => {
+  // The return value is unused: this test reads the active element through `page.evaluate`
+  // rather than through the locator, because what it needs is a comparison against
+  // `document.activeElement`. `openModal` is still the right way in -- it asserts the dialog
+  // opened, so a failure below cannot be a dialog that never appeared.
+  await openModal(page);
 
-  // Cycling in BOTH directions, from the boundaries, rather than pressing Tab a fixed
-  // number of times and hoping. A count is the wrong instrument: with two controls three
-  // presses already prove wrapping, and if the dialog ever gains six the same loop proves
-  // nothing. Driving from the last control forward and the first control backward tests the
-  // two places a trap actually fails.
-  const focusables = dialog.locator("button");
-  const count = await focusables.count();
+  // Named so the failure message can say WHICH control was reached. The old version reported
+  // only "focus escaped", which does not distinguish the browser's own UI from the nav.
+  const focusLanding = () =>
+    page.evaluate(() => {
+      const dialog = document.querySelector("dialog[open]")!;
+      const active = document.activeElement;
+      if (
+        !active ||
+        active === document.body ||
+        active === document.documentElement
+      ) {
+        return "outside the document";
+      }
+      if (dialog.contains(active)) return "inside the dialog";
+      return `BEHIND the dialog: <${active.tagName.toLowerCase()}> ${(
+        active.getAttribute("aria-label") ??
+        active.textContent ??
+        ""
+      )
+        .trim()
+        .slice(0, 40)}`;
+    });
+
+  // Enough presses to go round the cycle several times, from the first frame after opening
+  // with no settle. The measured cycle is three long, so eight covers it more than twice --
+  // and a count is safe here in a way it is not for proving wrapping, because every press is
+  // checked rather than only the last.
+  const landings = new Set<string>();
+  for (let press = 0; press < 8; press += 1) {
+    await page.keyboard.press("Tab");
+    landings.add(await focusLanding());
+  }
+  // Backwards too, which is the other place a trap fails.
+  for (let press = 0; press < 8; press += 1) {
+    await page.keyboard.press("Shift+Tab");
+    landings.add(await focusLanding());
+  }
+
   expect(
-    count,
-    "the dialog has no focusable controls to cycle",
-  ).toBeGreaterThan(1);
+    [...landings].filter((landing) => landing.startsWith("BEHIND")),
+    "tabbing reached a control behind the open dialog, so the page under it is operable",
+  ).toEqual([]);
 
-  const activeInsideDialog = () =>
-    dialog.evaluate(
-      (element) =>
-        element.contains(document.activeElement) ||
-        document.activeElement === element,
-    );
-
-  await focusables.last().focus();
-  await page.keyboard.press("Tab");
+  // The control for the assertion above, which would otherwise pass on a dialog whose controls
+  // are all unreachable -- focus parked outside the document for all sixteen presses would
+  // produce an empty list too.
   expect(
-    await activeInsideDialog(),
-    "Tab from the last control escaped the dialog, so the page behind it is operable",
-  ).toBe(true);
-
-  await focusables.first().focus();
-  await page.keyboard.press("Shift+Tab");
-  expect(
-    await activeInsideDialog(),
-    "Shift+Tab from the first control escaped the dialog backwards",
+    landings.has("inside the dialog"),
+    "tabbing never landed in the dialog at all, so the assertion above proves nothing",
   ).toBe(true);
 });
 
+test("the page behind the dialog is inert, not merely covered", async ({
+  page,
+}) => {
+  // A trap that only intercepts Tab still leaves the page behind reachable by other means.
+  // The library's was JS over a visual overlay; `showModal()` makes the background genuinely
+  // inert, which is a stronger claim than "a backdrop is painted over it" -- and it is what
+  // lets `body.modal-open` be responsible for nothing but the scroll lock.
+  await openModal(page);
+
+  // The header's own control, located by role. Measured: the header has exactly one focusable
+  // element and it is this button -- the site title next to it is a `<span>`, not a link, so
+  // an earlier version of this test that looked for a link named after the site found nothing
+  // and failed on the locator rather than on inertness.
+  const behind = page.getByRole("button", { name: "Login" });
+  await expect(
+    behind,
+    "there is no control behind the dialog to try, so this test would pass vacuously",
+  ).toBeAttached();
+
+  const took = await behind.evaluate((element: HTMLElement) => {
+    element.focus();
+    return document.activeElement === element;
+  });
+  expect(
+    took,
+    "a control behind the dialog took focus when asked directly, so the background is not inert",
+  ).toBe(false);
+});
+
 /**
- * The one behaviour `globals.css` documents as measured but could not re-run.
+ * The one behaviour `globals.css` documented as measured but could not re-run.
  *
- * Its comment records that under emulated `reduce` the modal ran through 17 distinct
- * transforms and slid 100px, and that the `[role="dialog"] { transform: none !important }`
- * rule pinned it to one. That was measured through a scratch route which was then deleted,
- * so the numbers were a record rather than a guard -- the comment says so in as many words.
- * With the fixture they are checkable again.
+ * Against the library version, under emulated `reduce`, the modal ran through 17 distinct
+ * transforms and slid 100px, and a `[role="dialog"] { transform: none !important }` rule pinned
+ * it to one. `!important` was the only lever available: the slide was driven through the Web
+ * Animations API, which no JS in this app could reach, and an author `!important` declaration
+ * outranks an animation declaration in the cascade. Those numbers came from a scratch route
+ * that was then deleted, so the comment recording them was a record rather than a guard, and
+ * said so.
  *
- * Sampling rather than asserting a single value: the rule's job is to stop MOVEMENT, so what
- * matters is that the transform never varies, not what it happens to be. `!important` beats
- * an animation declaration in the cascade, which is why a CSS rule can reach an animation the
- * Web Animations API drives and JS cannot.
+ * It is a guard again, and it caught something. Sampling starts at the CLICK rather than after
+ * the dialog becomes visible, and that is the point rather than a detail: waiting for
+ * visibility consumed the first frame, and this assertion was passing on that timing. Measured
+ * from the click, a collapsed duration still renders one frame at the from-state, so both a
+ * keyframe animation and a transition moved 16px under `reduce` -- for one frame, but
+ * genuinely. `globals.css` now zeroes the transform outright under the preference, which is
+ * clean for a transition where it needed `!important` for an animation.
+ *
+ * Sampling rather than asserting a single value: the job is to stop MOVEMENT, so what matters
+ * is that the transform never varies, not what it happens to be.
  */
 test("reduced motion stops the dialog moving", async ({ page }) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  const dialog = await openModal(page);
+  await page.goto(FIXTURE);
+  await page.getByRole("button", { name: TRIGGER }).click();
 
   const transforms = new Set<string>();
-  for (let sample = 0; sample < 12; sample += 1) {
+  for (let sample = 0; sample < 16; sample += 1) {
     transforms.add(
-      await dialog.evaluate((element) => getComputedStyle(element).transform),
+      await page.evaluate(() => {
+        const dialog = document.querySelector("dialog[open]");
+        // A throw rather than a sentinel. An earlier version of the control below returned a
+        // placeholder string when the dialog was absent, which counted as a distinct value and
+        // let a dialog that never rendered satisfy the assertion.
+        if (!dialog) throw new Error("the dialog is not open");
+        return getComputedStyle(dialog).transform;
+      }),
     );
-    await page.waitForTimeout(25);
+    await page.waitForTimeout(12);
   }
 
   expect(
     [...transforms],
-    "the dialog's transform changed under reduced motion, so it is still animating",
+    "the dialog's transform changed under reduced motion, so it is still moving",
   ).toEqual(["none"]);
 });
 
@@ -280,7 +351,7 @@ test("without the preference it still animates", async ({ page }) => {
   await page.goto(FIXTURE);
   await page.getByRole("button", { name: TRIGGER }).click();
 
-  const dialog = page.locator('[role="dialog"]');
+  const dialog = page.getByRole("dialog");
   const transforms = new Set<string>();
   // Polled from the click rather than after `toBeVisible`, because the movement is the first
   // thing that happens and waiting for a settled state can miss all of it.
@@ -301,14 +372,168 @@ test("without the preference it still animates", async ({ page }) => {
 });
 
 /**
- * The dialog's text contrast, measured here because axe cannot.
+ * CLOSING animates, which is a separate claim from opening and the one that constrains how
+ * `globals.css` is written.
  *
- * axe reports the modal's body copy as `color-contrast: incomplete` -- its
+ * A keyframe animation attached to `[open]` cannot do this: `close()` removes the attribute, so
+ * the animation stops applying and the element is non-rendered with nothing left to animate.
+ * Keyframes are not disqualified in general -- an animation that itself animates `display` can
+ * do it -- but the shape this replaced cannot, so this asserts the half a natural-looking
+ * implementation silently drops. `globals.css` uses a transition with `allow-discrete` on
+ * `display` and `overlay` instead.
+ */
+test("closing animates too, not just opening", async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  const dialog = await openModal(page);
+  await dialog.getByRole("button", { name: "Cancel" }).click();
+
+  // Opacity of the element while it is on the way out, read through the DOM rather than a
+  // locator: `getByRole("dialog")` stops matching a closed dialog, so a locator-based read
+  // here fails on the selector at exactly the moment this test cares about.
+  const opacities = new Set<string>();
+  for (let sample = 0; sample < 12; sample += 1) {
+    opacities.add(
+      await page.evaluate(() => {
+        const dialog = document.querySelector("dialog")!;
+        const style = getComputedStyle(dialog);
+        return style.display === "none"
+          ? "gone"
+          : Number(style.opacity).toFixed(1);
+      }),
+    );
+    await page.waitForTimeout(20);
+  }
+
+  expect(
+    opacities.has("gone"),
+    "the dialog never finished closing, so it is stuck rendered",
+  ).toBe(true);
+  // STRICTLY between 0 and 1, which is the assertion rather than pedantry. "not 1.0" was the
+  // first version and it was dead: dropping the opacity transition while keeping the 150ms
+  // discrete `display` one snaps opacity to 0 and still holds the element rendered, giving
+  // 1.0 -> 0.0 -> gone, and 0.0 counted as an intermediate value. Interpolation is the
+  // property, and only a fraction is evidence of it.
+  const interpolated = [...opacities].filter((value) => {
+    const number = Number(value);
+    return Number.isFinite(number) && number > 0 && number < 1;
+  });
+  expect(
+    interpolated,
+    `saw only ${[...opacities].join(", ")} -- opacity never took an intermediate value, so the dialog snapped rather than faded`,
+  ).not.toEqual([]);
+});
+
+test("a click on the backdrop closes it, and a click on the panel does not", async ({
+  page,
+}) => {
+  // The platform does not give this: a modal dialog's only default close request is Escape.
+  // The library closed on an overlay click, so without the handler in BlogBodyAbbr the change
+  // would have quietly removed an interaction -- which is why both directions are asserted.
+  // A handler that closes on ANY click inside the dialog would pass the first half of this
+  // test and make the Cancel button the only way to read the copy.
+  const dialog = await openModal(page);
+  const panel = await dialog.boundingBox();
+
+  await page.mouse.click(20, (panel?.y ?? 0) + (panel?.height ?? 0) + 200);
+  await expect(
+    dialog,
+    "a click on the backdrop did not close the dialog",
+  ).toBeHidden();
+
+  const reopened = await openModal(page);
+  const box = await reopened.boundingBox();
+  // Inside the panel but not on a control: the bottom edge, below the buttons.
+  await page.mouse.click(
+    (box?.x ?? 0) + (box?.width ?? 0) / 2,
+    (box?.y ?? 0) + (box?.height ?? 0) - 4,
+  );
+
+  // Read as the element's `open` property after the exit transition would have finished, and
+  // NOT as `toBeVisible`. That is a mutation-tested distinction rather than a preference: a
+  // handler that closes on any click inside the dialog survived a `toBeVisible` assertion here,
+  // because `allow-discrete` keeps a closing dialog `display: block` while it fades and
+  // `toBeVisible` is satisfied on the first poll. `open` flips synchronously in `close()`, so
+  // it cannot be raced by the animation.
+  await page.waitForTimeout(300);
+  expect(
+    await page.evaluate(() => document.querySelector("dialog")?.open ?? false),
+    "a click inside the panel closed the dialog, so reading the copy dismisses it",
+  ).toBe(true);
+});
+
+/**
+ * Split-target presses, which is where the first version of the dismissal was wrong.
+ *
+ * A click's target is the nearest common ancestor of the press and the release. Both gestures
+ * below therefore report the DIALOG, exactly as a clean backdrop press does, and a single
+ * `event.target === event.currentTarget` check on `click` dismissed on both -- measured, not
+ * theorised. Dragging out of the panel is what a reader does when they select the confirmation
+ * text and overshoot, and losing the dialog for that is a bad outcome on a destructive
+ * confirmation.
+ *
+ * Two gestures rather than one because they exercise opposite halves of the check: the first
+ * presses the panel and releases on the backdrop, the second the reverse.
+ */
+test("a press that starts or ends on the panel does not dismiss", async ({
+  page,
+}) => {
+  const dialog = await openModal(page);
+  const box = (await dialog.boundingBox())!;
+  const insidePanel = [box.x + box.width / 2, box.y + box.height / 2] as const;
+  // Below the panel rather than beside it, so it is backdrop at every viewport this runs at.
+  const onBackdrop = [20, box.y + box.height + 200] as const;
+
+  // The `open` property after the exit transition would have run, for the same reason the test
+  // above uses it: a closing dialog stays displayed while it fades.
+  const stillOpen = async () => {
+    await page.waitForTimeout(300);
+    return page.evaluate(() => document.querySelector("dialog")?.open ?? false);
+  };
+
+  await page.mouse.move(...insidePanel);
+  await page.mouse.down();
+  await page.mouse.move(...onBackdrop, { steps: 6 });
+  await page.mouse.up();
+  expect(
+    await stillOpen(),
+    "dragging from the panel out to the backdrop dismissed the dialog, so selecting the copy and overshooting loses it",
+  ).toBe(true);
+
+  await page.mouse.move(...onBackdrop);
+  await page.mouse.down();
+  await page.mouse.move(...insidePanel, { steps: 6 });
+  await page.mouse.up();
+  expect(
+    await stillOpen(),
+    "pressing the backdrop and releasing on the panel dismissed the dialog",
+  ).toBe(true);
+});
+
+test("keyboard activation of the cancel control still closes it", async ({
+  page,
+}) => {
+  // The control for the three tests above. Dismissal moved from `click` to pointer events to
+  // fix the split-target cases, and the way to get that wrong is to break activation with no
+  // pointer events behind it -- which is how a keyboard user operates both buttons.
+  const dialog = await openModal(page);
+  await dialog.getByRole("button", { name: "Cancel" }).press("Enter");
+  await expect(dialog).toBeHidden();
+});
+
+/**
+ * The dialog's text contrast, measured here because axe could not.
+ *
+ * axe declined the library modal's body copy as `color-contrast: incomplete` -- its
  * `elmPartiallyObscured` path, meaning no background-painting ancestor fully encompassed the
- * text rectangles. So the a11y suite records that result as expected-unevaluable, and that
- * declaration is keyed on the element's TAG, which cannot distinguish this `<p>` from the
- * card's. Rather than make the declaration cleverer, the property it would have guarded is
- * asserted directly here.
+ * text rectangles. The a11y suite recorded that as expected-unevaluable, keyed on the
+ * element's TAG, which cannot tell this `<p>` from the card's; rather than make the
+ * declaration cleverer, the property it would have guarded was asserted directly here.
+ *
+ * As of #143 axe DOES evaluate it at the desktop width, so `e2e/a11y.spec.ts` covers it too
+ * and that route's unevaluable set is empty. This is kept regardless, and not because it is
+ * free: at 400px axe still declines both this `<p>` and the heading, which is why the fixture
+ * is scanned at desktop only. So on the narrow width this remains the sole check on the
+ * property, and it also pins the exact ratio rather than only clearing axe's threshold.
  */
 test("the dialog's text has enough contrast against its panel", async ({
   page,
