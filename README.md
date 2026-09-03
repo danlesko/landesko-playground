@@ -11,7 +11,9 @@ This is Dan Lesko's personal website written in [Next.js 15](https://nextjs.org)
 
 ## Running the page locally
 
-Requires [pnpm](https://pnpm.io). CI builds on Node 22. Locally you need **Node 22.22.2 or newer** — `jsdom`, which one test file uses for DOM-level component coverage, declares `^22.22.2 || ^24.15.0 || >=26.0.0`, so Node 20 installs but cannot run the full test suite.
+Requires [pnpm](https://pnpm.io). CI builds on Node 22, matching the version pinned on the Vercel project — which is also why `@types/node` tracks 22 rather than the latest, so the types cannot describe APIs the deployed runtime lacks.
+
+Locally, `jsdom` — which one test file uses for DOM-level component coverage — declares `^22.22.2 || ^24.15.0 || >=26.0.0`. Note that is a disjunction rather than a floor: 22.22.2+ and 24.15.0+ qualify, 23.x and 24.0–24.14 do not. Node 20 installs but cannot run the full test suite. There is deliberately no `engines` field: the honest range is jsdom's, and declaring it would warn on a Node 24.12 machine that in practice runs every test here green, which is noise rather than information.
 
 ```bash
 pnpm install
@@ -39,7 +41,7 @@ How much you need the environment variables below depends on what you are workin
 
 CI runs two jobs on every pull request to `main`: lint, format check, typecheck and build in one, and the Playwright suite in another. `pnpm test:e2e` builds and serves the app itself rather than reusing a running server, so it reflects the build rather than the source — rebuild before trusting a result.
 
-The local gate is four commands, not three: `pnpm lint`, `pnpm typecheck`, `pnpm format:check` and `pnpm test`. The pre-commit hook only runs Prettier, so a clean commit is not a green gate.
+The local gate is four commands, not three: `pnpm lint`, `pnpm typecheck`, `pnpm format:check` and `pnpm test`. A clean commit is not a green gate — but not because the hook only runs Prettier, which is what this said until #130. It runs `eslint --fix` too. The gap is narrower and easier to walk into: `eslint --fix` exits 0 on warnings, while `pnpm lint` is `eslint . --max-warnings=0`. So a commit carrying an unused variable passes the hook and fails CI.
 
 ## Environment variables
 

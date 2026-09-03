@@ -202,7 +202,7 @@ describe("createBlog when signed in", () => {
   });
 
   it("hands back what was typed, because React resets the form on submit", async () => {
-    // react-dom 19.1 calls requestFormReset before running the action, with no
+    // react-dom calls requestFormReset before running the action, with no
     // opt-out, so the returned values are the only thing repopulating the
     // fields. Without this the reader is told the title is wrong *and* loses
     // the content they wrote.
