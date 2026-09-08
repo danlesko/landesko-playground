@@ -112,11 +112,44 @@ jobs:
       - name: Build
         run: pnpm build
 
-      # No `env:` here on purpose. The placeholder AUTH_SECRET lives in
+      # `api.localtest.me` is a public DNS record pointing at 127.0.0.1, which is
+      # what makes the stack zero-config locally. Pinned here anyway so a lapse in
+      # somebody else's DNS cannot turn into a red pipeline, and so the run does not
+      # depend on network resolution it does not need.
+      #
+      # This name, not the one in POSTGRES_URL: `@neondatabase/serverless` rewrites a
+      # pooled host to `api.<domain>` before fetching. See e2e/db/compose.yaml.
+      - name: Point api.localtest.me at localhost
+        run: echo "127.0.0.1 api.localtest.me" | sudo tee -a /etc/hosts
+
+      # `docker compose`, not Actions `services:`. The proxy has to reach postgres BY
+      # NAME, and services are exposed to a non-containerised job only as
+      # localhost:port -- so a service definition cannot express this topology. The
+      # script also extracts Caddy's root CA, without which every query fails as a
+      # bare `fetch failed`.
+      - name: Start the e2e database
+        run: pnpm e2e:db:up
+
+      # No `env:` for auth here on purpose. The placeholder AUTH_SECRET lives in
       # playwright.config.ts so that a local run and a CI run exercise the same
       # auth path -- see the comment there.
+      #
+      # E2E_DATABASE=1 is what un-skips the /blog tests. Without it they skip with a
+      # reason, which is what a contributor without Docker gets.
       - name: End-to-end tests
         run: pnpm test:e2e
+        env:
+          E2E_DATABASE: "1"
+
+      # Runs even on failure: when a /blog test fails, whether the database came up
+      # correctly is the first question, and the answer is only in these logs.
+      - name: Database logs
+        if: ${{ failure() }}
+        run: docker compose -f e2e/db/compose.yaml logs --no-color
+
+      - name: Stop the e2e database
+        if: ${{ always() }}
+        run: pnpm e2e:db:down
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}

@@ -1700,30 +1700,118 @@ const unimplemented = (reason: string) => () => {
   throw new Error(`Not implemented: ${reason}`);
 };
 
-// `/blog` and `/blog/[id]` need a real `blogs` table, and CI has no database. The
-// claim that used to sit here -- that there is no schema in git, only a gitignored
-// seed helper -- is out of date: `migrations/` now holds the DDL, starting with
-// 0001_initial.sql. So what is missing is a connection and a running database, not
-// knowledge of the shape. `/blog` answers 200 today while rendering an error, so a
-// naive status check would look green.
-test.skip(
-  "/blog lists posts (needs a database -- see #3)",
-  unimplemented("no blogs table in CI"),
-);
-test.skip(
-  "/blog/[id] renders a post (needs a database -- see #3)",
-  unimplemented("no blogs table in CI"),
-);
-// The status is the entire claim of the `[id]/layout.tsx` lookup, and it cannot
-// be checked here for the same reason: an unknown id still costs a query, so
-// without credentials the route throws into its error boundary instead of
-// answering 404, and a status assertion would be measuring the wrong failure.
-// Verified by hand against a real database instead -- GET and HEAD both 404,
-// recorded on #52.
-test.skip(
-  "/blog/[id] answers 404 for an unknown id (needs a database -- see #3)",
-  unimplemented("an unknown id still needs a blogs table to come back empty"),
-);
+/**
+ * The /blog routes, no longer skipped (#3).
+ *
+ * What was missing was never knowledge of the schema -- `migrations/` has held the
+ * DDL for a while -- it was a running database that `@vercel/postgres` can talk to.
+ * It cannot talk to a plain Postgres container: it wraps `@neondatabase/serverless`,
+ * which POSTs SQL over HTTPS rather than speaking the wire protocol. `e2e/db/`
+ * supplies the missing pieces; see the comments in `compose.yaml` for the four
+ * non-obvious constraints.
+ *
+ * Each of these SKIPS with a reason when `E2E_DATABASE` is unset, rather than
+ * failing, so the suite stays runnable without Docker. That is a weaker guarantee
+ * than an unconditional test and worth naming: if the switch is never set, these
+ * are gaps again and the run output says so on every line.
+ *
+ * The fixtures are seeded by `e2e/db/init/init.sh` with fixed ids and a fixed date.
+ * The date is deliberately old so the list renders an absolute date rather than a
+ * relative one, which would otherwise change with the wall clock.
+ */
+const PUBLIC_POST = {
+  id: "11111111-1111-4111-8111-111111111111",
+  title: "A Public Post For The E2E Suite",
+  body: "The body of the public post",
+};
+const PRIVATE_POST_TITLE = "A Private Post For The E2E Suite";
+const UNKNOWN_ID = "99999999-9999-4999-8999-999999999999";
+
+const databaseConfigured = process.env.E2E_DATABASE === "1";
+const needsDatabase = () =>
+  test.skip(
+    !databaseConfigured,
+    "no database configured -- run `pnpm e2e:db:up` and set E2E_DATABASE=1",
+  );
+
+test("/blog lists posts, and hides private ones from an anonymous visitor", async ({
+  page,
+}) => {
+  needsDatabase();
+  const response = await page.goto("/blog");
+
+  // 200 asserted, but it is the WEAKEST of the three assertions here and cannot
+  // carry the test: /blog answers 200 even when the read throws, because its shell
+  // flushes before the error. That is why the old comment warned a naive status
+  // check would look green.
+  expect(response?.status()).toBe(200);
+
+  await expect(
+    page.getByRole("link", { name: PUBLIC_POST.title }),
+  ).toBeVisible();
+
+  // The privacy guard, which is the half worth having. A list that rendered
+  // everything would satisfy every other assertion in this test.
+  await expect(
+    page.getByText(PRIVATE_POST_TITLE),
+    "a private post is visible to an anonymous visitor",
+  ).toHaveCount(0);
+
+  // And that the error boundary is NOT what rendered -- the failure mode this
+  // suite spent its database-less life looking at.
+  await expect(
+    page.getByRole("heading", { name: "Error Fetching Blog" }),
+  ).toHaveCount(0);
+});
+
+test("/blog/[id] renders a post", async ({ page }) => {
+  needsDatabase();
+  const response = await page.goto(`/blog/${PUBLIC_POST.id}`);
+
+  expect(response?.status()).toBe(200);
+  await expect(
+    page.getByRole("heading", { name: PUBLIC_POST.title }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(PUBLIC_POST.body, { exact: false }),
+  ).toBeVisible();
+});
+
+test("/blog/[id] does not serve a private post to an anonymous visitor", async ({
+  page,
+}) => {
+  needsDatabase();
+  // Not in the original list of three, and it is the one with teeth. A private post
+  // and an unknown id must be INDISTINGUISHABLE -- otherwise 404-versus-something
+  // -else confirms which private posts exist. `[id]/layout.tsx` says so in as many
+  // words; nothing checked it.
+  const response = await page.goto(
+    "/blog/22222222-2222-4222-8222-222222222222",
+  );
+
+  expect(response?.status()).toBe(404);
+  await expect(page.getByText(PRIVATE_POST_TITLE)).toHaveCount(0);
+});
+
+test("/blog/[id] answers 404 for an unknown id", async ({ page }) => {
+  needsDatabase();
+  // The entire claim of the lookup in `[id]/layout.tsx`, and until now verified only
+  // by hand against the real database (#52). The point is the STATUS: `notFound()`
+  // from the page alone returns 200 here, because a Suspense boundary above the
+  // throw lets Next flush the shell first and the status commits with it. The lookup
+  // sits in the layout, above every boundary on the route, precisely so this is 404.
+  const response = await page.goto(`/blog/${UNKNOWN_ID}`);
+
+  expect(
+    response?.status(),
+    "an unknown id answered 200 -- the layout lookup is no longer above the route's Suspense boundary, so the 404 body is streaming after a committed 200",
+  ).toBe(404);
+
+  // HEAD as well as GET, because a crawler may only ever send HEAD and Next serves
+  // it through the same path.
+  const head = await page.request.head(`/blog/${UNKNOWN_ID}`);
+  expect(head.status()).toBe(404);
+});
 
 /**
  * The one thing about /blog that a database-less runner CAN check, and it was not
@@ -1759,12 +1847,20 @@ for (const path of ["/blog", "/blog/11111111-1111-4111-8111-111111111111"]) {
     const genericBoundary = page.getByRole("heading", {
       name: "Something Went Wrong",
     });
-    await expect(blogBoundary.or(genericBoundary)).toBeVisible();
-
-    const body = await page.locator("body").innerText();
+    // A BOUNDED wait that resolves either way, rather than an assertion. #3 wired a
+    // real database into the suite, so "no boundary appeared" became the normal
+    // outcome -- and an assertion here failed before the skip below could be
+    // reached, which is the wrong order to discover that in.
+    const appeared = await blogBoundary
+      .or(genericBoundary)
+      .waitFor({ state: "visible", timeout: 5_000 })
+      .then(
+        () => true,
+        () => false,
+      );
     test.skip(
-      !/Error Fetching Blog|Something Went Wrong/.test(body),
-      "this run has a working database, so the read does not fail and there is no boundary to attribute",
+      !appeared,
+      "the read succeeded -- a database is configured, so there is no boundary to attribute",
     );
 
     await expect(

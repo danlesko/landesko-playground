@@ -1,0 +1,18 @@
+# TLS termination for the Neon HTTP protocol, and the hostname is the whole point.
+#
+# `api.localtest.me`, not the `db-pooler.localtest.me` that appears in
+# `POSTGRES_URL`. `@neondatabase/serverless` rewrites a pooled host to
+# `api.<domain>` before it fetches -- so serving a certificate for the name in the
+# connection string produces `fetch failed` with nothing to explain it. Confirmed by
+# patching `globalThis.fetch` to log the URL: it asks for
+# `https://api.localtest.me/sql`.
+{
+	auto_https disable_redirects
+	# Nothing here should ever try to reach a real ACME server.
+	local_certs
+}
+
+https://api.localtest.me {
+	tls internal
+	reverse_proxy proxy:4444
+}
