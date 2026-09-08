@@ -10,9 +10,11 @@ import { encode } from "next-auth/jwt";
  * app has a single callback URL registered against production, so no local or preview
  * sign-in can complete.
  *
- * `playwright.config.ts` generates one `AUTH_SECRET` per run and shares it with this
- * process. Nothing is committed, and no fixed key exists to be reused against anyone
- * running the suite.
+ * `playwright.config.ts` generates an `E2E_AUTH_SECRET` per run, hands it to the server
+ * as its `AUTH_SECRET`, and shares it with this process. Under its own name
+ * deliberately: reading an ambient `AUTH_SECRET` would let a developer with production
+ * credentials exported mint a session that verifies against PRODUCTION, and Playwright
+ * writes traces on failure. Nothing is committed and no fixed key exists.
  *
  * Extracted here because two specs need it: `auth-gate.spec.ts`, which checks the gate
  * from both sides, and `authoring-flow.spec.ts`, which drives create and delete.
@@ -25,9 +27,13 @@ import { encode } from "next-auth/jwt";
 export const SESSION_COOKIE = "authjs.session-token";
 
 /**
- * A session shaped like one the GitHub provider would produce. `sub` and an expiry
- * are what `auth()` needs to treat it as live; the rest is what the app reads off
- * `session.user`.
+ * A session shaped like one the GitHub provider would produce -- the fields the app
+ * reads off `session.user`.
+ *
+ * The lifetime is NOT set here, and an earlier version wrongly claimed it was:
+ * `encode()` supplies its own `iat`, `exp` and `jti`, overwriting any `exp` passed in,
+ * so it lands with the library's 30-day default. Nothing here depends on the value, and
+ * pinning it would take `maxAge` rather than a token field.
  *
  * Note the email does NOT have to be one of the two the `signIn` callback in
  * `src/auth.ts` allows. That callback runs during sign-in, not on session read, so it
@@ -38,17 +44,16 @@ export const sessionToken = () => ({
   name: "Test Author",
   email: "author@example.test",
   sub: "test-subject",
-  exp: Math.floor(Date.now() / 1000) + 60 * 60,
 });
 
 export const signSession = async (token: Record<string, unknown>) => {
-  const secret = process.env.AUTH_SECRET;
+  const secret = process.env.E2E_AUTH_SECRET;
   // Asserted rather than defaulted. Without it `encode` would throw something less
   // obvious, and a test that quietly signed with `undefined` would report "session
   // rejected" for the wrong reason.
   expect(
     secret,
-    "AUTH_SECRET is not visible to the test process -- playwright.config.ts is what shares it",
+    "E2E_AUTH_SECRET is not visible to the test process -- playwright.config.ts generates and shares it",
   ).toBeTruthy();
   return encode({ salt: SESSION_COOKIE, secret: secret!, token });
 };

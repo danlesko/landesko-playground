@@ -1,8 +1,11 @@
 import { test, expect } from "@playwright/test";
 import {
   PUBLIC_POST,
+  PRIVATE_POST,
   databaseConfigured,
   NO_DATABASE_REASON,
+  E2E_TITLE_PREFIX,
+  cleanupAuthoringRows,
 } from "./fixtures";
 import { signIn } from "./session";
 
@@ -17,18 +20,25 @@ import { signIn } from "./session";
  * accepts (#153) and a database to write to (#159). Both landed; neither used them
  * together.
  *
- * ONE test, not two, and the pairing is deliberate rather than lazy. It is what makes
- * the test self-cleaning, and self-cleaning is a correctness requirement here, not
- * tidiness: `/blog` paginates at ten and orders newest-first, so roughly nine leftover
- * posts would silently push the seeded fixture off page one and break the read-only
- * tests in `smoke.spec.ts` -- a failure that would point at those tests rather than at
- * this one. Deleting what it creates, immediately, is what keeps that impossible.
+ * ONE test, not two, because delete is both the second half of the workflow and the
+ * cleanup for the first. Leftover rows matter: `/blog` paginates at ten, newest-first,
+ * so enough of them push the seeded fixture off page one.
  *
- * The cost, stated because it is real: a failure between the create and the delete
- * leaks one row, and a create failure and a delete failure look the same in the run
- * output. The alternative -- truncate and reseed per test -- is deterministic but
- * gives up `fullyParallel` for the whole suite, which is a large price for a
- * distinction the assertion messages below already make in practice.
+ * WHICH tests that breaks was wrong in the first draft, and the correction is worth
+ * keeping because it is counter-intuitive. The create form defaults "private" to
+ * CHECKED, so a post this test creates is private -- and the anonymous reads in
+ * `smoke.spec.ts` filter private rows out, so they cannot be affected at all. The test
+ * at risk is the signed-in one in THIS file, which sees private rows.
+ *
+ * The pairing is success-path cleanup and nothing more, which is why it is not the only
+ * cleanup here. Any failure after the insert -- a locator that times out, a crashed
+ * worker, an interrupted run -- leaves a committed row, so `afterEach` deletes rows by
+ * title prefix through a connection pinned to the local stack. That is what makes the
+ * suite safe to fail, rather than only safe to pass.
+ *
+ * A create failure and a delete failure still look similar in the run output; the
+ * assertion messages are what distinguish them. Truncate-and-reseed per test would
+ * separate them structurally and costs `fullyParallel` for the whole suite.
  *
  * These tests DELETE rows, so it is worth being explicit about why they cannot reach a
  * real database, and it is by construction rather than by care. Two independent
@@ -38,9 +48,10 @@ import { signIn } from "./session";
  * these tests still read the seeded rows. And without the flag they skip outright, so
  * an ambient `POSTGRES_URL` alone can never be written to.
  *
- * Transactions were the obvious answer and do not work: `@vercel/postgres` opens a
- * fresh connection per query, so there is no session for a test to hold a transaction
- * open in and no way to make the app join one.
+ * Transactions were the obvious answer and do not work, though not for the reason an
+ * earlier draft gave: `@vercel/postgres` does expose a pool and `sql.connect()`. The
+ * real obstacle is that the writes happen in the SERVER's requests, so a transaction
+ * this test owned could never be the one they join.
  *
  * What this does NOT cover, established by mutation rather than assumed: removing
  * `revalidatePath("/blog")` from either action changes nothing here, so neither
@@ -52,9 +63,16 @@ import { signIn } from "./session";
  */
 
 // Unique per run, so a row leaked by a previous failure cannot be mistaken for this
-// run's, and two runs against the same stack cannot collide.
-const uniqueTitle = () =>
-  `E2E Authoring ${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+// run's, and two runs against the same stack cannot collide. The prefix is shared with
+// the cleanup, which finds rows by it.
+const uniqueTitle = () => `${E2E_TITLE_PREFIX}${crypto.randomUUID()}`;
+
+// Runs whether the test passed or failed, which is the point: the in-test delete only
+// covers the success path.
+test.afterEach(async () => {
+  if (!databaseConfigured) return;
+  await cleanupAuthoringRows();
+});
 
 test("creates a post, shows it in the list, then deletes it", async ({
   page,
@@ -89,6 +107,9 @@ test("creates a post, shows it in the list, then deletes it", async ({
   // mean no row.
   await created.click();
   await expect(page).toHaveURL(/\/blog\/[0-9a-f-]{36}$/);
+  // Kept for the delete assertions below, which need the row's own URL rather than its
+  // title to tell deletion from concealment.
+  const detailUrl = page.url();
   await expect(page.getByRole("heading", { name: title })).toBeVisible();
   await expect(page.getByText(body, { exact: false })).toBeVisible();
 
@@ -109,32 +130,72 @@ test("creates a post, shows it in the list, then deletes it", async ({
     page.getByRole("link", { name: title }),
     "the post is still listed after deleting it, so the delete did not happen",
   ).toHaveCount(0);
+
+  // The ROW, not just the link. Absence from the list is satisfied by anything that
+  // hides it -- a renamed title, a flipped privacy flag -- so the detail URL captured
+  // before the delete is what distinguishes "deleted" from "no longer findable".
+  const gone = await page.request.get(detailUrl);
+  expect(
+    gone.status(),
+    "the detail route still answers for the deleted post, so the row is hidden rather than deleted",
+  ).toBe(404);
+
+  // And that ONLY that row went. `DELETE FROM blogs` with no predicate satisfies every
+  // assertion above, and would then break other tests somewhere else in the run --
+  // where it would look like their bug.
+  await page.goto("/blog");
+  await expect(
+    page.getByRole("link", { name: PUBLIC_POST.title }),
+    "the seeded public post is gone, so the delete removed more than its target",
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: PRIVATE_POST.title }),
+    "the seeded private post is gone, so the delete removed more than its target",
+  ).toBeVisible();
 });
 
-test("cancelling the confirmation leaves the post alone", async ({
+test("cancelling the confirmation leaves every post alone", async ({
   page,
   context,
 }) => {
   test.skip(!databaseConfigured, NO_DATABASE_REASON);
   await signIn(context);
 
-  // The SEEDED post rather than a created one, because this test does not mutate
-  // anything -- so it needs no cleanup and cannot leak. Cancelling is the path where
-  // "nothing happened" is the whole assertion, and asserting that about a row this
-  // test created would be weaker: a create that silently failed would also produce a
-  // list without it.
-  const title = PUBLIC_POST.title;
+  // The SEEDED posts rather than created ones, because this test does not mutate
+  // anything -- so it needs no cleanup and cannot leak. "Nothing happened" is also a
+  // stronger claim about a row this test did not create: asserting it about its own
+  // post would pass equally if the create had silently failed.
+  await page.goto(`/blog/${PUBLIC_POST.id}`);
+  const bodyBefore = await page.getByRole("main").innerText();
 
   await page.goto("/blog");
-  await page.getByRole("button", { name: `Delete post: ${title}` }).click();
+  await page
+    .getByRole("button", { name: `Delete post: ${PUBLIC_POST.title}` })
+    .click();
 
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await dialog.getByRole("button", { name: "Cancel" }).click();
   await expect(dialog).toBeHidden();
 
-  // Still there after a reload, not merely still on screen. The dialog closing proves
-  // the UI did nothing; only a fresh read proves the database did nothing.
-  await page.reload();
-  await expect(page.getByRole("link", { name: title })).toBeVisible();
+  // The dialog closing proves only that the UI did nothing. These read the database
+  // again, and check the CONTENTS rather than the title -- an action that fired and
+  // edited the row while leaving its title would satisfy a title-only assertion.
+  await page.goto(`/blog/${PUBLIC_POST.id}`);
+  expect(
+    await page.getByRole("main").innerText(),
+    "the post changed after cancelling, so something was submitted",
+  ).toBe(bodyBefore);
+
+  // And that cancelling did not take a different row instead. The dialog names no post,
+  // so a handler wired to the wrong id would look identical from the button that opened
+  // it.
+  await page.goto("/blog");
+  await expect(
+    page.getByRole("link", { name: PRIVATE_POST.title }),
+    "a different seeded post disappeared, so cancelling deleted the wrong row",
+  ).toBeVisible();
+  await expect(
+    page.getByRole("link", { name: PUBLIC_POST.title }),
+  ).toBeVisible();
 });

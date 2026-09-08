@@ -1,6 +1,7 @@
 import { defineConfig, devices } from "@playwright/test";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
+import { E2E_DATABASE_URL } from "./e2e/fixtures";
 
 // Not 3000: `pnpm dev` usually owns that, and a suite that silently ran against
 // a dev server would prove nothing about the deployed app.
@@ -24,12 +25,15 @@ const baseURL = `http://localhost:${PORT}`;
 // generates it and puts it in its own environment; workers are spawned after that
 // and inherit it, so `??` finds it already set and reuses it.
 //
-// Consequence worth naming: if AUTH_SECRET is already in your environment, the
-// suite uses that instead of generating one. That is harmless -- the server and the
-// tests still agree, which is all this needs -- but it does mean the value is not
-// unconditionally per-run.
-const AUTH_SECRET = process.env.AUTH_SECRET ?? randomBytes(32).toString("hex");
-process.env.AUTH_SECRET = AUTH_SECRET;
+// Under its OWN name, and never `AUTH_SECRET`. An earlier version read ambient
+// `AUTH_SECRET` when one was set, which meant a developer with production credentials
+// exported would have the suite mint a session that VERIFIES AGAINST PRODUCTION --
+// and Playwright retains traces on failure, so it could reach disk. Generating
+// unconditionally and handing the result to the server as `AUTH_SECRET` below keeps a
+// forged token useless anywhere but this run.
+const E2E_AUTH_SECRET =
+  process.env.E2E_AUTH_SECRET ?? randomBytes(32).toString("hex");
+process.env.E2E_AUTH_SECRET = E2E_AUTH_SECRET;
 
 // The /blog routes need a database, and `E2E_DATABASE=1` is the single switch that
 // says one is present. Four tests depend on it. `pnpm e2e:db:up` starts it and prints the line to run.
@@ -48,8 +52,7 @@ process.env.AUTH_SECRET = AUTH_SECRET;
 const DATABASE = process.env.E2E_DATABASE === "1";
 const DATABASE_ENV: Record<string, string> = DATABASE
   ? {
-      POSTGRES_URL:
-        "postgres://postgres:postgres@db-pooler.localtest.me:5432/main",
+      POSTGRES_URL: E2E_DATABASE_URL,
       // Caddy's own root, extracted by e2e/db/up.sh. Pointing Node at it keeps TLS
       // verification ON; the alternative, NODE_TLS_REJECT_UNAUTHORIZED=0, would
       // disable it for every request the app makes, which is a lot of blast radius
@@ -100,9 +103,9 @@ export default defineConfig({
       // its trigger sits behind a session and its card comes from Postgres -- so it had no
       // coverage of any kind, and two regressions shipped through that gap in one evening.
       E2E_FIXTURES: "1",
-      // See the note on the constant above for why it is generated rather than
-      // fixed, and why the tests now need the same value the server gets.
-      AUTH_SECRET,
+      // The generated value, always overriding anything ambient -- see the note on
+      // the constant above.
+      AUTH_SECRET: E2E_AUTH_SECRET,
       // AUTH_URL rather than AUTH_TRUST_HOST: both satisfy the `trustHost`
       // check, but this one names the single origin we expect instead of
       // trusting whatever Host header shows up.
