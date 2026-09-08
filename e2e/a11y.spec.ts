@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 import { createRequire } from "node:module";
+import { PUBLIC_POST, databaseConfigured } from "./fixtures";
 
 /**
  * An automated WCAG pass over the routes that need no database.
@@ -61,8 +62,15 @@ const VIEWPORTS = [
  * blocks these origins, deliberately: it asserts that nothing is requested,
  * which only means something when nothing is intercepted.
  *
- * /blog is still absent: it needs a database, and without one it renders its
- * error boundary.
+ * /blog and /blog/[id] are present now, conditionally. They need a database, and
+ * without one they render an error boundary -- so scanning them then would grade the
+ * accessibility of an error screen, which is the same mistake #51 fixed for /contact.
+ * `E2E_DATABASE=1` and `pnpm e2e:db:up` are what make them scannable; absent that
+ * they are simply not in the list and the run says nothing about them.
+ *
+ * Measured before adding them, at both viewports: 61 rules considered, ZERO
+ * violations, and the only unevaluable entry is the header gradient every other route
+ * already has. So this is two more routes under the gate rather than a set of fixes.
  */
 // The site title, on every page. It is a `<span>` inside the header, not the
 // `<h1>` -- worth stating, because "the title" reads like a heading and the
@@ -164,6 +172,30 @@ const ROUTES: {
     // is machine-checked at this width for the first time.
     unevaluable: [],
   },
+  // Conditional entries, spread rather than pushed, so the array stays a single
+  // expression and the two tests below still derive from it unchanged.
+  ...(databaseConfigured
+    ? [
+        {
+          path: "/blog",
+          ready: (page: Page) =>
+            expect(
+              page.getByRole("link", { name: PUBLIC_POST.title }),
+            ).toBeVisible(),
+          unevaluable: [GRADIENT_TITLE],
+        },
+        {
+          path: `/blog/${PUBLIC_POST.id}`,
+          // The heading, not the body: the body is inside a card that streams, and
+          // the heading is what the layout guarantees before anything flushes.
+          ready: (page: Page) =>
+            expect(
+              page.getByRole("heading", { name: PUBLIC_POST.title }),
+            ).toBeVisible(),
+          unevaluable: [GRADIENT_TITLE],
+        },
+      ]
+    : []),
   {
     path: "/contact",
     blockThirdParty: true,
