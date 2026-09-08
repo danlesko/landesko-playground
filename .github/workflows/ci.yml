@@ -141,6 +141,20 @@ jobs:
         env:
           E2E_DATABASE: "1"
 
+      # A SECOND pass, with the database deliberately not offered.
+      #
+      # Giving CI a database silently disabled the two error-boundary tests from
+      # #154, because they only run when a read FAILS -- with a working database
+      # there is no boundary to attribute, so they skip, and CI would have lost
+      # coverage it had yesterday. They are cheap and they are the only thing
+      # asserting that a failed read reaches blog/error.tsx rather than the root
+      # boundary, so they get their own run instead.
+      #
+      # Narrowed with --grep rather than running the whole suite twice: everything
+      # else is already covered by the pass above, and the point is these two.
+      - name: End-to-end tests without a database
+        run: pnpm test:e2e --grep "renders the blog boundary"
+
       # Runs even on failure: when a /blog test fails, whether the database came up
       # correctly is the first question, and the answer is only in these logs.
       - name: Database logs
