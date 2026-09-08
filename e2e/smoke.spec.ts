@@ -1,4 +1,11 @@
 import { test, expect } from "@playwright/test";
+import {
+  PUBLIC_POST,
+  PRIVATE_POST,
+  UNKNOWN_POST_ID,
+  databaseConfigured,
+  NO_DATABASE_REASON,
+} from "./fixtures";
 
 /**
  * Browser-level smoke coverage for the routes that need no database.
@@ -1719,20 +1726,7 @@ const unimplemented = (reason: string) => () => {
  * The date is deliberately old so the list renders an absolute date rather than a
  * relative one, which would otherwise change with the wall clock.
  */
-const PUBLIC_POST = {
-  id: "11111111-1111-4111-8111-111111111111",
-  title: "A Public Post For The E2E Suite",
-  body: "The body of the public post",
-};
-const PRIVATE_POST_TITLE = "A Private Post For The E2E Suite";
-const UNKNOWN_ID = "99999999-9999-4999-8999-999999999999";
-
-const databaseConfigured = process.env.E2E_DATABASE === "1";
-const needsDatabase = () =>
-  test.skip(
-    !databaseConfigured,
-    "no database configured -- run `pnpm e2e:db:up` and set E2E_DATABASE=1",
-  );
+const needsDatabase = () => test.skip(!databaseConfigured, NO_DATABASE_REASON);
 
 test("/blog lists posts, and hides private ones from an anonymous visitor", async ({
   page,
@@ -1753,7 +1747,7 @@ test("/blog lists posts, and hides private ones from an anonymous visitor", asyn
   // The privacy guard, which is the half worth having. A list that rendered
   // everything would satisfy every other assertion in this test.
   await expect(
-    page.getByText(PRIVATE_POST_TITLE),
+    page.getByText(PRIVATE_POST.title),
     "a private post is visible to an anonymous visitor",
   ).toHaveCount(0);
 
@@ -1790,7 +1784,7 @@ test("/blog/[id] does not serve a private post to an anonymous visitor", async (
   );
 
   expect(response?.status()).toBe(404);
-  await expect(page.getByText(PRIVATE_POST_TITLE)).toHaveCount(0);
+  await expect(page.getByText(PRIVATE_POST.title)).toHaveCount(0);
 });
 
 test("/blog/[id] answers 404 for an unknown id", async ({ page }) => {
@@ -1800,7 +1794,7 @@ test("/blog/[id] answers 404 for an unknown id", async ({ page }) => {
   // from the page alone returns 200 here, because a Suspense boundary above the
   // throw lets Next flush the shell first and the status commits with it. The lookup
   // sits in the layout, above every boundary on the route, precisely so this is 404.
-  const response = await page.goto(`/blog/${UNKNOWN_ID}`);
+  const response = await page.goto(`/blog/${UNKNOWN_POST_ID}`);
 
   expect(
     response?.status(),
@@ -1809,7 +1803,7 @@ test("/blog/[id] answers 404 for an unknown id", async ({ page }) => {
 
   // HEAD as well as GET, because a crawler may only ever send HEAD and Next serves
   // it through the same path.
-  const head = await page.request.head(`/blog/${UNKNOWN_ID}`);
+  const head = await page.request.head(`/blog/${UNKNOWN_POST_ID}`);
   expect(head.status()).toBe(404);
 });
 
