@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { encode } from "next-auth/jwt";
+import { SESSION_COOKIE, sessionToken, signSession, signIn } from "./session";
 
 /**
  * The authoring gate, from both sides.
@@ -32,52 +32,11 @@ import { encode } from "next-auth/jwt";
  * checks the redirect cannot see the gate failing OPEN.
  */
 
-// `authjs.session-token` on http, `__Secure-` prefixed on https. The cookie name
-// doubles as the encryption salt, which is an Auth.js convention rather than
-// something this repo chose -- getting it wrong produces a cookie the server
-// silently ignores, which would look exactly like a rejected session.
-const SESSION_COOKIE = "authjs.session-token";
-
-const signSession = async (token: Record<string, unknown>) => {
-  const secret = process.env.AUTH_SECRET;
-  // Asserted rather than defaulted. Without it `encode` would throw something
-  // less obvious, and a test that quietly signed with `undefined` would report
-  // "session rejected" for the wrong reason.
-  expect(
-    secret,
-    "AUTH_SECRET is not visible to the test process -- playwright.config.ts is what shares it",
-  ).toBeTruthy();
-  return encode({
-    salt: SESSION_COOKIE,
-    secret: secret!,
-    token,
-  });
-};
-
-// A session shaped like one the GitHub provider would produce. `sub` and an
-// expiry are what `auth()` needs to treat it as live; the rest is what the app
-// reads off `session.user`.
-const sessionToken = {
-  name: "Test Author",
-  email: "author@example.test",
-  sub: "test-subject",
-  exp: Math.floor(Date.now() / 1000) + 60 * 60,
-};
-
 test("the authoring route admits a real signed session", async ({
   page,
   context,
 }) => {
-  await context.addCookies([
-    {
-      name: SESSION_COOKIE,
-      value: await signSession(sessionToken),
-      domain: "localhost",
-      path: "/",
-      httpOnly: true,
-      sameSite: "Lax",
-    },
-  ]);
+  await signIn(context);
 
   await page.goto("/blog/create");
 
@@ -102,7 +61,7 @@ test("the authoring route rejects a cookie signed with the wrong key", async ({
   // could be rejected by the decoder before the signature is ever checked, which
   // would pass this test without proving the signature is verified. Flipping
   // characters inside a structurally valid token is what exercises that.
-  const valid = await signSession(sessionToken);
+  const valid = await signSession(sessionToken());
   const tampered =
     valid.slice(0, -6) + (valid.slice(-6) === "aaaaaa" ? "bbbbbb" : "aaaaaa");
   expect(tampered).not.toBe(valid);
