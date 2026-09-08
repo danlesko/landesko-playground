@@ -30,6 +30,14 @@ import { signIn } from "./session";
  * gives up `fullyParallel` for the whole suite, which is a large price for a
  * distinction the assertion messages below already make in practice.
  *
+ * These tests DELETE rows, so it is worth being explicit about why they cannot reach a
+ * real database, and it is by construction rather than by care. Two independent
+ * guards, both verified: with `E2E_DATABASE=1`, `playwright.config.ts` spreads its own
+ * `POSTGRES_URL` last into the web server's environment, so it overrides whatever a
+ * developer has exported -- checked by exporting a fake production URL and watching
+ * these tests still read the seeded rows. And without the flag they skip outright, so
+ * an ambient `POSTGRES_URL` alone can never be written to.
+ *
  * Transactions were the obvious answer and do not work: `@vercel/postgres` opens a
  * fresh connection per query, so there is no session for a test to hold a transaction
  * open in and no way to make the app join one.
