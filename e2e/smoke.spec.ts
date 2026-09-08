@@ -1817,10 +1817,12 @@ test("/blog/[id] answers 404 for an unknown id", async ({ page }) => {
  * The one thing about /blog that a database-less runner CAN check, and it was not
  * checked (#154).
  *
- * Every other /blog test in this file is skipped because CI has no `blogs` table.
- * That same absence makes the FAILURE path the one path CI exercises for real:
- * without `POSTGRES_URL` the read throws, so the route renders an error boundary
- * on every run. Which boundary was never asserted, and it was the wrong one.
+ * These run in the mode where there is no database. #3 gave CI one, so the /blog
+ * tests above now cover the happy path and these cover the failure path -- exact
+ * mirrors, and CI runs a second pass without a connection string precisely so this
+ * half does not silently become a skip. Without `POSTGRES_URL` the read throws, so
+ * the route renders an error boundary. Which boundary was never asserted, and it was
+ * the wrong one.
  *
  * `blog/[id]/error.tsx` could not catch the read at all. A segment's `error.tsx`
  * wraps that segment's children, not its own layout, and the read is in
@@ -1837,6 +1839,10 @@ for (const path of ["/blog", "/blog/11111111-1111-4111-8111-111111111111"]) {
   test(`a failed read on ${path} renders the blog boundary, not the generic one`, async ({
     page,
   }) => {
+    test.skip(
+      databaseConfigured,
+      "a database is configured, so the read succeeds and there is no boundary to attribute -- CI runs these in a second pass without one",
+    );
     await page.goto(path);
     // Both boundaries are client components, so the fallback appears after
     // hydration rather than in the server's HTML. Waiting on either heading is
@@ -1847,21 +1853,12 @@ for (const path of ["/blog", "/blog/11111111-1111-4111-8111-111111111111"]) {
     const genericBoundary = page.getByRole("heading", {
       name: "Something Went Wrong",
     });
-    // A BOUNDED wait that resolves either way, rather than an assertion. #3 wired a
-    // real database into the suite, so "no boundary appeared" became the normal
-    // outcome -- and an assertion here failed before the skip below could be
-    // reached, which is the wrong order to discover that in.
-    const appeared = await blogBoundary
-      .or(genericBoundary)
-      .waitFor({ state: "visible", timeout: 5_000 })
-      .then(
-        () => true,
-        () => false,
-      );
-    test.skip(
-      !appeared,
-      "the read succeeded -- a database is configured, so there is no boundary to attribute",
-    );
+    // Skipped on the MODE, never on what the page did. An earlier version inferred
+    // it -- "neither heading appeared in five seconds, so the read must have
+    // succeeded" -- and that quietly converts real regressions into skips: a
+    // different error UI, a redirect, a hang, or late hydration all look identical
+    // to a healthy page from here. With the flag as the condition, everything that
+    // is not the expected boundary is a failure.
 
     await expect(
       blogBoundary,

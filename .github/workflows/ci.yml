@@ -122,11 +122,15 @@ jobs:
       - name: Point api.localtest.me at localhost
         run: echo "127.0.0.1 api.localtest.me" | sudo tee -a /etc/hosts
 
-      # `docker compose`, not Actions `services:`. The proxy has to reach postgres BY
-      # NAME, and services are exposed to a non-containerised job only as
-      # localhost:port -- so a service definition cannot express this topology. The
-      # script also extracts Caddy's root CA, without which every query fails as a
-      # bare `fetch failed`.
+      # `docker compose`, not Actions `services:`, and NOT because services cannot
+      # express the topology -- an earlier version of this comment claimed that and it
+      # is false. Service containers in a job do share a network and can address each
+      # other by label.
+      #
+      # The reasons are parity and setup: this is the same file a contributor runs
+      # locally, so CI cannot drift from it, and the stack needs a mounted init script
+      # plus Caddy's root CA extracted afterwards. `services:` gives nowhere to put
+      # either.
       - name: Start the e2e database
         run: pnpm e2e:db:up
 
@@ -154,6 +158,12 @@ jobs:
       # else is already covered by the pass above, and the point is these two.
       - name: End-to-end tests without a database
         run: pnpm test:e2e --grep "renders the blog boundary"
+        env:
+          # Explicitly empty rather than merely unset. Playwright forwards the
+          # ambient environment to the web server, so a caller with POSTGRES_URL
+          # exported would hand this pass a working database and turn its two tests
+          # into skips -- which is exactly the silent hole this pass exists to close.
+          POSTGRES_URL: ""
 
       # Runs even on failure: when a /blog test fails, whether the database came up
       # correctly is the first question, and the answer is only in these logs.

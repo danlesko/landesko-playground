@@ -34,7 +34,7 @@
 # into a red pipeline.
 #
 # Not for development. `pnpm dev` still expects the real Neon database; this exists
-# so CI can run the three /blog tests that were declared gaps, and it is torn down
+# so CI can run the /blog tests that were declared gaps, and it is torn down
 # with the job.
 
 name: landesko-e2e-db
@@ -60,7 +60,14 @@ services:
       retries: 30
 
   proxy:
-    image: ghcr.io/timowilhelm/local-neon-http-proxy:main
+    # Pinned by digest, not by `:main`. This is the sharpest trust boundary in the
+    # file -- a community image running as a SQL gateway -- and a mutable tag means
+    # an upstream push can change what CI executes with no commit here. Update by
+    # pulling the tag, reading `docker inspect --format '{{index .RepoDigests 0}}'`,
+    # and replacing this line. The official postgres and caddy images stay on major
+    # tags deliberately: patch updates there are wanted, and neither is fronting the
+    # database with its own protocol implementation.
+    image: ghcr.io/timowilhelm/local-neon-http-proxy@sha256:cd2ae14edf2feafbc3330492de5c80506f77274c3bd013154cdef697bdeb768a
     environment:
       PG_CONNECTION_STRING: postgres://postgres:postgres@postgres:5432/main
     depends_on:
@@ -74,7 +81,12 @@ services:
     # re-exported by `@vercel/postgres`. Serving the port it already asks for is
     # what keeps this out of the application code entirely.
     ports:
-      - "443:443"
+      # 127.0.0.1, NOT a bare "443:443". The bare form publishes on every host
+      # interface, and what is behind it is a SQL gateway to a superuser account with
+      # a published password and `allowed_ips = 0.0.0.0/0`. On a laptop on a cafe
+      # network, or a self-hosted runner on a shared VLAN, that is reachable by
+      # anyone who can route to the host. Loopback is all the suite needs.
+      - "127.0.0.1:443:443"
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       # Caddy mints its own CA for `tls internal` and keeps it here. The workflow

@@ -130,9 +130,13 @@ runnable with no Docker. The two error-boundary tests are the mirror image — t
 only run when there is _no_ database, since a working read means no boundary to
 attribute.
 
-**One end-to-end test is still skipped**, and a skipped test is a declared gap rather
+**One permanent coverage gap remains**, and a skipped test is a declared gap rather
 than coverage: the `/contact` delivery case needs a real reCAPTCHA site key and mail
 credentials, and neither belongs in this repository.
+
+Any given run skips more than that one, which is by design rather than a gap: with a
+database the two error-boundary tests skip, without one the four blog tests do. CI
+runs both modes, so every test executes somewhere.
 
 ## Known limitations
 

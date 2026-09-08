@@ -1,36 +1,72 @@
 #!/bin/sh
-# Brings the e2e database stack up and leaves Node able to trust it.
+# Brings the e2e database stack up and leaves it PROVEN ready, not merely started.
 #
-# Two steps, and the second is the one that is easy to forget: Caddy mints its own
-# CA for `tls internal`, so until that root is on disk where NODE_EXTRA_CA_CERTS can
-# point at it, every query fails with a bare `fetch failed` and nothing explaining
-# why. Extracting it is what lets the suite run with TLS verification ON rather than
-# switching it off wholesale.
+# Three things here are deliberate, and the first two were wrong in the first draft:
+#
+#   1. It tears the stack down with its volume first. Postgres only runs
+#      /docker-entrypoint-initdb.d when it creates the data directory, so a stack
+#      that is already up ignores changed migrations, a changed seed and the
+#      control-plane row -- silently, and the tests then fail against yesterday's
+#      fixtures. Starting clean costs a few seconds and removes the whole class.
+#
+#   2. Readiness is a real query, not a proxy of one. `--wait` only covers the
+#      postgres healthcheck; the proxy and TLS containers merely have to be
+#      "running", and the CA file appearing proves Caddy minted a CA rather than that
+#      anything can be queried. So this ends by running `SELECT 1` through the exact
+#      public endpoint the app uses, with the CA it will use, and fails if that never
+#      succeeds.
+#
+#   3. The CA is extracted before that probe can pass, because the probe needs it.
+#      Caddy mints on demand, so the loop nudges it with a request first.
 set -eu
 here=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
+repo=$(CDPATH= cd -- "$here/../.." && pwd)
+compose="docker compose -f $here/compose.yaml"
+ca="$here/.caddy-root.crt"
 
-docker compose -f "$here/compose.yaml" up -d --wait
+$compose down -v >/dev/null 2>&1 || true
+$compose up -d --wait
 
-# --wait covers the healthcheck on postgres, but Caddy writes its CA lazily on
-# first use, so poll for the file rather than assuming it is there.
+# Caddy writes its CA lazily, so poll rather than assume, nudging it into issuing.
 i=0
 while [ "$i" -lt 60 ]; do
-	if docker compose -f "$here/compose.yaml" exec -T tls test -f /data/caddy/pki/authorities/local/root.crt 2>/dev/null; then
+	if $compose exec -T tls test -f /data/caddy/pki/authorities/local/root.crt 2>/dev/null; then
 		break
 	fi
-	# Nudge Caddy into issuing, since it mints on demand.
 	curl -sk -o /dev/null --max-time 2 https://api.localtest.me/sql || true
 	i=$((i + 1))
 	sleep 1
 done
 
-docker compose -f "$here/compose.yaml" exec -T tls \
-	cat /data/caddy/pki/authorities/local/root.crt > "$here/.caddy-root.crt"
-
-if [ ! -s "$here/.caddy-root.crt" ]; then
-	echo "e2e/db/up.sh: Caddy's root CA never appeared; TLS would fail as 'fetch failed'" >&2
+$compose exec -T tls cat /data/caddy/pki/authorities/local/root.crt >"$ca" || true
+if [ ! -s "$ca" ]; then
+	echo "e2e/db/up.sh: Caddy's root CA never appeared; every query would fail as a bare 'fetch failed'" >&2
 	exit 1
 fi
 
-echo "e2e database ready. Run the suite with:"
-echo "  E2E_DATABASE=1 pnpm test:e2e"
+# From the repo root, so `@vercel/postgres` resolves however this script was invoked.
+cd "$repo"
+
+# The readiness gate. Queries through api.localtest.me:443 -> caddy -> proxy ->
+# postgres, exactly as the app will, and reads a seeded row so a working connection
+# to an UNSEEDED database does not count as ready either.
+i=0
+while [ "$i" -lt 60 ]; do
+	if NODE_EXTRA_CA_CERTS="$ca" \
+		POSTGRES_URL="postgres://postgres:postgres@db-pooler.localtest.me:5432/main" \
+		node --input-type=module -e '
+      const { sql } = await import("@vercel/postgres");
+      const r = await sql`SELECT count(*)::int AS n FROM blogs`;
+      if (r.rows[0].n < 1) throw new Error("no seeded rows");
+    ' >/dev/null 2>&1; then
+		echo "e2e database ready. Run the suite with:"
+		echo "  E2E_DATABASE=1 pnpm test:e2e"
+		exit 0
+	fi
+	i=$((i + 1))
+	sleep 1
+done
+
+echo "e2e/db/up.sh: the stack came up but a query never succeeded. Logs:" >&2
+$compose logs --no-color >&2
+exit 1

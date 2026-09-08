@@ -32,7 +32,7 @@ const AUTH_SECRET = process.env.AUTH_SECRET ?? randomBytes(32).toString("hex");
 process.env.AUTH_SECRET = AUTH_SECRET;
 
 // The /blog routes need a database, and `E2E_DATABASE=1` is the single switch that
-// says one is present. `pnpm e2e:db:up` starts it and prints the line to run.
+// says one is present. Four tests depend on it. `pnpm e2e:db:up` starts it and prints the line to run.
 //
 // One switch rather than making the caller export a connection string, because the
 // connection details are not free parameters: the host has to contain `-pooler` or
@@ -41,8 +41,10 @@ process.env.AUTH_SECRET = AUTH_SECRET;
 // that satisfies them, not in whatever a caller happens to type. Same shape as
 // E2E_FIXTURES above it.
 //
-// Absent, the three /blog tests skip with a reason and everything else runs exactly
-// as before, so the suite stays usable without Docker.
+// Absent, those four skip with a reason and everything else runs exactly as before,
+// so the suite stays usable without Docker. The two error-boundary tests are the
+// mirror image: they skip when this IS set, because a working read leaves no
+// boundary to attribute, and CI gives them their own pass without a connection.
 const DATABASE = process.env.E2E_DATABASE === "1";
 const DATABASE_ENV: Record<string, string> = DATABASE
   ? {
