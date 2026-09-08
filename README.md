@@ -103,14 +103,40 @@ Unit tests are Vitest, running in Node with no DOM by default. One file,
 submit — that is the only way to cover event-handler wiring here, and it is why the
 Node requirement above is jsdom's rather than Next.js's.
 
-Four end-to-end tests are **skipped**, and a skipped test is a declared gap rather
-than coverage:
+### The e2e database
 
-- three blog cases need a live Postgres database to read rows from
-- the `/contact` delivery case needs a real reCAPTCHA site key and mail credentials
+The `/blog` routes read from Postgres, and their tests used to be skipped for want of
+one. `e2e/db/` now supplies it:
 
-None of those belong in this repository, so the gap is deliberate. `migrations/` does
-hold the schema, so the database half is a connection away rather than unknown.
+```bash
+pnpm e2e:db:up                 # postgres + a Neon HTTP proxy + TLS, via docker compose
+E2E_DATABASE=1 pnpm test:e2e
+pnpm e2e:db:down
+```
+
+Three services rather than one, because `@vercel/postgres` is an HTTP client — it
+POSTs SQL to `https://<host>/sql` and cannot speak the Postgres wire protocol at all.
+So a plain container is not something it can reach. `e2e/db/compose.yaml` documents
+the four constraints that make it work, each of which fails in a way that names
+nothing useful; the sharpest is that the driver rewrites a pooled host to
+`api.<domain>`, so TLS is served for a **different name** than the one in
+`POSTGRES_URL`.
+
+The stack applies this repo's own `migrations/*.sql`, which makes them executable
+rather than merely recorded: a migration that stops applying now fails CI.
+
+Without `E2E_DATABASE=1` the blog tests skip with a reason, so the suite stays
+runnable with no Docker. The two error-boundary tests are the mirror image — they
+only run when there is _no_ database, since a working read means no boundary to
+attribute.
+
+**One permanent coverage gap remains**, and a skipped test is a declared gap rather
+than coverage: the `/contact` delivery case needs a real reCAPTCHA site key and mail
+credentials, and neither belongs in this repository.
+
+Any given run skips more than that one, which is by design rather than a gap: with a
+database the two error-boundary tests skip, without one the four blog tests do. CI
+runs both modes, so every test executes somewhere.
 
 ## Known limitations
 

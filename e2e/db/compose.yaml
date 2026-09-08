@@ -1,0 +1,100 @@
+# The database the e2e suite needs, and the two shims that let `@vercel/postgres`
+# talk to it.
+#
+# Why three services rather than one Postgres. The app queries through
+# `@vercel/postgres`, which wraps `@neondatabase/serverless` -- an HTTP client, not
+# a Postgres wire-protocol client. It POSTs SQL to `https://<host>/sql`. So a plain
+# Postgres container is not something it can speak to at all, and that is the whole
+# reason the /blog tests were skipped rather than simply pointed at a container.
+#
+#   postgres   the real database, with this repo's own migrations applied
+#   proxy      Neon's `proxy` in mock mode: speaks the /sql HTTP protocol, forwards
+#              to postgres over the wire protocol
+#   tls        terminates HTTPS, because the driver's endpoint is https:// on 443
+#              and is not configurable per-client
+#
+# Four things about this were non-obvious enough to be worth writing down, each
+# found by hitting it:
+#
+#   1. `POSTGRES_URL`'s host must contain `-pooler`, or `@vercel/postgres`'s `sql`
+#      refuses the string outright: "meant to be used with a direct connection".
+#   2. The driver then REWRITES that host to `api.<domain>` -- real Neon topology,
+#      where pooled traffic goes to an api host. So TLS has to be served for
+#      `api.localtest.me`, NOT for the host in the connection string. This is the
+#      one that wastes an afternoon: the connection string and the hostname
+#      actually contacted are different names.
+#   3. The proxy's mock control plane reads `neon_control_plane.endpoints` FROM THE
+#      DATABASE IT FRONTS, keyed on the first label of the host.
+#   4. That table's `allowed_ips` must be a parseable CIDR. Empty string fails as
+#      "invalid IP address syntax" (502) and NULL fails deserialising (500).
+#
+# `localtest.me` is a public DNS record resolving anything under it to 127.0.0.1,
+# which is what makes this zero-config locally. CI does not rely on that: the
+# workflow writes an /etc/hosts entry, so a lapse in someone else's DNS cannot turn
+# into a red pipeline.
+#
+# Not for development. `pnpm dev` still expects the real Neon database; this exists
+# so CI can run the /blog tests that were declared gaps, and it is torn down
+# with the job.
+
+name: landesko-e2e-db
+
+services:
+  postgres:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: main
+    # The repo's migrations are mounted rather than copied, and the init script
+    # applies them in order. That makes `migrations/` executable rather than merely
+    # recorded: if a migration stops applying cleanly, this stack stops coming up.
+    volumes:
+      - ../../migrations:/migrations:ro
+      - ./init:/docker-entrypoint-initdb.d:ro
+    # Nothing outside the compose network needs the wire protocol -- the app only
+    # ever speaks HTTP to the proxy -- so this port is deliberately not published.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d main"]
+      interval: 1s
+      timeout: 3s
+      retries: 30
+
+  proxy:
+    # Pinned by digest, not by `:main`. This is the sharpest trust boundary in the
+    # file -- a community image running as a SQL gateway -- and a mutable tag means
+    # an upstream push can change what CI executes with no commit here. Update by
+    # pulling the tag, reading `docker inspect --format '{{index .RepoDigests 0}}'`,
+    # and replacing this line. The official postgres and caddy images stay on major
+    # tags deliberately: patch updates there are wanted, and neither is fronting the
+    # database with its own protocol implementation.
+    image: ghcr.io/timowilhelm/local-neon-http-proxy@sha256:cd2ae14edf2feafbc3330492de5c80506f77274c3bd013154cdef697bdeb768a
+    environment:
+      PG_CONNECTION_STRING: postgres://postgres:postgres@postgres:5432/main
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  tls:
+    image: caddy:2-alpine
+    # 443 because the driver builds `https://<host>/sql` with no port, and
+    # `fetchEndpoint` -- the only way to change that -- is global-only and not
+    # re-exported by `@vercel/postgres`. Serving the port it already asks for is
+    # what keeps this out of the application code entirely.
+    ports:
+      # 127.0.0.1, NOT a bare "443:443". The bare form publishes on every host
+      # interface, and what is behind it is a SQL gateway to a superuser account with
+      # a published password and `allowed_ips = 0.0.0.0/0`. On a laptop on a cafe
+      # network, or a self-hosted runner on a shared VLAN, that is reachable by
+      # anyone who can route to the host. Loopback is all the suite needs.
+      - "127.0.0.1:443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      # Caddy mints its own CA for `tls internal` and keeps it here. The workflow
+      # copies the root out of this volume so Node can be told to trust it, rather
+      # than switching TLS verification off wholesale.
+      - caddy-data:/data
+    depends_on:
+      - proxy
+
+volumes:
+  caddy-data:

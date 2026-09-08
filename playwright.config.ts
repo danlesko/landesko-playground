@@ -1,5 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 import { randomBytes } from "node:crypto";
+import { join } from "node:path";
 
 // Not 3000: `pnpm dev` usually owns that, and a suite that silently ran against
 // a dev server would prove nothing about the deployed app.
@@ -29,6 +30,37 @@ const baseURL = `http://localhost:${PORT}`;
 // unconditionally per-run.
 const AUTH_SECRET = process.env.AUTH_SECRET ?? randomBytes(32).toString("hex");
 process.env.AUTH_SECRET = AUTH_SECRET;
+
+// The /blog routes need a database, and `E2E_DATABASE=1` is the single switch that
+// says one is present. Four tests depend on it. `pnpm e2e:db:up` starts it and prints the line to run.
+//
+// One switch rather than making the caller export a connection string, because the
+// connection details are not free parameters: the host has to contain `-pooler` or
+// `@vercel/postgres` rejects it, and the TLS certificate is issued for a DIFFERENT
+// name that the driver derives. Those constraints belong next to the compose file
+// that satisfies them, not in whatever a caller happens to type. Same shape as
+// E2E_FIXTURES above it.
+//
+// Absent, those four skip with a reason and everything else runs exactly as before,
+// so the suite stays usable without Docker. The two error-boundary tests are the
+// mirror image: they skip when this IS set, because a working read leaves no
+// boundary to attribute, and CI gives them their own pass without a connection.
+const DATABASE = process.env.E2E_DATABASE === "1";
+const DATABASE_ENV: Record<string, string> = DATABASE
+  ? {
+      POSTGRES_URL:
+        "postgres://postgres:postgres@db-pooler.localtest.me:5432/main",
+      // Caddy's own root, extracted by e2e/db/up.sh. Pointing Node at it keeps TLS
+      // verification ON; the alternative, NODE_TLS_REJECT_UNAUTHORIZED=0, would
+      // disable it for every request the app makes, which is a lot of blast radius
+      // for one self-signed certificate.
+      // `__dirname`, not `import.meta.url`. Playwright transpiles this config to
+      // CommonJS, where `import.meta` is a SyntaxError that takes the whole run
+      // down before any test loads -- the same trap e2e/a11y.spec.ts documents for
+      // spec files, and it applies here too.
+      NODE_EXTRA_CA_CERTS: join(__dirname, "e2e/db/.caddy-root.crt"),
+    }
+  : {};
 
 export default defineConfig({
   testDir: "./e2e",
@@ -82,6 +114,7 @@ export default defineConfig({
       // because auth is broken rather than because the proxy predicate
       // works -- a green suite proving nothing. See e2e/smoke.spec.ts.
       AUTH_URL: baseURL,
+      ...DATABASE_ENV,
     },
   },
 });

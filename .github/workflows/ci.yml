@@ -112,11 +112,68 @@ jobs:
       - name: Build
         run: pnpm build
 
-      # No `env:` here on purpose. The placeholder AUTH_SECRET lives in
+      # `api.localtest.me` is a public DNS record pointing at 127.0.0.1, which is
+      # what makes the stack zero-config locally. Pinned here anyway so a lapse in
+      # somebody else's DNS cannot turn into a red pipeline, and so the run does not
+      # depend on network resolution it does not need.
+      #
+      # This name, not the one in POSTGRES_URL: `@neondatabase/serverless` rewrites a
+      # pooled host to `api.<domain>` before fetching. See e2e/db/compose.yaml.
+      - name: Point api.localtest.me at localhost
+        run: echo "127.0.0.1 api.localtest.me" | sudo tee -a /etc/hosts
+
+      # `docker compose`, not Actions `services:`, and NOT because services cannot
+      # express the topology -- an earlier version of this comment claimed that and it
+      # is false. Service containers in a job do share a network and can address each
+      # other by label.
+      #
+      # The reasons are parity and setup: this is the same file a contributor runs
+      # locally, so CI cannot drift from it, and the stack needs a mounted init script
+      # plus Caddy's root CA extracted afterwards. `services:` gives nowhere to put
+      # either.
+      - name: Start the e2e database
+        run: pnpm e2e:db:up
+
+      # No `env:` for auth here on purpose. The placeholder AUTH_SECRET lives in
       # playwright.config.ts so that a local run and a CI run exercise the same
       # auth path -- see the comment there.
+      #
+      # E2E_DATABASE=1 is what un-skips the /blog tests. Without it they skip with a
+      # reason, which is what a contributor without Docker gets.
       - name: End-to-end tests
         run: pnpm test:e2e
+        env:
+          E2E_DATABASE: "1"
+
+      # A SECOND pass, with the database deliberately not offered.
+      #
+      # Giving CI a database silently disabled the two error-boundary tests from
+      # #154, because they only run when a read FAILS -- with a working database
+      # there is no boundary to attribute, so they skip, and CI would have lost
+      # coverage it had yesterday. They are cheap and they are the only thing
+      # asserting that a failed read reaches blog/error.tsx rather than the root
+      # boundary, so they get their own run instead.
+      #
+      # Narrowed with --grep rather than running the whole suite twice: everything
+      # else is already covered by the pass above, and the point is these two.
+      - name: End-to-end tests without a database
+        run: pnpm test:e2e --grep "renders the blog boundary"
+        env:
+          # Explicitly empty rather than merely unset. Playwright forwards the
+          # ambient environment to the web server, so a caller with POSTGRES_URL
+          # exported would hand this pass a working database and turn its two tests
+          # into skips -- which is exactly the silent hole this pass exists to close.
+          POSTGRES_URL: ""
+
+      # Runs even on failure: when a /blog test fails, whether the database came up
+      # correctly is the first question, and the answer is only in these logs.
+      - name: Database logs
+        if: ${{ failure() }}
+        run: docker compose -f e2e/db/compose.yaml logs --no-color
+
+      - name: Stop the e2e database
+        if: ${{ always() }}
+        run: pnpm e2e:db:down
 
       - name: Upload Playwright report
         if: ${{ !cancelled() }}

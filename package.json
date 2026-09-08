@@ -11,6 +11,8 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
+    "e2e:db:up": "sh e2e/db/up.sh",
+    "e2e:db:down": "docker compose -f e2e/db/compose.yaml down -v",
     "pretty": "prettier --write .",
     "format:check": "prettier --check .",
     "prepare": "husky"

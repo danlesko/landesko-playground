@@ -72,3 +72,8 @@ next-env.d.ts
 # deliberate asymmetry with the line above: `.claude/settings.json` stays
 # trackable, so team-wide agent config can still be shared when there is some.
 /.claude/settings.local.json
+
+# Caddy's internal root CA, extracted by e2e/db/up.sh so NODE_EXTRA_CA_CERTS can
+# point at it. Regenerated per stack and per machine -- committing it would pin a
+# key nobody else's Caddy issued.
+/e2e/db/.caddy-root.crt
