@@ -2,6 +2,7 @@ import { defineConfig, devices } from "@playwright/test";
 import { randomBytes } from "node:crypto";
 import { join } from "node:path";
 import { E2E_DATABASE_URL } from "./e2e/fixtures";
+import { CREDENTIAL_ENV_VARS } from "./src/test/credentialEnvVars";
 
 // Not 3000: `pnpm dev` usually owns that, and a suite that silently ran against
 // a dev server would prove nothing about the deployed app.
@@ -97,6 +98,23 @@ export default defineConfig({
     // is cheap.
     reuseExistingServer: false,
     env: {
+      // Cleared FIRST, so everything meaningful below overrides a blank rather than an
+      // inherited value. Playwright merges `env` over the ambient environment instead of
+      // replacing it, and there is no way to unset a key -- empty string is the unset.
+      //
+      // Without this the web server inherits whatever the developer has exported, which
+      // is not a theoretical concern: `src/test/setup.ts` has cleared the same names for
+      // Vitest since it existed, and the one name this config DID handle, AUTH_SECRET,
+      // turned out to be handled wrongly (it read the ambient value). A run against real
+      // credentials can reach a real database or mint a production-valid session.
+      //
+      // This covers the SERVER-read names only, and the limit is worth stating because it
+      // is invisible: `NEXT_PUBLIC_*` values are inlined into the client bundle by
+      // `next build`, so by the time this environment exists they are already compiled in
+      // and blanking them here does nothing. Measured -- building with a reCAPTCHA site
+      // key exported puts it in a chunk and fails four tests no matter what this sets.
+      // `pnpm build:e2e` is what clears those, and it has to be the build that does it.
+      ...Object.fromEntries(CREDENTIAL_ENV_VARS.map((name) => [name, ""])),
       PORT: String(PORT),
       // Switches on src/app/e2e-fixture/**, which 404s without it. Production never sets
       // it. The fixture exists because the confirmation modal is otherwise unrenderable --
