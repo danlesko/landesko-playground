@@ -47,7 +47,12 @@ const ProcessingDrawing = () => {
   // ReactP5Wrapper responds by tearing the instance down and building it again,
   // which is what applies the change without a reload.
   return (
-    <div ref={wrapperRef}>
+    // `id` so a second sketch on this page cannot make a bare `canvas` selector ambiguous.
+    // It is a document anchor rather than a test hook -- but the tests do use it, because
+    // adding the Tetris board turned every unqualified `canvas` locator in the e2e suite
+    // into a strict-mode violation, and `document.querySelector("canvas")` inside a
+    // `page.evaluate` quietly measured whichever canvas p5 happened to build first.
+    <div id="fish-tank" ref={wrapperRef}>
       <ReactP5Wrapper
         // The ref OBJECT is passed, never its value. react-hooks 7, new in
         // eslint-config-next 16, cannot tell those apart at a call site and warns
