@@ -83,8 +83,13 @@ export const deleteAuthoringRow = async (title: string) => {
   //
   // A psql bound parameter was the first attempt and does not work -- `-v name=value` is
   // not interpolated into a `-c` string, so `:'title'` reaches the server literally and
-  // errors at the colon. Matching the exact generated shape is the alternative, and it is
-  // a stronger claim than escaping: nothing matching this can contain a quote at all.
+  // errors at the colon.
+  //
+  // What the pattern buys is narrower than "the exact generated shape", which an earlier
+  // comment claimed: it admits UUID-looking values this suite would never produce, such as
+  // all zeros. The property that matters is the one it does have -- nothing matching it can
+  // contain a quote, backslash, whitespace or any SQL metacharacter, so interpolating it is
+  // safe. `execFile` rules out the shell separately.
   if (!AUTHORING_TITLE.test(title)) {
     throw new Error(
       `refusing to delete ${JSON.stringify(title)}: not a title this suite generates (${E2E_TITLE_PREFIX}<uuid>)`,
@@ -114,5 +119,45 @@ export const deleteAuthoringRow = async (title: string) => {
     "ON_ERROR_STOP=1",
     "-c",
     `DELETE FROM blogs WHERE title = '${title}'`,
+  ]);
+};
+
+/**
+ * Deletes EVERY authoring row, and is safe only because of where it runs.
+ *
+ * `globalSetup` runs once in the runner before any worker starts, so there is no test
+ * whose row this can remove. The same statement in `afterEach` is the bug the per-title
+ * delete above replaced -- it fails 3 runs in 10 by deleting rows other tests are using.
+ * Same SQL, opposite correctness, which is why they are separate functions rather than
+ * one with a flag.
+ *
+ * It exists because per-title cleanup cannot cover a killed worker or an interrupted run:
+ * nothing gets the chance to delete anything. `e2e/db/up.sh` recreates the volume, so a
+ * fresh stack is always clean -- but `pnpm test:e2e` does not invoke it, so a developer
+ * rerunning against a still-running stack would otherwise accumulate rows until `/blog`
+ * paginated the seeded fixtures off page one.
+ */
+export const sweepAuthoringRows = async () => {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const { join } = await import("node:path");
+  await promisify(execFile)("docker", [
+    "compose",
+    "-f",
+    join(__dirname, "db/compose.yaml"),
+    "exec",
+    "-T",
+    "postgres",
+    "psql",
+    "--username",
+    "postgres",
+    "--dbname",
+    "main",
+    "--no-psqlrc",
+    "-v",
+    "ON_ERROR_STOP=1",
+    // The literal is this file's own constant; no caller-supplied text reaches it.
+    "-c",
+    `DELETE FROM blogs WHERE title LIKE '${E2E_TITLE_PREFIX}%'`,
   ]);
 };

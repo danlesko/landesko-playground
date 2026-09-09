@@ -67,8 +67,8 @@ import { signIn } from "./session";
  */
 
 // Unique per run, so a row leaked by a previous failure cannot be mistaken for this
-// run's, and two runs against the same stack cannot collide. The prefix is shared with
-// the cleanup, which finds rows by it.
+// run's, and two runs against the same stack cannot collide. The prefix is what the
+// suite-start sweep in e2e/global-setup.ts matches; per-test cleanup goes by exact title.
 const uniqueTitle = () => `${E2E_TITLE_PREFIX}${crypto.randomUUID()}`;
 
 // Runs whether the test passed or failed, which is the point: the in-test delete only

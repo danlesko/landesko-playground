@@ -11,10 +11,17 @@ import { encode } from "next-auth/jwt";
  * sign-in can complete.
  *
  * `playwright.config.ts` generates an `E2E_AUTH_SECRET` per run, hands it to the server
- * as its `AUTH_SECRET`, and shares it with this process. Under its own name
- * deliberately: reading an ambient `AUTH_SECRET` would let a developer with production
- * credentials exported mint a session that verifies against PRODUCTION, and Playwright
- * writes traces on failure. Nothing is committed and no fixed key exists.
+ * as its `AUTH_SECRET`, and shares it with this process. Under its own name deliberately,
+ * and generated in the runner rather than inherited: reading an ambient `AUTH_SECRET`
+ * would make a real signing key the key this suite signs with, and Playwright writes
+ * traces on failure. Nothing is committed and no fixed key exists.
+ *
+ * Worth being precise about the blast radius rather than alarming about it, because the
+ * obvious phrasing -- "it would mint a session valid in production" -- is wrong. The salt
+ * IS the cookie name (`@auth/core/jwt.js`, `salt = cookieName`) and it feeds HKDF as both
+ * key material and info string, while an HTTPS deployment uses the `__Secure-` prefixed
+ * name. A token salted with the plain name therefore does not decrypt there. The real
+ * exposure is the key itself being handed to a local server and written into traces.
  *
  * Extracted here because two specs need it: `auth-gate.spec.ts`, which checks the gate
  * from both sides, and `authoring-flow.spec.ts`, which drives create and delete.

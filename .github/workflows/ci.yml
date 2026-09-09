@@ -69,7 +69,8 @@ jobs:
   # the app still renders. Split, the PR shows which axis broke. They also run
   # concurrently, so the browser install does not extend the critical path.
   #
-  # The cost is an honest one: `pnpm build` runs in both jobs. Passing `.next`
+  # The cost is an honest one: both jobs build -- `pnpm build` in `verify` and
+  # `pnpm build:e2e` here, for the reason given at that step. Passing `.next`
   # between them as an artifact would remove that, at the price of making this
   # job wait for `verify` and fail whenever `verify` fails -- which is exactly
   # the independence the split is for. At this repo's size the second build is

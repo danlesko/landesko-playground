@@ -30,12 +30,25 @@ export const CONNECTION_ENV_VARS = [
 ] as const;
 
 /**
- * Secrets and third-party configuration. Separate from the connection list only because
- * `@vercel/postgres` falls back across several of the names above, so that group has to
- * be cleared as a set or the fallback finds one that survived.
+ * Secrets and third-party configuration, kept as a separate group from the connection
+ * strings purely for readability -- both are cleared together.
+ *
+ * An earlier version of this comment claimed `@vercel/postgres` falls back across the
+ * names above, which is not true of the installed 0.10.0: it reads `POSTGRES_URL` and
+ * `POSTGRES_URL_NON_POOLING` and nothing else. The remaining seven are defence in depth
+ * against a different client being introduced, not a fallback chain.
  */
 export const SECRET_ENV_VARS = [
   "AUTH_SECRET",
+  // The Auth.js fallbacks, which are easy to miss and were: next-auth reads
+  // `AUTH_SECRET ?? NEXTAUTH_SECRET` (next-auth/lib/env.js), and @auth/core additionally
+  // collects `AUTH_SECRET_1..3` for key rotation (@auth/core/lib/utils/env.js, a literal
+  // `for (const i of [1, 2, 3])`). Clearing AUTH_SECRET alone therefore does not stop a
+  // real key being used -- it UNCOVERS the next one down.
+  "NEXTAUTH_SECRET",
+  "AUTH_SECRET_1",
+  "AUTH_SECRET_2",
+  "AUTH_SECRET_3",
   "AUTH_GITHUB_ID",
   "AUTH_GITHUB_SECRET",
   "SITE_SECRET_RECAPTCHA",

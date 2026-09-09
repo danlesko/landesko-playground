@@ -32,8 +32,22 @@ const baseURL = `http://localhost:${PORT}`;
 // and Playwright retains traces on failure, so it could reach disk. Generating
 // unconditionally and handing the result to the server as `AUTH_SECRET` below keeps a
 // forged token useless anywhere but this run.
-const E2E_AUTH_SECRET =
-  process.env.E2E_AUTH_SECRET ?? randomBytes(32).toString("hex");
+// Generated fresh by the RUNNER, and only reused by worker processes.
+//
+// The two halves are both necessary and were not obviously so. Playwright re-imports this
+// config in every worker, so a plain `randomBytes()` gives each worker a different key
+// from the server's and every forged session is rejected -- which is why the value is
+// shared through the environment at all.
+//
+// But sharing it must not mean TRUSTING an inherited one. `?? randomBytes(...)` would let
+// an ambient `E2E_AUTH_SECRET` become the server's signing key, which is the same class of
+// defect as the ambient `AUTH_SECRET` this file used to read. Workers are distinguishable:
+// Playwright sets `TEST_WORKER_INDEX` in `workerProcessEntry.js` and nothing sets it in the
+// runner, so the runner always generates and only workers inherit.
+const IS_WORKER = process.env.TEST_WORKER_INDEX !== undefined;
+const E2E_AUTH_SECRET = IS_WORKER
+  ? process.env.E2E_AUTH_SECRET!
+  : randomBytes(32).toString("hex");
 process.env.E2E_AUTH_SECRET = E2E_AUTH_SECRET;
 
 // The /blog routes need a database, and `E2E_DATABASE=1` is the single switch that
@@ -67,6 +81,9 @@ const DATABASE_ENV: Record<string, string> = DATABASE
   : {};
 
 export default defineConfig({
+  // Sweeps rows an interrupted previous run left behind. Once, in the runner, before any
+  // worker -- see e2e/global-setup.ts for why that placement is the whole point.
+  globalSetup: "./e2e/global-setup.ts",
   testDir: "./e2e",
   fullyParallel: true,
   // A smoke suite that needs a retry to go green is reporting something real.
@@ -105,8 +122,9 @@ export default defineConfig({
       // Without this the web server inherits whatever the developer has exported, which
       // is not a theoretical concern: `src/test/setup.ts` has cleared the same names for
       // Vitest since it existed, and the one name this config DID handle, AUTH_SECRET,
-      // turned out to be handled wrongly (it read the ambient value). A run against real
-      // credentials can reach a real database or mint a production-valid session.
+      // turned out to be handled wrongly (it read the ambient value). A run with real
+      // credentials exported reaches a real database, and makes a real signing key the one
+      // this suite signs with -- which Playwright then writes into traces on failure.
       //
       // This covers the SERVER-read names only, and the limit is worth stating because it
       // is invisible: `NEXT_PUBLIC_*` values are inlined into the client bundle by
