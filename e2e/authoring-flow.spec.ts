@@ -66,9 +66,14 @@ import { signIn } from "./session";
  * removing the delete DO fail it, which is what the messages now say.
  */
 
-// Unique per run, so a row leaked by a previous failure cannot be mistaken for this
-// run's, and two runs against the same stack cannot collide. The prefix is what the
-// suite-start sweep in e2e/global-setup.ts matches; per-test cleanup goes by exact title.
+// Unique per test, so a row leaked by a previous failure cannot be mistaken for this run's.
+// The prefix is what the suite-start sweep in e2e/global-setup.ts matches; per-test cleanup
+// goes by exact title.
+//
+// Uniqueness does NOT make two SIMULTANEOUS runs safe, and an earlier comment claimed it
+// did: the sweep deletes by prefix, so a second run starting mid-flight would delete this
+// run's rows. Concurrent runs are already unsupported -- both would want the same fixed
+// port -- so this is a limit worth naming rather than engineering around.
 const uniqueTitle = () => `${E2E_TITLE_PREFIX}${crypto.randomUUID()}`;
 
 // Runs whether the test passed or failed, which is the point: the in-test delete only

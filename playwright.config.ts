@@ -19,34 +19,43 @@ const baseURL = `http://localhost:${PORT}`;
 // path, since the GitHub OAuth app has a single callback URL registered against
 // production and no local sign-in can complete.
 //
-// Read-then-generate, and the order is the whole trick. Playwright re-imports this
-// config in every WORKER process, so a plain `randomBytes()` runs again there and
-// each worker signs with a different key than the server was given -- which looks
-// exactly like a rejected session, and cost a debugging round to find. The runner
-// generates it and puts it in its own environment; workers are spawned after that
-// and inherit it, so `??` finds it already set and reuses it.
+// Generated fresh by the RUNNER, and reused only by worker processes. Both halves are
+// necessary, and neither is obvious.
 //
-// Under its OWN name, and never `AUTH_SECRET`. An earlier version read ambient
-// `AUTH_SECRET` when one was set, which meant a developer with production credentials
-// exported would have the suite mint a session that VERIFIES AGAINST PRODUCTION --
-// and Playwright retains traces on failure, so it could reach disk. Generating
-// unconditionally and handing the result to the server as `AUTH_SECRET` below keeps a
-// forged token useless anywhere but this run.
-// Generated fresh by the RUNNER, and only reused by worker processes.
+// This config's module body really does run in every worker, which is why the value has to
+// be shared at all: a plain `randomBytes()` would give each worker a different key from the
+// one the server was handed, every forged session would be rejected, and that is
+// indistinguishable from the auth gate working. Measured rather than assumed, because a
+// review disputed it -- logging each module load shows 8 evaluations for a 7-worker run,
+// one per `workerProcessEntry.js` plus one in `cli.js`.
 //
-// The two halves are both necessary and were not obviously so. Playwright re-imports this
-// config in every worker, so a plain `randomBytes()` gives each worker a different key
-// from the server's and every forged session is rejected -- which is why the value is
-// shared through the environment at all.
+// But sharing must not mean TRUSTING what was inherited. A bare
+// `process.env.E2E_AUTH_SECRET ?? randomBytes(...)` lets an ambient value become the
+// server's signing key -- the same defect as the ambient `AUTH_SECRET` this file used to
+// read. So the runner always generates, and only a process that is genuinely a worker
+// reuses. TWO signals identify one, because `TEST_WORKER_INDEX` alone is just an
+// environment variable a shell could carry: Playwright sets it in `workerProcessEntry.js`,
+// which is also the entry point such a process is running.
 //
-// But sharing it must not mean TRUSTING an inherited one. `?? randomBytes(...)` would let
-// an ambient `E2E_AUTH_SECRET` become the server's signing key, which is the same class of
-// defect as the ambient `AUTH_SECRET` this file used to read. Workers are distinguishable:
-// Playwright sets `TEST_WORKER_INDEX` in `workerProcessEntry.js` and nothing sets it in the
-// runner, so the runner always generates and only workers inherit.
-const IS_WORKER = process.env.TEST_WORKER_INDEX !== undefined;
+// Worth stating what the exposure actually was, since the obvious phrasing overstates it.
+// A forged token would NOT verify against production over HTTPS: the salt is the cookie
+// name and feeds HKDF, and production uses the `__Secure-` prefixed name, so the derived
+// key differs. What matters is that a real key would be handed to a local server and land
+// in the traces Playwright writes on failure.
+const IS_WORKER =
+  process.env.TEST_WORKER_INDEX !== undefined &&
+  process.argv[1]?.endsWith("workerProcessEntry.js") === true;
+const INHERITED = process.env.E2E_AUTH_SECRET;
+// A worker with no inherited secret cannot sign anything the server will accept, and the
+// failure that produces is a rejected session -- indistinguishable from the gate working.
+// Better to say so than to hand `undefined` to `encode`.
+if (IS_WORKER && !INHERITED) {
+  throw new Error(
+    "TEST_WORKER_INDEX is set but E2E_AUTH_SECRET is not; the runner should have generated and exported it.",
+  );
+}
 const E2E_AUTH_SECRET = IS_WORKER
-  ? process.env.E2E_AUTH_SECRET!
+  ? INHERITED!
   : randomBytes(32).toString("hex");
 process.env.E2E_AUTH_SECRET = E2E_AUTH_SECRET;
 

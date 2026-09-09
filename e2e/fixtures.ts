@@ -59,8 +59,11 @@ export const E2E_TITLE_PREFIX = "E2E Authoring ";
  * Per-title is 0 in 18. Worth knowing that the first attempt to reproduce it was INERT --
  * it changed the SQL but left the call site guarded by an empty array, so nothing ran.
  *
- * Nothing sweeps stale rows from an earlier crashed run, and nothing needs to:
- * `e2e/db/up.sh` recreates the volume, so a row cannot outlive the stack that held it.
+ * Rows from a run that was KILLED are not this function's problem and were briefly
+ * nobody's: per-title cleanup cannot run if the process does not survive to run it. The
+ * suite-start sweep below (`sweepAuthoringRows`, called from globalSetup) is what covers
+ * that. `e2e/db/up.sh` also recreates the volume, but `pnpm test:e2e` does not invoke it,
+ * so a fresh stack is not something a rerun can rely on.
  *
  * Goes through `docker compose exec postgres psql` rather than through
  * `@vercel/postgres`, and that is the interesting part. The app's driver reaches the
@@ -87,12 +90,13 @@ export const deleteAuthoringRow = async (title: string) => {
   //
   // What the pattern buys is narrower than "the exact generated shape", which an earlier
   // comment claimed: it admits UUID-looking values this suite would never produce, such as
-  // all zeros. The property that matters is the one it does have -- nothing matching it can
-  // contain a quote, backslash, whitespace or any SQL metacharacter, so interpolating it is
-  // safe. `execFile` rules out the shell separately.
+  // all zeros. The property that matters is the one it does have -- the VARIABLE part is
+  // hex and hyphens only, so no quote, backslash, whitespace or SQL metacharacter can reach
+  // the statement. (The fixed prefix does contain spaces, which is why the claim has to be
+  // about the suffix.) `execFile` rules out the shell separately.
   if (!AUTHORING_TITLE.test(title)) {
     throw new Error(
-      `refusing to delete ${JSON.stringify(title)}: not a title this suite generates (${E2E_TITLE_PREFIX}<uuid>)`,
+      `refusing to delete ${JSON.stringify(title)}: not the ${E2E_TITLE_PREFIX}<uuid> shape this function accepts`,
     );
   }
   const { execFile } = await import("node:child_process");

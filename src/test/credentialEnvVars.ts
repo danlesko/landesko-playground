@@ -8,9 +8,13 @@
  *
  * It lived only in setup.ts until the e2e suite grew a database and a forged session.
  * That combination is what made the omission matter: the config was reading an ambient
- * `AUTH_SECRET`, so a developer with production credentials exported had the suite mint
- * a session that verified against production. One name being handled and eighteen not
- * was the actual bug, so the list moved here rather than being copied.
+ * `AUTH_SECRET`, so a real signing key became the key the suite signed with, and Playwright
+ * writes traces on failure. One name handled and the rest not was the actual bug, so the
+ * list moved here rather than being copied.
+ *
+ * Not "verified against production", which an earlier version of this claimed: the salt is
+ * the cookie name and feeds HKDF, so an HTTPS deployment's `__Secure-` prefixed name
+ * derives a different key. The exposure is the key reaching a local server and the traces.
  *
  * `NEXT_PUBLIC_` names belong here too even though they are public by design. A real
  * reCAPTCHA site key changes what the contact page DOES -- the widget is constructed and
