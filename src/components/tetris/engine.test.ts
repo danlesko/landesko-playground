@@ -79,11 +79,48 @@ describe("the board", () => {
     ).toBe(true);
   });
 
-  it("treats cells above the board as free rather than as collisions", () => {
-    // The mistake this guards: bounds-checking `y < 0` as out of play. Every spawn sits
-    // there, so a piece could never enter.
-    const piece: Piece = { kind: "T", rotation: 0, x: 3, y: -1 };
-    expect(fits(emptyBoard(), piece)).toBe(true);
+  it("treats a row above the board as a collision", () => {
+    // This test used to assert the OPPOSITE, on the reasoning that pieces spawn above the
+    // playfield and so must be allowed there. They do not: every spawn puts its cells in
+    // rows 0 and 1, inside the hidden buffer.
+    //
+    // The old permission was a data-loss bug. An SRS kick can lift a piece two rows, so
+    // near the ceiling a rotation could reach y = -2, and `lockPiece` writes only the cells
+    // at y >= 0 -- the rest were silently dropped, and since the remainder reached the
+    // visible field it did not register as a lock-out either.
+    expect(fits(emptyBoard(), { kind: "T", rotation: 0, x: 3, y: -1 })).toBe(
+      false,
+    );
+  });
+
+  it("writes all four cells of every piece it locks", () => {
+    // The consequence of the rule above, asserted where it can be seen rather than only at
+    // the predicate. Sweeps every kind, rotation and column at the ceiling -- which is
+    // where upward kicks are available -- and rotates before dropping so the kick paths are
+    // exercised too. One piece cannot complete a row on an empty board, so the count after
+    // locking is exactly four or the piece lost cells.
+    const kinds: PieceKind[] = ["I", "J", "L", "O", "S", "T", "Z"];
+    let checked = 0;
+    for (const kind of kinds) {
+      for (const rotation of [0, 1, 2, 3]) {
+        for (let x = -2; x <= COLS; x += 1) {
+          const piece: Piece = { kind, rotation, x, y: 0 };
+          if (!fits(emptyBoard(), piece)) continue;
+          for (const spin of [(s: GameState) => s, rotateCW, rotateCCW]) {
+            const after = hardDrop(
+              spin(playing({ board: emptyBoard(), piece })),
+            );
+            const filled = after.board
+              .flat()
+              .filter((cell) => cell !== null).length;
+            expect(filled, `${kind} r${rotation} x${x} lost cells`).toBe(4);
+            checked += 1;
+          }
+        }
+      }
+    }
+    // Guards the sweep itself: a `fits` that rejected everything would make this vacuous.
+    expect(checked).toBeGreaterThan(100);
   });
 
   it("does not let a piece leave the sides or the floor", () => {
@@ -349,16 +386,32 @@ describe("gravity and lock delay", () => {
     expect(occupiedRows(state), "moving did not postpone the lock").toBe(0);
   });
 
-  it("stops giving it back after a bounded number of nudges", () => {
-    // Otherwise a player who keeps tapping never locks a piece, and the game stops
-    // being a game.
+  it("grants exactly fifteen postponements and no sixteenth", () => {
+    // Counted rather than bounded. The first version of this test looped up to forty times
+    // and asserted the piece eventually locked, which a cap of 1, 16 or 38 all satisfy --
+    // and so does turning `<` into `<=`. It proved only that the cap was finite.
+    //
+    // Alternating left and right so the piece stays put: walking one way would hit the wall,
+    // `fits` would reject the move, and the refused moves would spend no resets.
     let state = grounded();
-    for (let i = 0; i < 40; i += 1) {
+    for (let i = 0; i < 15; i += 1) {
       state = tick(state, 400);
       state = i % 2 === 0 ? moveLeft(state) : moveRight(state);
-      if (occupiedRows(state) > 0) break;
+      expect(
+        occupiedRows(state),
+        `locked early, at postponement ${i + 1}`,
+      ).toBe(0);
     }
-    expect(occupiedRows(state)).toBeGreaterThan(0);
+
+    // The sixteenth buys nothing, so the 400ms already served plus 400 more crosses the
+    // 500ms delay and the piece locks.
+    state = tick(state, 400);
+    state = moveLeft(state);
+    state = tick(state, 400);
+    expect(
+      occupiedRows(state),
+      "a sixteenth postponement was granted",
+    ).toBeGreaterThan(0);
   });
 
   it("cannot use soft drop to keep a grounded piece alive", () => {
@@ -397,17 +450,29 @@ describe("gravity and lock delay", () => {
 });
 
 describe("tick is frame-rate independent", () => {
-  it("reaches the same board from 60fps and 30fps", () => {
-    // The property that matters: difficulty must not depend on the monitor. Advancing by
-    // at most one row per call -- the obvious implementation -- fails this.
+  it("reaches the same board from 60fps, 30fps and one single call", () => {
+    // Difficulty must not depend on the monitor. Two things are needed to show that, and
+    // the first version had only one: equality between the two partitioned runs. Discarding
+    // every cross-call remainder also satisfies that -- both simply stay at y=0 -- so the
+    // comparison has to be against a single tick of the same total, and the total has to be
+    // one that visibly progresses.
+    const base = () =>
+      playing({ piece: { kind: "O", rotation: 0, x: 4, y: 0 } });
     const run = (step: number, calls: number): GameState => {
-      let state = playing({ piece: { kind: "O", rotation: 0, x: 4, y: 0 } });
+      let state = base();
       for (let i = 0; i < calls; i += 1) state = tick(state, step);
       return state;
     };
+
     const fast = run(1000 / 60, 60);
     const slow = run(1000 / 30, 30);
-    expect(slow.piece!.y).toBe(fast.piece!.y);
+    const whole = tick(base(), 1000);
+
+    // Level 1 falls a row per 1000ms, so one second is exactly one row. Asserting the value
+    // rather than only the agreement is what rules out "nothing moved anywhere".
+    expect(whole.piece!.y, "a full second did not drop the piece").toBe(1);
+    expect(fast.piece!.y, "60fps disagreed with one whole tick").toBe(1);
+    expect(slow.piece!.y, "30fps disagreed with one whole tick").toBe(1);
     expect(slow.board).toEqual(fast.board);
   });
 

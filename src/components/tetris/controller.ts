@@ -120,6 +120,7 @@ export type Controller = ReturnType<typeof createController>;
 export const createController = (seed: number, newSeed: () => number) => {
   let state = createGame(seed);
   let revision = 0;
+  let lastAnnouncement: string | null = null;
   let summary = summarise(state, null, revision);
   const listeners = new Set<() => void>();
 
@@ -128,10 +129,30 @@ export const createController = (seed: number, newSeed: () => number) => {
     state = next;
     // `lastEvent` is only meaningful for the call that set it. Carrying it forward would
     // repeat an announcement on the next frame.
+    //
+    // Identity comparison works because the engine allocates a new event object for every
+    // real transition and an ordinary spread preserves the old reference. Known limit: a
+    // single `tick` that locks TWO pieces keeps only the second one's event, so a line clear
+    // in the first could go unannounced. Reaching it needs two locks inside one call, and
+    // since a call is capped at 1000ms and the lock delay alone is 500ms, that takes a
+    // high level plus a stalled frame. Left as it is rather than accumulated -- the cost is
+    // one missed sentence in a sub-second window, and the alternative adds state to the
+    // hottest path in the engine.
     const event = next.lastEvent === previous.lastEvent ? null : next.lastEvent;
     const announcement = announce(event, next);
-    if (announcement !== null) revision += 1;
-    const candidate = summarise(next, announcement, revision);
+
+    // A new announcement REPLACES the old one; no announcement leaves it standing.
+    //
+    // Clearing it was the first behaviour and made the whole live region useless: `advance`
+    // runs every animation frame, and a frame with nothing to say produced a summary whose
+    // announcement was null, so "Paused." existed for about 16 milliseconds. React can
+    // coalesce a set and a clear that close together into one commit, in which case
+    // assistive technology never observes the text at all.
+    if (announcement !== null) {
+      revision += 1;
+      lastAnnouncement = announcement;
+    }
+    const candidate = summarise(next, lastAnnouncement, revision);
     if (sameSummary(candidate, summary)) return;
     summary = candidate;
     listeners.forEach((listener) => listener());

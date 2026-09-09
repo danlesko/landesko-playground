@@ -64,7 +64,9 @@ export function createTetrisSketch(
       // itself and settled at the 8px floor -- an 82x162 board on a 1280x900 viewport. Same
       // circularity as sizing an image from a box the image is sizing.
       const available = wrapperRef.current?.clientWidth ?? 0;
-      const fromWidth = available > 0 ? available / COLS : Infinity;
+      // Less the two pixels of border the canvas adds below, or a 280px box produces a
+      // 282px canvas and the board overhangs its container by exactly the frame.
+      const fromWidth = available > 0 ? (available - 2) / COLS : Infinity;
       const fromHeight =
         p5.windowHeight / (VISIBLE_ROWS + VERTICAL_GUTTER_CELLS);
       // Floored so cell boundaries land on whole pixels and the grid does not shimmer. The

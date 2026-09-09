@@ -305,11 +305,12 @@ const MAX_TICK_MS = 1000;
  * floating point cannot represent 1/60 of a second. Measured: y=0 against y=1 after the
  * same elapsed second.
  *
- * A nanosecond is far below anything the game can express and thousands of times larger
- * than the representation error, so it removes that class of "one frame late" without
- * changing any behaviour a player could observe. Exact float equality across different
- * step sizes is not achievable -- addition is not associative -- so the alternative is not
- * a stricter engine but a weaker test.
+ * A PICOSECOND -- 1e-9 of a millisecond, which an earlier version of this comment called a
+ * nanosecond and was wrong by three orders of magnitude. It is far below anything the game
+ * can express and still a thousand times larger than the representation error, so it removes
+ * that class of "one frame late" without changing any behaviour a player could observe.
+ * Exact float equality across different step sizes is not achievable -- addition is not
+ * associative -- so the alternative is not a stricter engine but a weaker test.
  */
 const DUE_EPSILON_MS = 1e-9;
 
@@ -346,14 +347,23 @@ export const cellsOf = (piece: Piece): Array<[number, number]> => {
 /**
  * Whether a piece may occupy its current position.
  *
- * Note what is NOT a collision: a negative row. Cells above the board are legal, because
- * that is where pieces spawn and where a kicked piece can briefly sit. Treating them as
- * blocked is the bug the hidden rows exist to avoid.
+ * A row above the board counts as a COLLISION, and the first version had this the other way
+ * round -- it let cells sit at negative rows on the reasoning that pieces spawn up there.
+ * They do not: every spawn puts its cells in rows 0 and 1, inside the hidden buffer, which
+ * is measurable rather than arguable. Nothing legal is ever above row 0.
+ *
+ * Allowing it was a quiet data-loss bug rather than a harmless permission. An SRS kick can
+ * lift a piece two rows (`[0, 2]` in a y-up table), so near the ceiling a rotation could
+ * place cells at y = -2; `lockPiece` then writes only the cells with `y >= 0` and DISCARDS
+ * the rest, and because the remaining cells reached the visible field it was not a lock-out
+ * either -- so play continued with part of a tetromino simply gone.
+ *
+ * Refusing the position instead means such a rotation fails that kick candidate and tries
+ * the next, which is the correct behaviour anyway: you cannot rotate into the ceiling.
  */
 export const fits = (board: Cell[][], piece: Piece): boolean =>
   cellsOf(piece).every(([x, y]) => {
-    if (x < 0 || x >= COLS || y >= ROWS) return false;
-    if (y < 0) return true;
+    if (x < 0 || x >= COLS || y < 0 || y >= ROWS) return false;
     return must(board[y], `row ${y}`)[x] === null;
   });
 
@@ -499,12 +509,23 @@ export const togglePlay = (state: GameState): GameState => {
  */
 const tryReplace = (state: GameState, next: Piece): GameState => {
   if (!fits(state.board, next)) return state;
-  const wasResting = state.lockElapsedMs !== null;
-  const canReset = wasResting && state.lockResets < MAX_LOCK_RESETS;
+
+  // Grounded is decided GEOMETRICALLY, from where the piece now is, rather than from
+  // whether a tick has already noticed it landed. The difference is small but real: keyed
+  // off the timer, inputs made between landing and the next frame reset nothing and were
+  // free, while inputs made just after sliding off a ledge still spent a reset.
+  const grounded = !fits(state.board, { ...next, y: next.y + 1 });
+  if (!grounded) return { ...state, piece: next, lockElapsedMs: null };
+
+  const resting = state.lockElapsedMs;
+  // Landing for the first time starts the clock and costs nothing. Only a move made while
+  // ALREADY resting spends one of the postponements.
+  if (resting === null) return { ...state, piece: next, lockElapsedMs: 0 };
+  const canReset = state.lockResets < MAX_LOCK_RESETS;
   return {
     ...state,
     piece: next,
-    lockElapsedMs: canReset ? 0 : state.lockElapsedMs,
+    lockElapsedMs: canReset ? 0 : resting,
     lockResets: canReset ? state.lockResets + 1 : state.lockResets,
   };
 };
@@ -688,8 +709,9 @@ export const hardDrop = (state: GameState): GameState => {
 /**
  * Advances the game by `elapsedMs`.
  *
- * Consumes the whole interval rather than at most one step, so a slow frame drops a piece
- * as far as it should have fallen instead of silently making the game easier. The
+ * Consumes the whole interval -- up to `MAX_TICK_MS`, which is the one exception -- rather
+ * than at most one step, so a slow frame drops a piece as far as it should have fallen
+ * instead of silently making the game easier. The
  * remainder is carried in `gravityElapsedMs`, which is what keeps behaviour independent of
  * frame rate: 60 calls of 16ms and 30 calls of 33ms produce the same board.
  *

@@ -50,6 +50,21 @@ const KEYS: Record<string, Action> = {
   P: "toggle",
 };
 
+/**
+ * The actions the operating system's key repeat may fire.
+ *
+ * Movement and soft drop want it -- holding Left is how you cross the board. Nothing else
+ * does, and letting it through was a real defect rather than a rough edge: holding Enter
+ * oscillated between paused and playing many times a second, flooding the live region, and
+ * holding Space hard-dropped piece after piece at the repeat rate. Rotation is excluded for
+ * the same reason it is in every other implementation -- a held key would spin the piece.
+ */
+const REPEATABLE: ReadonlySet<Action> = new Set<Action>([
+  "left",
+  "right",
+  "softDrop",
+]);
+
 const CONTROLS: Array<{ label: string; action: Action; hint: string }> = [
   { label: "←", action: "left", hint: "Move left" },
   { label: "→", action: "right", hint: "Move right" },
@@ -148,6 +163,9 @@ const TetrisGame = () => {
     // Only after deciding the key IS handled, so Tab, F5 and the browser's own shortcuts
     // keep working.
     event.preventDefault();
+    // Held keys still have to be swallowed -- the default action is what scrolls -- so this
+    // comes after `preventDefault` rather than instead of it.
+    if (event.repeat && !REPEATABLE.has(action)) return;
     controller.send(action);
   };
 
@@ -185,6 +203,13 @@ const TetrisGame = () => {
       <div ref={wrapperRef} className="min-w-0 sm:flex-1">
         <div
           tabIndex={0}
+          // `application` so arrow keys reach the game instead of being taken by a screen
+          // reader's own browse-mode navigation, which is the documented pattern for a
+          // keyboard-driven widget. The cost is real and worth naming: it changes how a
+          // screen reader treats this subtree, and a canvas board is not something it can
+          // convey anyway. What makes it acceptable is that nothing DEPENDS on the mode --
+          // every move also exists as a named button below, which works in browse mode.
+          // Not verified against real assistive technology, which is the honest caveat.
           role="application"
           aria-labelledby="tetris-heading"
           aria-describedby="tetris-instructions tetris-status"

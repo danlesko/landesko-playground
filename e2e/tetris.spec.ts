@@ -56,6 +56,47 @@ test("plays from the keyboard once the board is focused", async ({ page }) => {
     .toBeGreaterThan(0);
 });
 
+test("ignores the operating system's key repeat for pause and hard drop", async ({
+  page,
+}) => {
+  // Only reachable in a browser: `keyboard.press` never sets `repeat`, so this dispatches
+  // the event the way a held key would arrive. Without the filter, holding Enter oscillated
+  // between paused and playing many times a second and flooded the live region.
+  await board(page).click();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#tetris-status")).toHaveText("Playing");
+
+  // SEVEN, an odd number, and that is the whole test. With eight the mutation check
+  // exposed this as vacuous: each unfiltered repeat toggles, so an even count lands back on
+  // "Playing" and the assertion passed with the filter deleted.
+  const repeated = (key: string) =>
+    page.evaluate((k) => {
+      const target = document.querySelector('[role="application"]')!;
+      for (let i = 0; i < 7; i += 1) {
+        target.dispatchEvent(
+          new KeyboardEvent("keydown", { key: k, repeat: true, bubbles: true }),
+        );
+      }
+    }, key);
+
+  await repeated("Enter");
+  await expect(
+    page.locator("#tetris-status"),
+    "a held Enter toggled the game",
+  ).toHaveText("Playing");
+
+  // Movement is the opposite case and must still repeat, or holding Left could not cross
+  // the board. A held soft drop has to keep paying its one point a row.
+  const before = await scoreValue(page);
+  await repeated("ArrowDown");
+  await expect
+    .poll(() => scoreValue(page), {
+      message:
+        "a held ArrowDown was ignored, so repeat is filtered too broadly",
+    })
+    .toBeGreaterThan(before);
+});
+
 test("keeps arrow keys away from the page scroll while the board has focus", async ({
   page,
 }) => {
