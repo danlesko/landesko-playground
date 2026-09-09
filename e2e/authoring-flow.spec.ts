@@ -5,7 +5,7 @@ import {
   databaseConfigured,
   NO_DATABASE_REASON,
   E2E_TITLE_PREFIX,
-  cleanupAuthoringRows,
+  deleteAuthoringRow,
 } from "./fixtures";
 import { signIn } from "./session";
 
@@ -32,9 +32,13 @@ import { signIn } from "./session";
  *
  * The pairing is success-path cleanup and nothing more, which is why it is not the only
  * cleanup here. Any failure after the insert -- a locator that times out, a crashed
- * worker, an interrupted run -- leaves a committed row, so `afterEach` deletes rows by
- * title prefix through a connection pinned to the local stack. That is what makes the
- * suite safe to fail, rather than only safe to pass.
+ * worker, an interrupted run -- leaves a committed row, so `afterEach` deletes the
+ * titles the test recorded, through a connection pinned to the local stack. That is what
+ * makes the suite safe to fail, rather than only safe to pass.
+ *
+ * By recorded title and not by prefix, which was a real bug rather than a refinement: a
+ * prefix delete in `afterEach` removes rows OTHER tests are still using, and with
+ * `fullyParallel` that fails 3 runs in 10. See the note on `deleteAuthoringRow`.
  *
  * A create failure and a delete failure still look similar in the run output; the
  * assertion messages are what distinguish them. Truncate-and-reseed per test would
@@ -62,16 +66,28 @@ import { signIn } from "./session";
  * removing the delete DO fail it, which is what the messages now say.
  */
 
-// Unique per run, so a row leaked by a previous failure cannot be mistaken for this
-// run's, and two runs against the same stack cannot collide. The prefix is shared with
-// the cleanup, which finds rows by it.
+// Unique per test, so a row leaked by a previous failure cannot be mistaken for this run's.
+// The prefix is what the suite-start sweep in e2e/global-setup.ts matches; per-test cleanup
+// goes by exact title.
+//
+// Uniqueness does NOT make two SIMULTANEOUS runs safe, and an earlier comment claimed it
+// did: the sweep deletes by prefix, so a second run starting mid-flight would delete this
+// run's rows. Concurrent runs are already unsupported -- both would want the same fixed
+// port -- so this is a limit worth naming rather than engineering around.
 const uniqueTitle = () => `${E2E_TITLE_PREFIX}${crypto.randomUUID()}`;
 
 // Runs whether the test passed or failed, which is the point: the in-test delete only
 // covers the success path.
+//
+// Scoped to the titles THIS test created, tracked as it goes. An earlier version deleted
+// every authoring row by prefix, which under `fullyParallel` meant a finished test deleted
+// a running one's post -- reproduced at 3 failures in 10 runs.
+const createdTitles: string[] = [];
+
 test.afterEach(async () => {
+  const titles = createdTitles.splice(0);
   if (!databaseConfigured) return;
-  await cleanupAuthoringRows();
+  for (const title of titles) await deleteAuthoringRow(title);
 });
 
 test("creates a post, shows it in the list, then deletes it", async ({
@@ -82,6 +98,7 @@ test("creates a post, shows it in the list, then deletes it", async ({
   await signIn(context);
 
   const title = uniqueTitle();
+  createdTitles.push(title);
   const body = `Body for ${title}`;
 
   await page.goto("/blog/create");

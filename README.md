@@ -110,9 +110,17 @@ one. `e2e/db/` now supplies it:
 
 ```bash
 pnpm e2e:db:up                 # postgres + a Neon HTTP proxy + TLS, via docker compose
+pnpm build:e2e                 # not `pnpm build` -- see below
 E2E_DATABASE=1 pnpm test:e2e
 pnpm e2e:db:down
 ```
+
+`build:e2e` blanks the `NEXT_PUBLIC_*` keys, and the distinction matters if you have real
+ones in your environment. Those values are **inlined into the client bundle at build
+time**, so `playwright.config.ts` cannot clear them the way it clears the server-side
+credentials — by the time it runs they are already compiled in. Measured: building with a
+real reCAPTCHA site key present fails four tests, because `/contact` then constructs the
+widget and the tests describe the page without it.
 
 Three services rather than one, because `@vercel/postgres` is an HTTP client — it
 POSTs SQL to `https://<host>/sql` and cannot speak the Postgres wire protocol at all.

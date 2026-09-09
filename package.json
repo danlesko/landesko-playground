@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:e2e": "NEXT_PUBLIC_REACT_APP_SITE_KEY_RECAPTCHA= NEXT_PUBLIC_EMAILJS_PUBLIC_KEY= NEXT_PUBLIC_EMAILJS_SERVICE_ID= NEXT_PUBLIC_EMAILJS_TEMPLATE_ID= next build",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",

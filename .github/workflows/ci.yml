@@ -69,7 +69,8 @@ jobs:
   # the app still renders. Split, the PR shows which axis broke. They also run
   # concurrently, so the browser install does not extend the critical path.
   #
-  # The cost is an honest one: `pnpm build` runs in both jobs. Passing `.next`
+  # The cost is an honest one: both jobs build -- `pnpm build` in `verify` and
+  # `pnpm build:e2e` here, for the reason given at that step. Passing `.next`
   # between them as an artifact would remove that, at the price of making this
   # job wait for `verify` and fail whenever `verify` fails -- which is exactly
   # the independence the split is for. At this repo's size the second build is
@@ -109,8 +110,13 @@ jobs:
       - name: Install Playwright browser
         run: pnpm exec playwright install --with-deps chromium
 
+      # `build:e2e`, not `build`. `NEXT_PUBLIC_*` values are inlined into the client
+      # bundle at build time, so a runner that had a real reCAPTCHA site key would compile
+      # it in and the /contact tests would exercise a different page from the one they
+      # describe -- four of them fail, measured. Nothing sets those here today; this is
+      # what keeps that true if someone adds them.
       - name: Build
-        run: pnpm build
+        run: pnpm build:e2e
 
       # `api.localtest.me` is a public DNS record pointing at 127.0.0.1, which is
       # what makes the stack zero-config locally. Pinned here anyway so a lapse in
