@@ -96,6 +96,10 @@ const NextPreview = ({ kind }: { kind: PieceKind }) => (
 
 const TetrisGame = () => {
   const wrapperRef = React.useRef<HTMLDivElement>(null);
+  // Everything below the board. Its height is what the board's height budget is measured
+  // against, and it is safe to measure because it does not depend on the canvas: the score,
+  // the buttons and the instructions are the same size whatever the board does.
+  const furnitureRef = React.useRef<HTMLDivElement>(null);
 
   // One controller for the life of the component. A new one per render would restart the
   // game on every keystroke.
@@ -130,7 +134,7 @@ const TetrisGame = () => {
    */
   const sketch = React.useMemo(
     // eslint-disable-next-line react-hooks/refs
-    () => createTetrisSketch(wrapperRef, controller),
+    () => createTetrisSketch(wrapperRef, furnitureRef, controller),
     [controller],
   );
 
@@ -181,9 +185,13 @@ const TetrisGame = () => {
     controller.send("pause");
   };
 
+  // Deliberately short, and deliberately not naming a key: this used to read "Press Enter to
+  // play", which is wrong on a phone and was also the longest string in the row that now has
+  // to fit on one line. The keyboard hints live in the instructions paragraph, which is only
+  // shown where a keyboard is likely.
   const statusLabel =
     summary.status === "idle"
-      ? "Press Enter to play"
+      ? "Ready"
       : summary.status === "paused"
         ? "Paused"
         : summary.status === "over"
@@ -195,12 +203,18 @@ const TetrisGame = () => {
       id="tetris"
       // The whole game, so `onBlur` can tell "left the game" from "moved within it".
       onBlur={onBlur}
-      className="flex flex-col gap-4 sm:flex-row sm:items-start"
+      // One column at every width, board first and centred. It was a two-column row on
+      // anything wider than a phone, which put the score and the controls in a tall thin
+      // stack beside a tall thin board and wasted the middle of the screen. Underneath also
+      // means the board can take the full width of the column instead of sharing it.
+      className="flex flex-col items-center gap-4"
     >
-      {/* Block-level and ref'd for measurement, which the focusable child cannot be: an
-          `inline-block` takes its width FROM the canvas, so sizing the canvas from it is
-          circular and pins the board at its minimum. */}
-      <div ref={wrapperRef} className="min-w-0 sm:flex-1">
+      {/* Full width and centring its child, which is doing two jobs: it is what the board is
+          measured against -- a block-level element whose width does NOT come from the canvas
+          -- and `justify-center` is what centres the board without the wrapper losing that
+          width. The focusable child stays `inline-block` so its focus ring hugs the board
+          rather than spanning the column. */}
+      <div ref={wrapperRef} className="flex w-full justify-center">
         <div
           tabIndex={0}
           // `application` so arrow keys reach the game instead of being taken by a screen
@@ -216,68 +230,78 @@ const TetrisGame = () => {
           onKeyDown={onKeyDown}
           // A focusable div gets no focus ring of its own, and the forced-colors fallback in
           // globals.css covers button/input/textarea only -- there is a matching rule there
-          // for `[tabindex]` now.
+          // for `[tabindex]`.
           className="tetris-board inline-block rounded-md outline-offset-4 focus-visible:outline-2 focus-visible:outline-cyan-400"
         >
           <ReactP5Wrapper sketch={sketch} />
         </div>
       </div>
 
-      <div className="flex flex-col gap-3">
-        {/* Ordinary text, not a live region. Wrapping the score in one would announce every
-            soft-drop point. Sparse events go through the polite node at the bottom. */}
-        <dl className="grid grid-cols-3 gap-x-4 gap-y-1 text-lg sm:grid-cols-1">
+      {/* Measured, not guessed: the board's height budget is the viewport less whatever this
+          comes to. A constant here would be a magic number that silently stopped matching
+          the moment a control was added. */}
+      <div
+        ref={furnitureRef}
+        className="flex w-full flex-col items-center gap-3"
+      >
+        {/* One row, and the status is IN it rather than on a line of its own. Every row here
+            costs the board twice its own height, because the board is 1:2 and height-bound:
+            folding three rows into two took the board from 332px wide to 352px on a 390px
+            phone. Plain text and not a live region -- wrapping the score in one would
+            announce every soft-drop point. Sparse events go through the polite node below. */}
+        <dl className="flex flex-wrap items-baseline justify-center gap-x-5 gap-y-1 text-center">
           <div>
-            <dt className="text-sm text-slate-400">Score</dt>
+            <dt className="text-xs text-slate-400 sm:text-sm">Score</dt>
             <dd className="font-semibold tabular-nums">{summary.score}</dd>
           </div>
           <div>
-            <dt className="text-sm text-slate-400">Lines</dt>
+            <dt className="text-xs text-slate-400 sm:text-sm">Lines</dt>
             <dd className="font-semibold tabular-nums">{summary.lines}</dd>
           </div>
           <div>
-            <dt className="text-sm text-slate-400">Level</dt>
+            <dt className="text-xs text-slate-400 sm:text-sm">Level</dt>
             <dd className="font-semibold tabular-nums">{summary.level}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-400 sm:text-sm">Next</dt>
+            <dd className="mt-1 flex items-start justify-center gap-2">
+              {summary.next.map((kind, i) => (
+                <NextPreview key={`${kind}-${i}`} kind={kind} />
+              ))}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-slate-400 sm:text-sm">Status</dt>
+            <dd id="tetris-status" className="font-semibold">
+              {statusLabel}
+            </dd>
           </div>
         </dl>
 
-        <div>
-          <p className="text-sm text-slate-400">Next</p>
-          <div className="mt-1 flex gap-3">
-            {summary.next.map((kind, i) => (
-              <NextPreview key={`${kind}-${i}`} kind={kind} />
-            ))}
-          </div>
-        </div>
-
-        <p id="tetris-status" className="text-lg font-semibold">
-          {statusLabel}
-        </p>
-
-        <button
-          type="button"
-          onClick={() =>
-            controller.send(summary.status === "over" ? "restart" : "toggle")
-          }
-          // cyan-700, not the 600 this started as: white on #0092b8 is 3.62:1, under the
-          // 4.5:1 that 16px text needs, and axe caught it. 700 measures 5.10:1. The hover
-          // DARKENS for the same reason -- lightening to 600 would put the hovered state
-          // back below the line, where no automated check would look for it.
-          className="rounded-md bg-cyan-700 px-4 py-2 font-semibold text-white hover:bg-cyan-800"
-        >
-          {summary.status === "playing"
-            ? "Pause"
-            : summary.status === "over"
-              ? "Play again"
-              : summary.status === "paused"
-                ? "Resume"
-                : "Play"}
-        </button>
-
-        {/* Real buttons rather than hit-testing inside the canvas, which is what makes the
+        {/* Play sits with the controls rather than above them, which saves the third row.
+            Real buttons rather than hit-testing inside the canvas, which is what makes the
             game usable on a phone at all -- and they are reachable by keyboard and named,
             which canvas-drawn controls could never be. */}
-        <div className="flex gap-2">
+        <div className="flex flex-wrap items-center justify-center gap-2">
+          <button
+            type="button"
+            onClick={() =>
+              controller.send(summary.status === "over" ? "restart" : "toggle")
+            }
+            // cyan-700, not the 600 this started as: white on #0092b8 is 3.62:1, under the
+            // 4.5:1 that 16px text needs, and axe caught it. 700 measures 5.10:1. The hover
+            // DARKENS for the same reason -- lightening to 600 would put the hovered state
+            // back below the line, where no automated check would look for it.
+            className="h-11 rounded-md bg-cyan-700 px-4 font-semibold text-white hover:bg-cyan-800"
+          >
+            {summary.status === "playing"
+              ? "Pause"
+              : summary.status === "over"
+                ? "Play again"
+                : summary.status === "paused"
+                  ? "Resume"
+                  : "Play"}
+          </button>
           {CONTROLS.map(({ label, action, hint }) => (
             <button
               key={action}
@@ -291,14 +315,31 @@ const TetrisGame = () => {
           ))}
         </div>
 
-        <p id="tetris-instructions" className="max-w-xs text-sm text-slate-400">
+        {/* Kept in the DOM but shown only where a keyboard is plausible AND there is height
+            to spare. Three things behind that:
+
+            It describes KEYS, which a touch visitor does not have. Every pixel it occupies
+            costs the board twice as much, since the board is 1:2 and height-bound. And the
+            height half of the condition is what makes a landscape phone playable at all --
+            at 844x390 these three lines were 56px of a 390px viewport, which is a third of
+            the board.
+
+            `sr-only` rather than `hidden` because `aria-describedby` points at it: removing
+            it from the accessibility tree would take the board's own description with it.
+
+            ONE arbitrary variant rather than `sm:not-sr-only` plus a max-height override,
+            because two competing variants at equal specificity are decided by Tailwind's
+            emission order -- which is not something to depend on when a single combined
+            media query says exactly what is meant. */}
+        <p
+          id="tetris-instructions"
+          className="sr-only max-w-md text-center text-sm text-slate-400 [@media(min-width:640px)and(min-height:560px)]:not-sr-only"
+        >
           Click the board or tab to it, then use the arrow keys. Up rotates,
           Space drops, Enter pauses, Escape leaves the board.
         </p>
       </div>
 
-      {/* Sparse announcements only: started, paused, a line clear, game over. `atomic` so a
-          part-updated sentence is never read. */}
       <div aria-live="polite" aria-atomic="true" className="sr-only">
         {/* Keyed on the revision, so clearing two single rows in a row is announced twice.
             A live region whose text is unchanged says nothing at all -- measured elsewhere

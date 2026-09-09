@@ -30,17 +30,29 @@ const EMPTY = "#0f172a";
 const BORDER = "#334155";
 
 /**
- * Extra rows' worth of height left for everything that is not the board.
+ * Height NOT given to the board: the flex gap under it, plus slack so the whole game can be
+ * framed on one screen without the reader landing a scroll to the pixel.
  *
- * In cells rather than pixels so it scales with the board, instead of a magic 300px that is
- * generous on a phone and mean on a desktop. Five keeps a 20-row board at about four fifths
- * of the viewport height, which leaves the heading and the score visible without scrolling
- * on a laptop.
+ * A constant is right here, unlike the height of the furniture itself, which is measured --
+ * an earlier version reserved five rows' worth of height for the furniture as a whole, a
+ * guess dressed up as arithmetic that neither knew nor tracked what was below the board.
+ *
+ * The VALUE was measured rather than chosen. At 24 this was quietly almost nothing: the
+ * `gap-4` between the board and the furniture is already 16 of it, so the real slack was
+ * 8px, and scrolling the board into view on a 390x844 phone put the control buttons at
+ * y=847 -- three pixels below the fold, unreachable without scrolling again. Every viewport
+ * tested had the same fault. 64 leaves 40-64px, which survives an ordinary scroll.
+ *
+ * It costs board size, and that is the trade: 352px wide on that phone against 332px, or
+ * 90% of the viewport against 85%. Filling the screen and having the controls on it are
+ * competing goals, and controls that cannot be reached are worse than a slightly smaller
+ * board.
  */
-const VERTICAL_GUTTER_CELLS = 5;
+const BOARD_MARGIN_PX = 64;
 
 export function createTetrisSketch(
   wrapperRef: RefObject<HTMLDivElement | null>,
+  furnitureRef: RefObject<HTMLDivElement | null>,
   controller: Controller,
 ) {
   return function sketch(p5: P5CanvasInstance) {
@@ -51,27 +63,37 @@ export function createTetrisSketch(
      *
      * A Tetris board is 1:2, so a width-led rule -- which is what the fish tank uses, and
      * correctly, for a landscape scene -- produces a board twice as tall as the column is
-     * wide and pushes the score off the screen on any laptop. Height has to participate.
+     * wide and pushes the score off the screen on any laptop. Height has to participate, and
+     * on a phone it is the binding constraint rather than a safety net.
      *
      * `innerHeight` rather than a `vh` unit for the same reason `dvh` exists: on mobile the
      * visible viewport shrinks when browser chrome appears, and `innerHeight` already
      * reports the live value.
      */
     const measureCell = () => {
-      // The ref must be on a BLOCK-level element whose width does not come from the canvas.
-      // Measured the hard way: with it on the focusable `inline-block` wrapper, that
-      // element's width was derived from the canvas inside it, so the canvas was sized from
-      // itself and settled at the 8px floor -- an 82x162 board on a 1280x900 viewport. Same
-      // circularity as sizing an image from a box the image is sizing.
+      // Both refs must be on BLOCK-level elements whose size does not come from the canvas.
+      // Measured the hard way for the width: with that ref on the focusable `inline-block`
+      // wrapper, the element's width was derived from the canvas inside it, so the canvas
+      // was sized from itself and settled at its floor -- an 82x162 board on a 1280x900
+      // viewport. The furniture is safe to measure for the opposite reason: a score, five
+      // buttons and a paragraph are the same height whatever the board does.
       const available = wrapperRef.current?.clientWidth ?? 0;
       // Less the two pixels of border the canvas adds below, or a 280px box produces a
       // 282px canvas and the board overhangs its container by exactly the frame.
       const fromWidth = available > 0 ? (available - 2) / COLS : Infinity;
-      const fromHeight =
-        p5.windowHeight / (VISIBLE_ROWS + VERTICAL_GUTTER_CELLS);
+
+      // The height the board may have is the viewport less what sits under it. This is why
+      // "fill the screen on a phone" resolves to a HEIGHT question and not a width one: a
+      // 10x20 board is 1:2, so at any phone width the height runs out first, and the way to
+      // make the board bigger is to give the furniture less -- which is why the keyboard
+      // instructions are `sr-only` below `sm`.
+      const furniture = furnitureRef.current?.offsetHeight ?? 0;
+      const spare = p5.windowHeight - furniture - BOARD_MARGIN_PX;
+      const fromHeight = (spare - 2) / VISIBLE_ROWS;
+
       // Floored so cell boundaries land on whole pixels and the grid does not shimmer. The
-      // lower bound keeps the board usable on a short landscape phone instead of letting it
-      // collapse; the page scrolls rather than the board disappearing.
+      // lower bound keeps the board usable in a very short window instead of letting it
+      // collapse to nothing; the page scrolls rather than the board disappearing.
       return Math.max(10, Math.floor(Math.min(fromWidth, fromHeight)));
     };
 

@@ -35,9 +35,7 @@ test("does not start playing until the visitor asks it to", async ({
   // A game that autoplays below an aquarium is motion nobody requested. This is also the
   // whole of the reduced-motion answer: there is no decorative animation to withdraw,
   // because nothing moves until now.
-  await expect(page.locator("#tetris-status")).toHaveText(
-    "Press Enter to play",
-  );
+  await expect(page.locator("#tetris-status")).toHaveText("Ready");
   const before = await scoreValue(page);
   await page.waitForTimeout(1500);
   expect(await scoreValue(page), "the board advanced on its own").toBe(before);
@@ -194,6 +192,80 @@ test("carries its state as text, not only as pixels", async ({ page }) => {
     "aria-describedby",
     /tetris-status/,
   );
+});
+
+test("puts the board above the controls, centred, at every width", async ({
+  page,
+}) => {
+  // The layout the owner asked for, asserted as RELATIONSHIPS rather than pixel sizes: the
+  // board's size depends on the measured height of the furniture, which depends on the font,
+  // so any exact figure here would be a screenshot test wearing a disguise.
+  for (const [width, height] of [
+    [1280, 900],
+    [820, 1180],
+    [390, 844],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    await page.goto("/animation");
+    const canvas = board(page).locator("canvas");
+    await expect(canvas).toBeVisible({ timeout: 15_000 });
+
+    const box = (await canvas.boundingBox())!;
+    const controls = (await page
+      .getByRole("button", { name: "Hard drop" })
+      .boundingBox())!;
+    const section = (await page.locator("#tetris").boundingBox())!;
+
+    expect(
+      controls.y,
+      `${width}x${height}: the controls are not below the board`,
+    ).toBeGreaterThan(box.y + box.height);
+
+    // Centred within the game's own box, which is what "in the centre" means here -- the
+    // box is itself centred by the shared content column.
+    const boardCentre = box.x + box.width / 2;
+    const sectionCentre = section.x + section.width / 2;
+    expect(
+      Math.abs(boardCentre - sectionCentre),
+      `${width}x${height}: the board is off centre by ${Math.round(boardCentre - sectionCentre)}px`,
+    ).toBeLessThanOrEqual(2);
+  }
+});
+
+test("fits the board and its controls on one screen", async ({ page }) => {
+  // The point of sizing the board from the measured furniture height. It regressed once
+  // already and silently: the margin left for this was 24px while the flex gap alone was 16,
+  // so on a 390x844 phone the control buttons sat three pixels below the fold and could not
+  // be reached without scrolling away from the board.
+  for (const [width, height] of [
+    [390, 844],
+    [320, 700],
+    [844, 390],
+    [1280, 900],
+  ] as const) {
+    await page.setViewportSize({ width, height });
+    await page.goto("/animation");
+    const canvas = board(page).locator("canvas");
+    await expect(canvas).toBeVisible({ timeout: 15_000 });
+    await page.locator("#tetris").scrollIntoViewIfNeeded();
+
+    const box = (await canvas.boundingBox())!;
+    const controls = (await page
+      .getByRole("button", { name: "Hard drop" })
+      .boundingBox())!;
+    const used = controls.y + controls.height - box.y;
+
+    expect(
+      used,
+      `${width}x${height}: board plus controls need ${Math.round(used)}px of a ${height}px viewport`,
+    ).toBeLessThanOrEqual(height);
+    // Room to spare, not merely a fit -- a reader scrolling by hand will not land on the
+    // exact pixel, and a fit with no slack is one wrapped row away from breaking.
+    expect(
+      height - used,
+      `${width}x${height}: only ${Math.round(height - used)}px of slack`,
+    ).toBeGreaterThanOrEqual(24);
+  }
 });
 
 test("fits a phone without a horizontal scrollbar", async ({ page }) => {
