@@ -686,9 +686,47 @@ describe("what the renderer is handed", () => {
   });
 
   it("describes a preview shape as a grid of filled cells", () => {
-    // The T's spawn row is `.T.` over `TTT`, so exactly four cells are filled.
-    expect(previewCells("T").flat().filter(Boolean)).toHaveLength(4);
-    expect(previewCells("I").flat().filter(Boolean)).toHaveLength(4);
-    expect(previewCells("O").flat().filter(Boolean)).toHaveLength(4);
+    // Four cells, because a tetromino is four cells. True of every kind by definition.
+    for (const kind of ["I", "J", "L", "O", "S", "T", "Z"] as PieceKind[]) {
+      expect(previewCells(kind).flat().filter(Boolean), kind).toHaveLength(4);
+    }
+  });
+
+  it("trims the preview to its filled cells, so no shape carries empty padding", () => {
+    // The raw matrices are 4x4, 3x3 and 2x2 for reasons unrelated to how a piece looks, and an
+    // untrimmed preview changed footprint with every piece -- which nudged the whole page as
+    // the queue advanced, because the preview sits in the score row.
+    //
+    // Every row and every column must contain something after trimming; that is what "trimmed"
+    // means, and it is stronger than checking the dimensions.
+    for (const kind of ["I", "J", "L", "O", "S", "T", "Z"] as PieceKind[]) {
+      const grid = previewCells(kind);
+      expect(
+        grid.every((row) => row.some(Boolean)),
+        `${kind} has an empty row`,
+      ).toBe(true);
+      const width = grid[0]?.length ?? 0;
+      for (let x = 0; x < width; x += 1) {
+        expect(
+          grid.some((row) => row[x] === true),
+          `${kind} has an empty column at ${x}`,
+        ).toBe(true);
+      }
+      // And the bound the fixed-size box in the UI is built around.
+      expect(width, `${kind} is wider than four cells`).toBeLessThanOrEqual(4);
+      expect(
+        grid.length,
+        `${kind} is taller than two rows`,
+      ).toBeLessThanOrEqual(2);
+    }
+  });
+
+  it("keeps every row the same width", () => {
+    // A ragged grid would render as a broken preview rather than a shifted one.
+    for (const kind of ["I", "J", "L", "O", "S", "T", "Z"] as PieceKind[]) {
+      const grid = previewCells(kind);
+      const widths = new Set(grid.map((row) => row.length));
+      expect(widths.size, `${kind} rows disagree on width`).toBe(1);
+    }
   });
 });

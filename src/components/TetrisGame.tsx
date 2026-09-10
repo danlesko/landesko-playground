@@ -6,6 +6,10 @@ import React from "react";
 import { createController, type Action } from "./tetris/controller";
 import { createTetrisSketch } from "./tetris/sketch";
 import { PIECE_COLOURS, previewCells, type PieceKind } from "./tetris/engine";
+import HighScoreList from "./tetris/HighScoreList";
+import SaveScoreForm from "./tetris/SaveScoreForm";
+import { loadHighScores } from "./tetris/scoreClient";
+import type { HighScore } from "@/lib/definitions";
 
 /**
  * `ssr: false` for the same reason as `ProcessingDrawing`: p5 touches `window` at module
@@ -73,25 +77,43 @@ const CONTROLS: Array<{ label: string; action: Action; hint: string }> = [
   { label: "⤓", action: "hardDrop", hint: "Hard drop" },
 ];
 
+/**
+ * One queued piece, drawn in a box of FIXED size.
+ *
+ * The fixed box is the point. `previewCells` trims each shape to its filled cells, which
+ * leaves them different sizes -- `I` is 4x1, `O` is 2x2, the rest are 3x2 -- so a grid sized
+ * to its own content changed width as the queue advanced. That sits in the score row, so the
+ * whole row reflowed and the page visibly jumped on every piece.
+ *
+ * `h-5 w-9` is 20x36px, which clears the largest trimmed shape (17x35 at these cell and gap
+ * sizes) with a pixel to spare, and the flex centring puts every shape in the middle of it
+ * rather than aligned to a corner. Padding the grid to a constant 4x2 instead would have been
+ * the other option and looks worse: a 3-wide piece cannot sit centred in 4 columns without a
+ * half-cell offset.
+ */
 const NextPreview = ({ kind }: { kind: PieceKind }) => (
-  <div
-    className="grid gap-px"
-    style={{
-      gridTemplateColumns: `repeat(${previewCells(kind)[0]?.length ?? 4}, 0.5rem)`,
-    }}
-  >
-    {previewCells(kind)
-      .flat()
-      .map((filled, i) => (
-        <span
-          key={i}
-          className="block h-2 w-2 rounded-sm"
-          // The piece's own colour, from the same map the canvas uses. Hardcoding one made
-          // every preview cyan, so the preview told you the shape and lied about the piece.
-          style={filled ? { backgroundColor: PIECE_COLOURS[kind] } : undefined}
-        />
-      ))}
-  </div>
+  <span className="flex h-5 w-9 items-center justify-center">
+    <span
+      className="grid gap-px"
+      style={{
+        gridTemplateColumns: `repeat(${previewCells(kind)[0]?.length ?? 4}, 0.5rem)`,
+      }}
+    >
+      {previewCells(kind)
+        .flat()
+        .map((filled, i) => (
+          <span
+            key={i}
+            className="block h-2 w-2 rounded-sm"
+            // The piece's own colour, from the same map the canvas uses. Hardcoding one made
+            // every preview cyan, so the preview told you the shape and lied about the piece.
+            style={
+              filled ? { backgroundColor: PIECE_COLOURS[kind] } : undefined
+            }
+          />
+        ))}
+    </span>
+  </span>
 );
 
 const TetrisGame = () => {
@@ -100,6 +122,22 @@ const TetrisGame = () => {
   // against, and it is safe to measure because it does not depend on the canvas: the score,
   // the buttons and the instructions are the same size whatever the board does.
   const furnitureRef = React.useRef<HTMLDivElement>(null);
+  // The focusable board itself, so a control that STARTS a game can hand the keyboard to it.
+  const boardRef = React.useRef<HTMLDivElement>(null);
+  const headingId = React.useId();
+
+  // `null` until the first request settles, which is what the list renders as "Loading".
+  const [scores, setScores] = React.useState<HighScore[] | null>(null);
+  const [scoresUnavailable, setScoresUnavailable] = React.useState(false);
+  // Set once a WRITE has returned an authoritative board. The initial GET must not overwrite
+  // that, and it can: a stalled read started before the save can resolve after it, replacing
+  // the board that includes the player's score with the one that predates it -- or marking it
+  // unavailable. A ref rather than state because nothing renders from it.
+  const boardFromWrite = React.useRef(false);
+  // Whether the reader has waved the save panel away for THIS game. Not "is the panel
+  // open", which is derived below -- storing that would be storing a copy of the game's own
+  // status, and react-hooks 7 rightly objects to the effect it would take to keep in step.
+  const [saveDismissed, setSaveDismissed] = React.useState(false);
 
   // One controller for the life of the component. A new one per render would restart the
   // game on every keystroke.
@@ -153,12 +191,77 @@ const TetrisGame = () => {
     return () => document.removeEventListener("visibilitychange", onHidden);
   }, [controller]);
 
+  /**
+   * Loads the board once, on mount.
+   *
+   * Client-side rather than server-rendered into the page, deliberately: `/animation` is a
+   * static route and reading the database in the page would make every visit dynamic for a
+   * list that only the game uses. The cost is a brief "Loading" state on the board, which
+   * only shows before anyone has pressed a key.
+   *
+   * `cancelled` rather than an AbortController: the request is a plain GET with no side
+   * effect, so there is nothing to abort that matters -- what has to be prevented is setting
+   * state after unmount.
+   */
+  React.useEffect(() => {
+    let cancelled = false;
+    void loadHighScores().then((result) => {
+      // A save that landed while this was in flight wins: its board is newer and came from
+      // the same statement that changed it.
+      if (cancelled || boardFromWrite.current) return;
+      if (result.status === "ok") setScores(result.scores);
+      else setScoresUnavailable(true);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  /**
+   * Everything the reader does goes through here, so that starting a game clears any
+   * dismissal from the last one.
+   *
+   * The alternative was an effect watching the status and setting a piece of state, which is
+   * the shape react-hooks 7 warns about -- and it was warning about something real: the panel
+   * being open is DERIVED from the game being over, so keeping a second copy in sync was work
+   * that did not need doing. Every path that can begin a game is an event handler in this
+   * component, so the reset has a natural home.
+   */
+  const send = React.useCallback(
+    (action: Action) => {
+      if (action === "toggle" || action === "restart") setSaveDismissed(false);
+      controller.send(action);
+    },
+    [controller],
+  );
+
+  /**
+   * Starts a game AND gives the board the keyboard.
+   *
+   * Used by the Play/Pause/Play-again control, which is the whole reason it exists. Clicking a
+   * button moves focus to that button, so the game began and then ignored every arrow key
+   * until the player thought to click the board -- the instructions say to click the board, so
+   * anyone who used the button instead was left with a running game and dead controls.
+   *
+   * Focusing unconditionally rather than only when starting, because pausing with the button
+   * and then resuming with the keyboard should work too. It cannot cause a spurious pause: the
+   * board is inside the element carrying `onBlur`, so this is a move WITHIN the game, and
+   * `relatedTarget` is what that handler checks.
+   */
+  const startAndFocus = React.useCallback(
+    (action: Action) => {
+      send(action);
+      boardRef.current?.focus();
+    },
+    [send],
+  );
+
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     // A press on one of the control buttons is that button's, not the board's, or Space and
     // Enter would both activate the button and play a move.
     if (event.target !== event.currentTarget) return;
     if (event.key === "Escape") {
-      controller.send("pause");
+      send("pause");
       event.currentTarget.blur();
       return;
     }
@@ -170,7 +273,7 @@ const TetrisGame = () => {
     // Held keys still have to be swallowed -- the default action is what scrolls -- so this
     // comes after `preventDefault` rather than instead of it.
     if (event.repeat && !REPEATABLE.has(action)) return;
-    controller.send(action);
+    send(action);
   };
 
   /**
@@ -182,13 +285,22 @@ const TetrisGame = () => {
   const onBlur = (event: React.FocusEvent<HTMLDivElement>) => {
     const next = event.relatedTarget;
     if (next instanceof Node && event.currentTarget.contains(next)) return;
-    controller.send("pause");
+    send("pause");
   };
 
   // Deliberately short, and deliberately not naming a key: this used to read "Press Enter to
   // play", which is wrong on a phone and was also the longest string in the row that now has
   // to fit on one line. The keyboard hints live in the instructions paragraph, which is only
   // shown where a keyboard is likely.
+  // Derived, not stored. Shown when the game is over and the reader has not dismissed it.
+  const showSavePanel = summary.status === "over" && !saveDismissed;
+  // The two overlays are mutually exclusive: both cover the board, so showing them together
+  // would stack an opaque list behind an opaque form. Before a game, or after one once the
+  // save panel has been dealt with -- which is exactly when someone wants to see where they
+  // placed.
+  const showLeaderboard =
+    summary.status === "idle" || (summary.status === "over" && !showSavePanel);
+
   const statusLabel =
     summary.status === "idle"
       ? "Ready"
@@ -215,25 +327,81 @@ const TetrisGame = () => {
           width. The focusable child stays `inline-block` so its focus ring hugs the board
           rather than spanning the column. */}
       <div ref={wrapperRef} className="flex w-full justify-center">
-        <div
-          tabIndex={0}
-          // `application` so arrow keys reach the game instead of being taken by a screen
-          // reader's own browse-mode navigation, which is the documented pattern for a
-          // keyboard-driven widget. The cost is real and worth naming: it changes how a
-          // screen reader treats this subtree, and a canvas board is not something it can
-          // convey anyway. What makes it acceptable is that nothing DEPENDS on the mode --
-          // every move also exists as a named button below, which works in browse mode.
-          // Not verified against real assistive technology, which is the honest caveat.
-          role="application"
-          aria-labelledby="tetris-heading"
-          aria-describedby="tetris-instructions tetris-status"
-          onKeyDown={onKeyDown}
-          // A focusable div gets no focus ring of its own, and the forced-colors fallback in
-          // globals.css covers button/input/textarea only -- there is a matching rule there
-          // for `[tabindex]`.
-          className="tetris-board inline-block rounded-md outline-offset-4 focus-visible:outline-2 focus-visible:outline-cyan-400"
-        >
-          <ReactP5Wrapper sketch={sketch} />
+        {/* `relative` and content-sized, so the overlay below can be positioned against the
+            CANVAS rather than against the full-width measuring wrapper. As a flex item its
+            width shrinks to its content. */}
+        <div className="relative">
+          <div
+            ref={boardRef}
+            tabIndex={0}
+            // `application` so arrow keys reach the game instead of being taken by a screen
+            // reader's own browse-mode navigation, which is the documented pattern for a
+            // keyboard-driven widget. The cost is real and worth naming: it changes how a
+            // screen reader treats this subtree, and a canvas board is not something it can
+            // convey anyway. What makes it acceptable is that nothing DEPENDS on the mode --
+            // every move also exists as a named button below, which works in browse mode.
+            // Not verified against real assistive technology, which is the honest caveat.
+            role="application"
+            aria-labelledby="tetris-heading"
+            aria-describedby="tetris-instructions tetris-status"
+            onKeyDown={onKeyDown}
+            // A focusable div gets no focus ring of its own, and the forced-colors fallback in
+            // globals.css covers button/input/textarea only -- there is a matching rule there
+            // for `[tabindex]`.
+            className="tetris-board inline-block rounded-md outline-offset-4 focus-visible:outline-2 focus-visible:outline-cyan-400"
+          >
+            <ReactP5Wrapper sketch={sketch} />
+          </div>
+
+          {/* A SIBLING of the focusable board, never a child of it. `role="application"` tells
+            a screen reader to hand keys to the widget instead of navigating; a list someone
+            wants to read line by line must not be inside that.
+
+            Shown before a game starts and after one ends -- NOT while it is merely paused.
+            "Before the game starts" is what was asked for, and now that the panel is opaque,
+            showing it on pause would hide the stack the player paused to look at.
+
+            And not while the save panel is up, because the two occupy the same space: both
+            overlay the board, so rendering both would stack an opaque list under an opaque
+            form. The list comes back once the panel is dismissed, which is also when it is
+            most useful -- that is when the reader wants to see where they placed. */}
+          {showLeaderboard && (
+            <HighScoreList
+              scores={scores}
+              unavailable={scoresUnavailable}
+              headingId={headingId}
+            />
+          )}
+
+          {/* THE SAVE PANEL, over the board rather than under it. Below the board it added
+              height at the exact moment the reader needed it, so on a phone it appeared off
+              the bottom of the screen and had to be scrolled to.
+
+              Three things in the positioning are doing work. It is centred on the board with
+              a translate rather than `inset-0`, so it takes its own height instead of
+              stretching. `w-[min(20rem,88vw)]` lets it be WIDER than the board -- necessary,
+              because a 122px landscape board cannot hold a form -- while never exceeding the
+              viewport. And `max-h-full overflow-y-auto` means the landscape case scrolls
+              rather than escaping the board; unlike the leaderboard this element does receive
+              pointer events, so scrolling actually works here.
+
+              Opaque, for the reason the leaderboard documents: text over a canvas through a
+              translucent layer is text whose contrast axe cannot compute. */}
+          {showSavePanel && (
+            <div className="absolute left-1/2 top-1/2 max-h-full w-[min(20rem,88vw)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-md bg-slate-950 p-3 shadow-lg">
+              <SaveScoreForm
+                score={summary.score}
+                onScores={(next) => {
+                  boardFromWrite.current = true;
+                  setScores(next);
+                  // A board that came back from a write proves the leaderboard is reachable,
+                  // so an earlier failed read must not keep saying otherwise.
+                  setScoresUnavailable(false);
+                }}
+                onDismiss={() => setSaveDismissed(true)}
+              />
+            </div>
+          )}
         </div>
       </div>
 
@@ -286,7 +454,7 @@ const TetrisGame = () => {
           <button
             type="button"
             onClick={() =>
-              controller.send(summary.status === "over" ? "restart" : "toggle")
+              startAndFocus(summary.status === "over" ? "restart" : "toggle")
             }
             // cyan-700, not the 600 this started as: white on #0092b8 is 3.62:1, under the
             // 4.5:1 that 16px text needs, and axe caught it. 700 measures 5.10:1. The hover
@@ -302,12 +470,18 @@ const TetrisGame = () => {
                   ? "Resume"
                   : "Play"}
           </button>
+          {/* The direction buttons deliberately do NOT hand focus back to the board, unlike
+              Play. A keyboard visitor who tabs to "Move left" and presses Enter should be able
+              to press it again; stealing focus after each activation would make it a
+              one-shot control. They are already keyboard-operable as buttons, which is what
+              makes that acceptable -- the reported problem was Play specifically, because a
+              game that has STARTED and ignores every arrow key is a dead end. */}
           {CONTROLS.map(({ label, action, hint }) => (
             <button
               key={action}
               type="button"
               aria-label={hint}
-              onClick={() => controller.send(action)}
+              onClick={() => send(action)}
               className="h-11 w-11 rounded-md bg-slate-700 text-lg text-white hover:bg-slate-600"
             >
               <span aria-hidden="true">{label}</span>
