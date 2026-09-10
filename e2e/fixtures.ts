@@ -165,3 +165,66 @@ export const sweepAuthoringRows = async () => {
     `DELETE FROM blogs WHERE title LIKE '${E2E_TITLE_PREFIX}%'`,
   ]);
 };
+
+/**
+ * The seeded leaderboard rows, named once so a spec cannot drift from `init.sh`.
+ *
+ * Three, not ten: a full table would make "no scores yet" and "the table is not full"
+ * unreachable, and any test about a qualifying score would have to displace something.
+ */
+export const SEEDED_SCORES = [
+  { name: "E2E Champion", score: 9000 },
+  { name: "E2E Runner Up", score: 5000 },
+  { name: "E2E Third Place", score: 100 },
+] as const;
+
+/**
+ * Runs SQL against the e2e Postgres and returns stdout, trimmed.
+ *
+ * Through `docker compose exec psql` rather than `@vercel/postgres`, for the reason
+ * `deleteAuthoringRow` gives: the app's driver reaches the database over HTTPS through the
+ * proxy and needs Caddy's CA, and `NODE_EXTRA_CA_CERTS` is read at process startup, so the
+ * config cannot give it to the runner it is already inside.
+ *
+ * It is also a stronger guard than a connection string. It names a container in this compose
+ * project, so no value of any ambient environment variable makes it reach a real database --
+ * which matters here more than anywhere, because these tests TRUNCATE the table.
+ */
+export const runSql = async (sql: string): Promise<string> => {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const { join } = await import("node:path");
+  // `__dirname`, not `import.meta.url`: Playwright transpiles specs to CommonJS.
+  const compose = join(__dirname, "db/compose.yaml");
+  const { stdout } = await promisify(execFile)("docker", [
+    "compose",
+    "-f",
+    compose,
+    "exec",
+    "-T",
+    "postgres",
+    "psql",
+    "--username",
+    "postgres",
+    "--dbname",
+    "main",
+    "--no-psqlrc",
+    "-v",
+    "ON_ERROR_STOP=1",
+    "-tA",
+    "-c",
+    sql,
+  ]);
+  return stdout.trim();
+};
+
+/** Puts the leaderboard back to exactly the seeded three rows. */
+export const resetHighScores = async (): Promise<void> => {
+  await runSql(`
+    TRUNCATE high_scores;
+    INSERT INTO high_scores (name, score, created_at) VALUES
+      ('E2E Champion',    9000, '2026-01-02 03:04:05+00'),
+      ('E2E Runner Up',   5000, '2026-01-02 03:04:06+00'),
+      ('E2E Third Place',  100, '2026-01-02 03:04:07+00');
+  `);
+};

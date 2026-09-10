@@ -76,4 +76,18 @@ INSERT INTO blogs (id, title, content, date, private) VALUES
   );
 SQL
 
+# The leaderboard, seeded THREE rows rather than ten. Deliberate: ten would leave the table
+# full, so every test about a qualifying score would have to displace something, and the
+# "no scores yet" and "not full yet" paths would be unreachable. Tests that need a full table
+# fill it themselves.
+#
+# Descending scores with a gap, so a test can assert the ORDER rather than just the presence
+# of three rows -- a broken ORDER BY would still show all three.
+psql <<'SQL'
+INSERT INTO high_scores (name, score, created_at) VALUES
+  ('E2E Champion',    9000, '2026-01-02 03:04:05+00'),
+  ('E2E Runner Up',   5000, '2026-01-02 03:04:06+00'),
+  ('E2E Third Place',  100, '2026-01-02 03:04:07+00');
+SQL
+
 echo "init: done"

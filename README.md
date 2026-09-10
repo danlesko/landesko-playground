@@ -97,11 +97,47 @@ The application is deployed through [Vercel](https://www.vercel.com) on their fr
 
 ## Testing
 
-Unit tests are Vitest, running in Node with no DOM by default. One file,
-`src/components/ContactForm.interaction.test.ts`, opts into jsdom with a
-`// @vitest-environment jsdom` docblock so it can mount a component and drive a real
-submit — that is the only way to cover event-handler wiring here, and it is why the
+Unit tests are Vitest, running in Node with no DOM by default. Two files —
+`src/components/ContactForm.interaction.test.ts` and
+`src/components/tetris/SaveScoreForm.interaction.test.ts` — opt into jsdom with a
+`// @vitest-environment jsdom` docblock so they can mount a component and drive a real
+submit. That is the only way to cover event-handler wiring here, and it is why the
 Node requirement above is jsdom's rather than Next.js's.
+
+### The Tetris leaderboard
+
+`/animation` keeps the ten highest Tetris scores in `high_scores`, added by
+`migrations/0005_high_scores.sql`. **There is no migration runner** — that file has to be
+applied by hand, and it should be applied BEFORE deploying code that reads the table. The
+code tolerates its absence (the route answers 503 and the board says scores are
+unavailable, while the game stays playable), so the order cannot corrupt anything; it just
+means nobody can record a score until it runs.
+
+The leaderboard rule lives in a Postgres function rather than in TypeScript, and the
+migration explains at length why two simpler shapes were tried and abandoned. The short
+version: `@vercel/postgres` builds a fresh HTTP client per call, so two calls can never be
+atomic, and one statement with data-modifying CTEs cannot rank a table including its own
+insert. The function takes an advisory lock — measured, twenty simultaneous writes leave
+exactly ten rows, where the same function without it left eight.
+
+**One database serves every environment.** `POSTGRES_URL` has a single value across
+Production, Preview and Development, so a score saved from a preview deployment — or from
+`pnpm dev` — lands on the real leaderboard. To exercise the save flow against the local
+stack instead:
+
+```bash
+pnpm e2e:db:up
+NODE_EXTRA_CA_CERTS="$PWD/e2e/db/.caddy-root.crt" \
+  POSTGRES_URL="postgres://postgres:postgres@db-pooler.localtest.me:5432/main" \
+  pnpm dev
+```
+
+Both variables are needed. Without the CA override every query fails as a bare
+`fetch failed`, because the local stack serves TLS through Caddy and `NODE_EXTRA_CA_CERTS`
+is read at process startup.
+
+There is no moderation UI. Names are player-supplied text shown to every visitor, so
+removing one is `DELETE FROM public.high_scores WHERE name = '…'`.
 
 ### The e2e database
 

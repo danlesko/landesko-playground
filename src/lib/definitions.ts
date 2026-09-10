@@ -29,3 +29,16 @@ export type Email = {
   email: string;
   message: string;
 };
+
+/**
+ * One row of the Tetris leaderboard, as the query projects it.
+ *
+ * Unlike `Blog`, this is NOT a claim about every column: `high_scores` also has `id` and
+ * `created_at`, and the read in `high-scores.ts` names only these two. Both of the omitted
+ * columns exist to order rows inside the database, and neither is any use to a browser, so
+ * they do not leave it.
+ */
+export type HighScore = {
+  name: string;
+  score: number;
+};

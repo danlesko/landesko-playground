@@ -105,7 +105,11 @@ const FILLED = [
     // every button uses one. The exact count is a change-detector, not a completeness
     // proof; the docblock further down says what would actually close that gap.
     needle: "primaryButtonClasses",
-    callSites: 3,
+    // 3 until the Tetris leaderboard added two: "Save my score" and the "Done" that replaces
+    // it once an attempt has settled, both in `tetris/SaveScoreForm.tsx`. Revisited rather
+    // than bumped -- the string is right for them, because they are the primary action of
+    // their panel and want exactly the focus ring, disabled fill and sizing it carries.
+    callSites: 5,
     binding: "primaryButtonClasses",
   },
   {
