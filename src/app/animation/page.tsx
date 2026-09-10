@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import ProcessingDrawing from "@/components/ProcessingDrawing";
+import TetrisGame from "@/components/TetrisGame";
 import PageHeading from "@/components/ui/PageHeading";
 import { contentColumnClasses } from "@/components/ui/layout";
 
@@ -21,10 +22,15 @@ export default function Animation() {
           before, which is exactly the sort of near-miss that reads as a mistake rather
           than a decision.
 
-          Note the canvas does not always track the column: its wide branch is bound by
-          viewport HEIGHT, so at 1920x900 it is 1145px inside a 1760px column and the
-          cap is not what limits it. Alignment still holds, because the wrapper carries
-          the measure rather than the canvas. */}
+          This used to add that the canvas does not always track the column, because its
+          wide branch was bound by viewport height. The note was stale: `fishTankSketch.ts`
+          deleted the height-led branch when the canvas started taking its width from its
+          container, and `windowHeight` now appears in that file only inside comments
+          explaining the removal. The canvas tracks the column.
+
+          The Tetris board below is the one that IS bound by height, and necessarily -- a
+          1:2 board sized from width alone would be twice as tall as this column is wide. It
+          sizes a cell from whichever of width and height is scarcer. */}
       <div className={contentColumnClasses}>
         <PageHeading>Animation</PageHeading>
         <p className="text-lg mt-2">
@@ -52,6 +58,23 @@ export default function Animation() {
           choice. Matches the `<h2>` step rather than inventing a value. */}
       <div className={`${contentColumnClasses} mt-6`}>
         <ProcessingDrawing />
+      </div>
+
+      <div className={`${contentColumnClasses} mt-10`}>
+        <h2 id="tetris-heading" className="text-2xl font-semibold">
+          Tetris
+        </h2>
+        <p className="text-lg mt-2">
+          Rather more state than a fish tank. The rules live apart from the
+          drawing here, so the awkward parts -- rotating a piece flush against a
+          wall, telling the two ways of topping out apart, keeping the fall rate
+          the same on a 144Hz monitor as on a 60Hz one -- are ordinary functions
+          with ordinary tests rather than something you can only poke at through
+          a canvas.
+        </p>
+      </div>
+      <div className={`${contentColumnClasses} mt-4`}>
+        <TetrisGame />
       </div>
     </>
   );

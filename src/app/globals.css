@@ -317,7 +317,12 @@ body {
 @media (forced-colors: active) {
   button:focus-visible,
   input:focus-visible,
-  textarea:focus-visible {
+  textarea:focus-visible,
+  /* The Tetris board, which is a focusable div and so has no user-agent focus ring of its
+     own to fall back on. The three element selectors above do not cover it -- checked
+     rather than assumed. `[tabindex]` plus `:focus-visible` is (0,2,0), which clears the
+     single class carrying `outline-none` for the same reason the note above describes. */
+  [tabindex]:focus-visible {
     outline: 2px solid transparent;
     outline-offset: 2px;
   }

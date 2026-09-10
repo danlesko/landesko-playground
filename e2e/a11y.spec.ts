@@ -77,6 +77,28 @@ const VIEWPORTS = [
 // assertion below would be wrong if it guessed.
 const GRADIENT_TITLE = { rule: "color-contrast", tag: "span", gradient: true };
 
+/**
+ * One of the Tetris control buttons' glyphs.
+ *
+ * axe reports `color-contrast` as incomplete for these with "element content contains only
+ * non-text characters" -- it will not compute a ratio for a glyph, so it cannot tell whether
+ * the arrow is legible. Measured by hand instead, which is the whole point of this bucket
+ * existing: white on `bg-slate-700` (#45556c) is 7.58:1, comfortably over the 4.5:1 the size
+ * requires.
+ *
+ * THREE of them, not five, and the asymmetry is the interesting part rather than a
+ * miscount: the buttons carry five glyphs, and axe treats the rotate and hard-drop
+ * characters as text while `←`, `→` and `↓` are not. So this list is sensitive to a
+ * classification inside axe, not just to this repo's markup -- if a version bump moves one
+ * of the other two, the count changes and the assertion fails. That is the right outcome
+ * here; it means someone looks again.
+ */
+const GLYPH_CONTROL = {
+  rule: "color-contrast",
+  tag: "span",
+  gradient: false,
+};
+
 const ROUTES: {
   path: string;
   blockThirdParty?: true;
@@ -95,9 +117,18 @@ const ROUTES: {
   },
   {
     path: "/animation",
-    ready: (page) =>
-      expect(page.locator("canvas")).toBeVisible({ timeout: 15_000 }),
-    unevaluable: [GRADIENT_TITLE],
+    // BOTH sketches, because this page now has two and they mount from separate dynamic
+    // chunks. Waiting for one of them would let axe run against a page where the other had
+    // not rendered its controls yet.
+    ready: async (page) => {
+      await expect(page.locator("#fish-tank canvas")).toBeVisible({
+        timeout: 15_000,
+      });
+      await expect(page.locator("#tetris canvas")).toBeVisible({
+        timeout: 15_000,
+      });
+    },
+    unevaluable: [GRADIENT_TITLE, GLYPH_CONTROL, GLYPH_CONTROL, GLYPH_CONTROL],
   },
   {
     path: "/credits",

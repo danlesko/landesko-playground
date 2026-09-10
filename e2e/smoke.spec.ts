@@ -737,7 +737,9 @@ test("the p5 sketch mounts a canvas", async ({ page }) => {
   // once client JS has run. It has regressed before: a minified-identifier
   // collision left the whole chunk unparseable and the canvas never appeared
   // (#16), which no server-rendered assertion would have caught.
-  await expect(page.locator("canvas")).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator("#fish-tank canvas")).toBeVisible({
+    timeout: 15_000,
+  });
 });
 
 /**
@@ -1950,10 +1952,13 @@ test("the p5 canvas fills its column and keeps the sketch's design ratio", async
   ] as const) {
     await page.setViewportSize({ width, height });
     await page.goto("/animation");
-    await expect(page.locator("canvas")).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator("#fish-tank canvas")).toBeVisible({
+      timeout: 15_000,
+    });
 
     const measured = await page.evaluate(() => {
-      const canvas = document.querySelector("canvas")!;
+      const canvas =
+        document.querySelector<HTMLCanvasElement>("#fish-tank canvas")!;
       const box = canvas.parentElement!;
       const rect = canvas.getBoundingClientRect();
       return {
@@ -1990,11 +1995,14 @@ test("the p5 canvas does not push the page wider than the viewport", async ({
     await page.goto("/animation");
     // Same reason as the mount test above: the canvas is client-only, so there is
     // nothing to measure until p5 has run `setup`.
-    await expect(page.locator("canvas")).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator("#fish-tank canvas")).toBeVisible({
+      timeout: 15_000,
+    });
 
     const measured = await page.evaluate(() => {
       const root = document.documentElement;
-      const canvas = document.querySelector("canvas")!;
+      const canvas =
+        document.querySelector<HTMLCanvasElement>("#fish-tank canvas")!;
       const box = canvas.parentElement!;
       return {
         overflow: root.scrollWidth - root.clientWidth,
@@ -2096,11 +2104,18 @@ test("the p5 canvas survives a window that used to crash it, and honours its flo
   ]) {
     await page.setViewportSize({ width, height });
     await page.goto("/animation");
-    await expect(page.locator("canvas")).toBeVisible({ timeout: 15_000 });
+    await expect(page.locator("#fish-tank canvas")).toBeVisible({
+      timeout: 15_000,
+    });
 
     const size = await page.evaluate(() => {
-      const rect = document.querySelector("canvas")?.getBoundingClientRect();
-      const box = document.querySelector("canvas")?.parentElement;
+      const rect = document
+        .querySelector("#fish-tank canvas")
+        ?.getBoundingClientRect();
+      const box =
+        document.querySelector<HTMLCanvasElement>(
+          "#fish-tank canvas",
+        )?.parentElement;
       return {
         width: rect?.width ?? 0,
         height: rect?.height ?? 0,
@@ -2159,10 +2174,13 @@ test("the p5 canvas fits its container at the narrowest width covered here", asy
 }) => {
   await page.setViewportSize({ width: 320, height: 568 });
   await page.goto("/animation");
-  await expect(page.locator("canvas")).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator("#fish-tank canvas")).toBeVisible({
+    timeout: 15_000,
+  });
 
   const measurements = await page.evaluate(() => {
-    const canvas = document.querySelector("canvas");
+    const canvas =
+      document.querySelector<HTMLCanvasElement>("#fish-tank canvas");
     const root = document.documentElement;
     return {
       overflow: root.scrollWidth - root.clientWidth,
@@ -2198,7 +2216,9 @@ test("the tank keeps its proportions and its fish on a short landscape viewport"
   await page.emulateMedia({ reducedMotion: "reduce" });
   await page.setViewportSize({ width: 667, height: 375 });
   await page.goto("/animation");
-  await expect(page.locator("canvas")).toBeVisible({ timeout: 15_000 });
+  await expect(page.locator("#fish-tank canvas")).toBeVisible({
+    timeout: 15_000,
+  });
   await canvasOf(page);
 
   const FISH_BODY_COLOURS = [
@@ -2213,7 +2233,8 @@ test("the tank keeps its proportions and its fish on a short landscape viewport"
   ];
 
   const measured = await page.evaluate((colours) => {
-    const canvas = document.querySelector("canvas");
+    const canvas =
+      document.querySelector<HTMLCanvasElement>("#fish-tank canvas");
     const context = canvas?.getContext("2d");
     if (!canvas || !context) return null;
 
@@ -2264,7 +2285,7 @@ test("the tank keeps its proportions and its fish on a short landscape viewport"
  * reports "still" about half the time.
  */
 const canvasOf = async (page: import("@playwright/test").Page) => {
-  const canvas = page.locator("canvas");
+  const canvas = page.locator("#fish-tank canvas");
   await expect(canvas).toBeVisible({ timeout: 15_000 });
   return canvas;
 };
@@ -2360,7 +2381,8 @@ test.describe("the p5 canvas and prefers-reduced-motion", () => {
     } as const;
 
     const counts = await page.evaluate((colours) => {
-      const canvas = document.querySelector("canvas");
+      const canvas =
+        document.querySelector<HTMLCanvasElement>("#fish-tank canvas");
       const context = canvas?.getContext("2d");
       if (!canvas || !context) {
         return null;
@@ -2406,7 +2428,7 @@ test.describe("the p5 canvas and prefers-reduced-motion", () => {
 
     await expectCanvasToHold(page);
     // The old p5 instance has to go with it, or a second sketch keeps drawing.
-    await expect(page.locator("canvas")).toHaveCount(1);
+    await expect(page.locator("#fish-tank canvas")).toHaveCount(1);
   });
 
   // The other direction is a separate failure mode, not a mirror image: a
@@ -2424,6 +2446,6 @@ test.describe("the p5 canvas and prefers-reduced-motion", () => {
     await page.waitForTimeout(1000);
 
     await expectCanvasToAnimate(page);
-    await expect(page.locator("canvas")).toHaveCount(1);
+    await expect(page.locator("#fish-tank canvas")).toHaveCount(1);
   });
 });
