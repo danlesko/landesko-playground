@@ -65,12 +65,10 @@ export default function Animation() {
           Tetris
         </h2>
         <p className="text-lg mt-2">
-          Rather more state than a fish tank. The rules live apart from the
-          drawing here, so the awkward parts -- rotating a piece flush against a
-          wall, telling the two ways of topping out apart, keeping the fall rate
-          the same on a 144Hz monitor as on a 60Hz one -- are ordinary functions
-          with ordinary tests rather than something you can only poke at through
-          a canvas.
+          Turns out "maybe I'll make some more" meant a game. Arrow keys move,
+          up rotates, space drops — the buttons underneath do the same thing on
+          a phone. Clear a line and the score goes up; clear ten and it starts
+          getting faster.
         </p>
       </div>
       <div className={`${contentColumnClasses} mt-4`}>
