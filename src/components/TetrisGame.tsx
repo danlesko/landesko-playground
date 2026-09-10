@@ -253,6 +253,12 @@ const TetrisGame = () => {
   // shown where a keyboard is likely.
   // Derived, not stored. Shown when the game is over and the reader has not dismissed it.
   const showSavePanel = summary.status === "over" && !saveDismissed;
+  // The two overlays are mutually exclusive: both cover the board, so showing them together
+  // would stack an opaque list behind an opaque form. Before a game, or after one once the
+  // save panel has been dealt with -- which is exactly when someone wants to see where they
+  // placed.
+  const showLeaderboard =
+    summary.status === "idle" || (summary.status === "over" && !showSavePanel);
 
   const statusLabel =
     summary.status === "idle"
@@ -311,13 +317,48 @@ const TetrisGame = () => {
 
             Shown before a game starts and after one ends -- NOT while it is merely paused.
             "Before the game starts" is what was asked for, and now that the panel is opaque,
-            showing it on pause would hide the stack the player paused to look at. */}
-          {(summary.status === "idle" || summary.status === "over") && (
+            showing it on pause would hide the stack the player paused to look at.
+
+            And not while the save panel is up, because the two occupy the same space: both
+            overlay the board, so rendering both would stack an opaque list under an opaque
+            form. The list comes back once the panel is dismissed, which is also when it is
+            most useful -- that is when the reader wants to see where they placed. */}
+          {showLeaderboard && (
             <HighScoreList
               scores={scores}
               unavailable={scoresUnavailable}
               headingId={headingId}
             />
+          )}
+
+          {/* THE SAVE PANEL, over the board rather than under it. Below the board it added
+              height at the exact moment the reader needed it, so on a phone it appeared off
+              the bottom of the screen and had to be scrolled to.
+
+              Three things in the positioning are doing work. It is centred on the board with
+              a translate rather than `inset-0`, so it takes its own height instead of
+              stretching. `w-[min(20rem,88vw)]` lets it be WIDER than the board -- necessary,
+              because a 122px landscape board cannot hold a form -- while never exceeding the
+              viewport. And `max-h-full overflow-y-auto` means the landscape case scrolls
+              rather than escaping the board; unlike the leaderboard this element does receive
+              pointer events, so scrolling actually works here.
+
+              Opaque, for the reason the leaderboard documents: text over a canvas through a
+              translucent layer is text whose contrast axe cannot compute. */}
+          {showSavePanel && (
+            <div className="absolute left-1/2 top-1/2 max-h-full w-[min(20rem,88vw)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-md bg-slate-950 p-3 shadow-lg">
+              <SaveScoreForm
+                score={summary.score}
+                onScores={(next) => {
+                  boardFromWrite.current = true;
+                  setScores(next);
+                  // A board that came back from a write proves the leaderboard is reachable,
+                  // so an earlier failed read must not keep saying otherwise.
+                  setScoresUnavailable(false);
+                }}
+                onDismiss={() => setSaveDismissed(true)}
+              />
+            </div>
           )}
         </div>
       </div>
@@ -399,20 +440,6 @@ const TetrisGame = () => {
             </button>
           ))}
         </div>
-
-        {showSavePanel && (
-          <SaveScoreForm
-            score={summary.score}
-            onScores={(next) => {
-              boardFromWrite.current = true;
-              setScores(next);
-              // A board that came back from a write proves the leaderboard is reachable, so
-              // an earlier failed read must not keep saying otherwise.
-              setScoresUnavailable(false);
-            }}
-            onDismiss={() => setSaveDismissed(true)}
-          />
-        )}
 
         {/* Kept in the DOM but shown only where a keyboard is plausible AND there is height
             to spare. Three things behind that:

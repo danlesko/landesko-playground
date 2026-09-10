@@ -279,6 +279,69 @@ test.describe("the board in a browser", () => {
     expect(await board(), "declining changed the leaderboard").toBe(before);
   });
 
+  test("puts the save panel OVER the board, needing no scroll", async ({
+    page,
+  }) => {
+    // The owner asked for this specifically: below the board the panel added height at the
+    // moment it was needed, so on a phone it appeared off the bottom of the screen. Asserted
+    // as geometry rather than as a class name -- it has to OVERLAP the canvas and sit within
+    // the viewport, which is what "no scrolling" actually means.
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/animation");
+    const board = page.getByRole("application");
+    await board.scrollIntoViewIfNeeded();
+    await board.click();
+    await page.keyboard.press("Enter");
+    for (let i = 0; i < 70; i += 1) {
+      await page.keyboard.press("Space");
+      if ((await page.locator("#tetris-status").innerText()) === "Game over") {
+        break;
+      }
+    }
+    await expect(page.locator("#tetris-status")).toHaveText("Game over");
+
+    const field = page.locator("input[name=playerName]");
+    await expect(field).toBeVisible();
+    const panel = (await field.boundingBox())!;
+    const canvas = (await board.locator("canvas").boundingBox())!;
+
+    // Overlapping the canvas vertically is what makes it an overlay rather than a section
+    // beneath the board.
+    expect(
+      panel.y,
+      "the name field is below the board rather than over it",
+    ).toBeLessThan(canvas.y + canvas.height);
+    expect(panel.y).toBeGreaterThan(canvas.y);
+    // And reachable without scrolling, which was the actual complaint.
+    expect(panel.y + panel.height).toBeLessThanOrEqual(844);
+
+    // Focus is moved into the field, which is a correctness point rather than a nicety: the
+    // board still has focus when a game ends, and Enter on the board starts a new one -- so a
+    // reader typing a name and pressing Enter would lose the panel.
+    await expect(field).toBeFocused();
+  });
+
+  test("shows the leaderboard again only once the save panel is dealt with", async ({
+    page,
+  }) => {
+    // Both overlay the board, so showing them together would stack an opaque list behind an
+    // opaque form.
+    await page.goto("/animation");
+    const board = page.getByRole("application");
+    await board.click();
+    await page.keyboard.press("Enter");
+    for (let i = 0; i < 70; i += 1) {
+      await page.keyboard.press("Space");
+      if ((await page.locator("#tetris-status").innerText()) === "Game over") {
+        break;
+      }
+    }
+
+    await expect(boardRegion(page)).toBeHidden();
+    await page.getByRole("button", { name: /No thanks|Don't save/ }).click();
+    await expect(boardRegion(page)).toBeVisible();
+  });
+
   test("reports the site key as missing rather than offering a dead save", async ({
     page,
   }) => {

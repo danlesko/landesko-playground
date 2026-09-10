@@ -30,14 +30,29 @@ const client = vi.hoisted(() => ({
 vi.mock("@/components/tetris/scoreClient", () => client);
 
 /**
- * Stands in for the widget and answers `getValue()`, because every case here needs the branch
- * BEYOND the captcha guard. `reset` is counted: a panel that never resets its captcha cannot
- * be submitted twice, and the token is single-use.
+ * Stands in for the widget, reporting its token the way the real one does -- through
+ * `onChange`, not through `getValue()`. That distinction is the point: the Save button's
+ * disabled state depends on the token, and `getValue()` is not reactive, so the component reads
+ * it from the callback and holds it in state.
+ *
+ * The callback is captured rather than invoked during render; `solve()` and `expire()` below
+ * fire it from inside `act`. `reset` is counted, because a panel that never resets its captcha
+ * cannot be submitted twice and the token is single-use.
  */
-const widget = vi.hoisted(() => ({ token: null as string | null, resets: 0 }));
+const widget = vi.hoisted(() => ({
+  token: null as string | null,
+  resets: 0,
+  onChange: null as null | ((token: string | null) => void),
+}));
 
 vi.mock("react-google-recaptcha", () => ({
-  default: ({ ref }: { ref?: Ref<unknown> }) => {
+  default: ({
+    ref,
+    onChange,
+  }: {
+    ref?: Ref<unknown>;
+    onChange?: (token: string | null) => void;
+  }) => {
     if (ref && typeof ref === "object") {
       (ref as { current: unknown }).current = {
         getValue: () => widget.token,
@@ -46,6 +61,7 @@ vi.mock("react-google-recaptcha", () => ({
         },
       };
     }
+    widget.onChange = onChange ?? null;
     return null;
   },
 }));
@@ -106,6 +122,20 @@ const click = async (element: Element | undefined): Promise<void> => {
   });
 };
 
+/** Completes the challenge, the way a visitor ticking the box does. */
+const solve = async (): Promise<void> => {
+  await act(async () => {
+    widget.onChange?.(widget.token);
+  });
+};
+
+/** The token timing out, which the real widget reports as `onChange(null)`. */
+const expire = async (): Promise<void> => {
+  await act(async () => {
+    widget.onChange?.(null);
+  });
+};
+
 const liveText = (): string =>
   container.querySelector('[aria-live="polite"]')?.textContent ?? "";
 
@@ -119,6 +149,7 @@ beforeEach(() => {
   process.env[SITE_KEY_VAR] = "a-site-key";
   widget.token = TOKEN;
   widget.resets = 0;
+  widget.onChange = null;
   client.submitHighScore.mockResolvedValue({ status: "saved", scores: [] });
   container = document.createElement("div");
   document.body.append(container);
@@ -173,6 +204,7 @@ describe("submitting", () => {
   it("sends the trimmed name, the score and the captcha token", async () => {
     await mount(1234);
     await type("  Ada  ");
+    await solve();
     await click(button("Save my score"));
 
     expect(client.submitHighScore).toHaveBeenCalledWith({
@@ -182,14 +214,38 @@ describe("submitting", () => {
     });
   });
 
-  it("refuses to submit without a completed challenge, and says so", async () => {
-    widget.token = null;
+  it("keeps Save disabled until the challenge resolves", async () => {
+    // The owner asked for this directly. A name alone is not enough: the button appears once a
+    // name is entered and stays inert until the captcha reports a token.
     await mount();
     await type("Ada");
+    expect(button("Save my score")?.disabled).toBe(true);
+
+    await solve();
+    expect(button("Save my score")?.disabled).toBe(false);
+  });
+
+  it("disables Save again when the token expires", async () => {
+    // A solved token is good for about two minutes and a game-over panel can sit longer. If the
+    // button stayed enabled the submission would be refused for a reason the reader cannot see.
+    await mount();
+    await type("Ada");
+    await solve();
+    await expire();
+
+    expect(button("Save my score")?.disabled).toBe(true);
+  });
+
+  it("refuses to submit if the token vanishes between solving and clicking", async () => {
+    // Reachable rather than theoretical: `onExpired` fires while the panel is open, and the
+    // click may already be in flight. The guard inside `save` is what covers it.
+    await mount();
+    await type("Ada");
+    await solve();
+    await expire();
     await click(button("Save my score"));
 
     expect(client.submitHighScore).not.toHaveBeenCalled();
-    expect(liveText()).toMatch(/challenge/i);
   });
 
   it.each([
@@ -206,6 +262,7 @@ describe("submitting", () => {
       client.submitHighScore.mockResolvedValue(result);
       await mount();
       await type("Ada");
+      await solve();
       await click(button("Save my score"));
 
       expect(widget.resets).toBe(1);
@@ -225,6 +282,7 @@ describe("submitting", () => {
 
     await mount();
     await type("Ada");
+    await solve();
     await click(button("Save my score"));
     // Mid-flight: the control reports itself busy and a second press does nothing.
     expect(button(/Saving/)?.disabled).toBe(true);
@@ -252,6 +310,7 @@ describe("reporting the outcome", () => {
     client.submitHighScore.mockResolvedValue(result);
     await mount();
     await type("Ada");
+    await solve();
     await click(button("Save my score"));
 
     expect(liveText()).toMatch(expected);
@@ -264,6 +323,7 @@ describe("reporting the outcome", () => {
     });
     await mount();
     await type("Ada");
+    await solve();
     await click(button("Save my score"));
 
     expect(boards).toHaveBeenCalledWith([{ name: "Ada", score: 900 }]);
@@ -274,6 +334,7 @@ describe("reporting the outcome", () => {
     // and leaving the field on screen invites a second identical row.
     await mount();
     await type("Ada");
+    await solve();
     await click(button("Save my score"));
 
     expect(container.querySelector("input")).toBeNull();
@@ -284,6 +345,7 @@ describe("reporting the outcome", () => {
     client.submitHighScore.mockResolvedValue({ status: "unavailable" });
     await mount();
     await type("Ada");
+    await solve();
     await click(button("Save my score"));
 
     expect(container.querySelector("input")).not.toBeNull();
@@ -296,8 +358,12 @@ describe("reporting the outcome", () => {
     client.submitHighScore.mockResolvedValue({ status: "unavailable" });
     await mount();
     await type("Ada");
+    await solve();
     await click(button("Save my score"));
     const first = container.querySelector('[aria-live="polite"] span');
+    // Solved AGAIN, because a completed attempt clears the token -- which is correct, the
+    // server has consumed it -- so a second submission needs a second challenge.
+    await solve();
     await click(button("Save my score"));
     const second = container.querySelector('[aria-live="polite"] span');
 

@@ -20,10 +20,16 @@ import { submitHighScore } from "./scoreClient";
  * records nothing, the form never blocks starting another game, and declining is a plain
  * button rather than a corner cross.
  *
- * BELOW the board, not overlaid on it. The leaderboard can sit on the canvas because it is
- * ten short lines; this cannot -- a label, an input, a reCAPTCHA widget (302x78 at its
- * smallest) and two buttons do not fit over a board that is 332px wide on a phone and 122px
- * wide on a landscape one.
+ * OVERLAID on the board, which it was not at first. Below the board it added height at the
+ * exact moment the reader needed to look at it, so on a phone the panel appeared off the
+ * bottom of the screen and had to be scrolled to. Overlaying costs no height at all.
+ *
+ * Fitting it there took two things. The reCAPTCHA widget is `compact` (164x144) rather than
+ * normal (302x78), because these boards are TALL AND NARROW -- 332px wide on a phone, 242px
+ * at 320px, 122px on a landscape phone -- so width is the scarce dimension and 302px does not
+ * fit. And the wrapper that positions it, in `TetrisGame`, may be wider than the board and may
+ * scroll, which covers the landscape case. Unlike the leaderboard this must NOT be
+ * `pointer-events-none`: it holds a text field and buttons.
  */
 
 /**
@@ -66,6 +72,11 @@ const SaveScoreForm = ({ score, onScores, onDismiss }: SaveScoreFormProps) => {
   const fieldId = React.useId();
 
   const [name, setName] = React.useState("");
+  // The token lives in state rather than being read from the widget at submit time, because
+  // the Save button's disabled state depends on it. `getValue()` is not reactive -- nothing
+  // re-renders when the challenge is solved -- so a button gated on it would stay disabled
+  // until some unrelated state changed.
+  const [captchaToken, setCaptchaToken] = React.useState<string | null>(null);
   const [pending, setPending] = React.useState(false);
   const [outcome, setOutcome] = React.useState<Outcome | null>(null);
   // Bumped with every reported outcome, including a repeat of the same one. A live region
@@ -97,6 +108,7 @@ const SaveScoreForm = ({ score, onScores, onDismiss }: SaveScoreFormProps) => {
   // Trimmed here as well as on the server, so a name of only spaces does not look enterable.
   const trimmed = name.trim();
   const nameEntered = trimmed.length > 0;
+  const captchaSolved = captchaToken !== null && captchaToken.length > 0;
   const settled = outcome?.kind === "saved" || outcome?.kind === "missed";
 
   const save = async () => {
@@ -104,7 +116,10 @@ const SaveScoreForm = ({ score, onScores, onDismiss }: SaveScoreFormProps) => {
     // requests record TWO rows, so the button being disabled is not merely cosmetic.
     if (pending || !nameEntered) return;
 
-    const captchaValue = captcha.current?.getValue();
+    // Still checked even though the button is disabled without it: a token can EXPIRE between
+    // being solved and being used, and `onExpired` clears it, so this is a state the reader
+    // can genuinely reach.
+    const captchaValue = captchaToken;
     if (!captchaValue) {
       report({ kind: "captcha-missing" });
       return;
@@ -129,6 +144,9 @@ const SaveScoreForm = ({ score, onScores, onDismiss }: SaveScoreFormProps) => {
     // Leaving a spent token in the widget makes the NEXT attempt fail verification for a
     // reason the reader cannot see.
     captcha.current?.reset();
+    // The widget was cleared, so the state mirroring it has to be too, or Save would stay
+    // enabled holding a token the server has already consumed.
+    setCaptchaToken(null);
 
     if (result.status === "saved" || result.status === "missed") {
       onScores(result.scores);
@@ -139,7 +157,7 @@ const SaveScoreForm = ({ score, onScores, onDismiss }: SaveScoreFormProps) => {
   };
 
   return (
-    <div className="flex w-full max-w-sm flex-col items-stretch gap-2">
+    <div className="flex w-full flex-col items-stretch gap-2">
       <p className="text-center text-lg font-semibold">
         Game over — you scored{" "}
         <span className="tabular-nums text-accent">{score}</span>
@@ -160,6 +178,12 @@ const SaveScoreForm = ({ score, onScores, onDismiss }: SaveScoreFormProps) => {
             maxLength={32}
             autoComplete="off"
             disabled={pending}
+            // Focused on mount, which is a correctness fix rather than a convenience. The
+            // board still holds focus when a game ends, and Enter on the board TOGGLES -- so
+            // a reader who typed a name and pressed Enter would start a new game and lose the
+            // panel. Moving focus here puts Enter on the form. It costs a keyboard appearing
+            // on a phone, which is the lesser surprise.
+            autoFocus
             value={name}
             onChange={(event) => setName(event.target.value)}
             onKeyDown={(event) => {
@@ -175,8 +199,17 @@ const SaveScoreForm = ({ score, onScores, onDismiss }: SaveScoreFormProps) => {
             <div className="flex justify-center">
               <ReCAPTCHA
                 theme="dark"
+                // `compact` (164x144), not the normal 302x78. See the note at the top of this
+                // file: these boards are tall and narrow, so width runs out first.
+                size="compact"
                 ref={captcha}
                 sitekey={recaptchaSiteKey}
+                onChange={(token) => setCaptchaToken(token)}
+                // A solved token is good for about two minutes, and a game-over panel can sit
+                // longer than that. Without these the button would stay enabled and the
+                // submission would be refused for a reason the reader cannot see.
+                onExpired={() => setCaptchaToken(null)}
+                onErrored={() => setCaptchaToken(null)}
               />
             </div>
           ) : (
@@ -200,7 +233,11 @@ const SaveScoreForm = ({ score, onScores, onDismiss }: SaveScoreFormProps) => {
               <button
                 type="button"
                 onClick={() => void save()}
-                disabled={pending}
+                // Disabled until the challenge resolves, as well as while a save is in flight.
+                // The button APPEARS once a name is entered -- the owner's "only after they
+                // enter their name" -- and becomes usable once the captcha resolves, which is
+                // the other half they asked for.
+                disabled={pending || !captchaSolved}
                 className={primaryButtonClasses}
               >
                 {pending ? "Saving…" : "Save my score"}
