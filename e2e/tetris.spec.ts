@@ -95,6 +95,74 @@ test("ignores the operating system's key repeat for pause and hard drop", async 
     .toBeGreaterThan(before);
 });
 
+test("hands the keyboard to the board when Play is clicked", async ({
+  page,
+}) => {
+  // Reported from the preview: on a desktop, clicking Play started the game and then ignored
+  // every arrow key, because the click left focus on the BUTTON. The on-screen instructions
+  // say to click the board, so anyone who used the button instead was left with a running game
+  // and dead controls.
+  //
+  // Never touches the board, which is the point of the test.
+  await page.getByRole("button", { name: "Play" }).click();
+
+  await expect(
+    board(page),
+    "Play did not hand focus to the board",
+  ).toBeFocused();
+
+  const before = await scoreValue(page);
+  await page.keyboard.press("Space");
+  await expect
+    .poll(() => scoreValue(page), {
+      message: "a key pressed after clicking Play did not reach the game",
+    })
+    .toBeGreaterThan(before);
+});
+
+test("keeps the direction buttons usable by keyboard rather than stealing focus", async ({
+  page,
+}) => {
+  // The other half of the same decision. Play hands focus to the board; the direction buttons
+  // deliberately do NOT, because a keyboard visitor who tabs to "Move left" and presses Enter
+  // should be able to press it again rather than have the control become one-shot.
+  await page.getByRole("button", { name: "Play" }).click();
+  const left = page.getByRole("button", { name: "Move left" });
+  await left.focus();
+  await page.keyboard.press("Enter");
+
+  await expect(
+    left,
+    "activating a direction button moved focus away",
+  ).toBeFocused();
+});
+
+test("keeps the next-piece preview a constant size", async ({ page }) => {
+  // Also reported from the preview: the shapes are different widths -- I is 4x1, O is 2x2, the
+  // rest 3x2 -- so a preview sized to its own content reflowed the score row and nudged the
+  // page on every piece. The box is fixed and the shape is centred inside it now.
+  await board(page).click();
+  await page.keyboard.press("Enter");
+
+  const sizes = new Set<string>();
+  for (let i = 0; i < 14; i += 1) {
+    for (const cell of await page
+      .locator("dt:has-text('Next') + dd > span")
+      .all()) {
+      const box = await cell.boundingBox();
+      if (box) sizes.add(`${Math.round(box.width)}x${Math.round(box.height)}`);
+    }
+    await page.keyboard.press("Space");
+    await page.waitForTimeout(80);
+  }
+
+  // Fourteen hard drops walks through more than one bag, so every kind has been previewed.
+  expect(
+    [...sizes],
+    "the preview box changes size between pieces, which reflows the score row",
+  ).toHaveLength(1);
+});
+
 test("keeps arrow keys away from the page scroll while the board has focus", async ({
   page,
 }) => {

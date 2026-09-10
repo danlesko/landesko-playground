@@ -77,25 +77,43 @@ const CONTROLS: Array<{ label: string; action: Action; hint: string }> = [
   { label: "⤓", action: "hardDrop", hint: "Hard drop" },
 ];
 
+/**
+ * One queued piece, drawn in a box of FIXED size.
+ *
+ * The fixed box is the point. `previewCells` trims each shape to its filled cells, which
+ * leaves them different sizes -- `I` is 4x1, `O` is 2x2, the rest are 3x2 -- so a grid sized
+ * to its own content changed width as the queue advanced. That sits in the score row, so the
+ * whole row reflowed and the page visibly jumped on every piece.
+ *
+ * `h-5 w-9` is 20x36px, which clears the largest trimmed shape (17x35 at these cell and gap
+ * sizes) with a pixel to spare, and the flex centring puts every shape in the middle of it
+ * rather than aligned to a corner. Padding the grid to a constant 4x2 instead would have been
+ * the other option and looks worse: a 3-wide piece cannot sit centred in 4 columns without a
+ * half-cell offset.
+ */
 const NextPreview = ({ kind }: { kind: PieceKind }) => (
-  <div
-    className="grid gap-px"
-    style={{
-      gridTemplateColumns: `repeat(${previewCells(kind)[0]?.length ?? 4}, 0.5rem)`,
-    }}
-  >
-    {previewCells(kind)
-      .flat()
-      .map((filled, i) => (
-        <span
-          key={i}
-          className="block h-2 w-2 rounded-sm"
-          // The piece's own colour, from the same map the canvas uses. Hardcoding one made
-          // every preview cyan, so the preview told you the shape and lied about the piece.
-          style={filled ? { backgroundColor: PIECE_COLOURS[kind] } : undefined}
-        />
-      ))}
-  </div>
+  <span className="flex h-5 w-9 items-center justify-center">
+    <span
+      className="grid gap-px"
+      style={{
+        gridTemplateColumns: `repeat(${previewCells(kind)[0]?.length ?? 4}, 0.5rem)`,
+      }}
+    >
+      {previewCells(kind)
+        .flat()
+        .map((filled, i) => (
+          <span
+            key={i}
+            className="block h-2 w-2 rounded-sm"
+            // The piece's own colour, from the same map the canvas uses. Hardcoding one made
+            // every preview cyan, so the preview told you the shape and lied about the piece.
+            style={
+              filled ? { backgroundColor: PIECE_COLOURS[kind] } : undefined
+            }
+          />
+        ))}
+    </span>
+  </span>
 );
 
 const TetrisGame = () => {
@@ -104,6 +122,8 @@ const TetrisGame = () => {
   // against, and it is safe to measure because it does not depend on the canvas: the score,
   // the buttons and the instructions are the same size whatever the board does.
   const furnitureRef = React.useRef<HTMLDivElement>(null);
+  // The focusable board itself, so a control that STARTS a game can hand the keyboard to it.
+  const boardRef = React.useRef<HTMLDivElement>(null);
   const headingId = React.useId();
 
   // `null` until the first request settles, which is what the list renders as "Loading".
@@ -215,6 +235,27 @@ const TetrisGame = () => {
     [controller],
   );
 
+  /**
+   * Starts a game AND gives the board the keyboard.
+   *
+   * Used by the Play/Pause/Play-again control, which is the whole reason it exists. Clicking a
+   * button moves focus to that button, so the game began and then ignored every arrow key
+   * until the player thought to click the board -- the instructions say to click the board, so
+   * anyone who used the button instead was left with a running game and dead controls.
+   *
+   * Focusing unconditionally rather than only when starting, because pausing with the button
+   * and then resuming with the keyboard should work too. It cannot cause a spurious pause: the
+   * board is inside the element carrying `onBlur`, so this is a move WITHIN the game, and
+   * `relatedTarget` is what that handler checks.
+   */
+  const startAndFocus = React.useCallback(
+    (action: Action) => {
+      send(action);
+      boardRef.current?.focus();
+    },
+    [send],
+  );
+
   const onKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
     // A press on one of the control buttons is that button's, not the board's, or Space and
     // Enter would both activate the button and play a move.
@@ -291,6 +332,7 @@ const TetrisGame = () => {
             width shrinks to its content. */}
         <div className="relative">
           <div
+            ref={boardRef}
             tabIndex={0}
             // `application` so arrow keys reach the game instead of being taken by a screen
             // reader's own browse-mode navigation, which is the documented pattern for a
@@ -412,7 +454,7 @@ const TetrisGame = () => {
           <button
             type="button"
             onClick={() =>
-              send(summary.status === "over" ? "restart" : "toggle")
+              startAndFocus(summary.status === "over" ? "restart" : "toggle")
             }
             // cyan-700, not the 600 this started as: white on #0092b8 is 3.62:1, under the
             // 4.5:1 that 16px text needs, and axe caught it. 700 measures 5.10:1. The hover
@@ -428,6 +470,12 @@ const TetrisGame = () => {
                   ? "Resume"
                   : "Play"}
           </button>
+          {/* The direction buttons deliberately do NOT hand focus back to the board, unlike
+              Play. A keyboard visitor who tabs to "Move left" and presses Enter should be able
+              to press it again; stealing focus after each activation would make it a
+              one-shot control. They are already keyboard-operable as buttons, which is what
+              makes that acceptable -- the reported problem was Play specifically, because a
+              game that has STARTED and ignores every arrow key is a dead end. */}
           {CONTROLS.map(({ label, action, hint }) => (
             <button
               key={action}

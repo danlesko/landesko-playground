@@ -807,7 +807,28 @@ export const renderCells = (state: GameState): RenderCell[][] => {
 };
 
 /** The shape of a queued piece, for the preview. */
-export const previewCells = (kind: PieceKind): boolean[][] =>
-  must(must(ROTATIONS[kind], kind)[0], `${kind} spawn`).map((row) =>
-    row.split("").map((char) => char !== "."),
+/**
+ * The spawn shape as a boolean grid, TRIMMED of empty rows and columns.
+ *
+ * Trimmed because the raw matrices are different sizes for reasons that have nothing to do
+ * with how a piece looks: `I` lives in a 4x4 box with one filled row, `O` in a 2x2, and the
+ * rest in a 3x3 with an empty bottom row. Rendered directly, the preview's footprint changed
+ * with every piece, and since it sits in the score row that nudged the whole page as the queue
+ * advanced.
+ *
+ * Trimming makes the widths 4, 3 and 2 and the heights 1 or 2 -- still not uniform, which is
+ * why the CALLER draws this centred inside a fixed box rather than relying on the grid itself
+ * to be a constant size. Padding to a fixed 4x4 here would have been the other option and
+ * looks worse: a 3-wide piece cannot be centred in 4 columns without a half-cell offset.
+ */
+export const previewCells = (kind: PieceKind): boolean[][] => {
+  const rows = must(must(ROTATIONS[kind], kind)[0], `${kind} spawn`).map(
+    (row) => row.split("").map((char) => char !== "."),
   );
+  const width = rows[0]?.length ?? 0;
+  const usedColumn = (x: number) => rows.some((row) => row[x] === true);
+  const columns = Array.from({ length: width }, (_, x) => x).filter(usedColumn);
+  return rows
+    .filter((row) => row.some(Boolean))
+    .map((row) => columns.map((x) => row[x] === true));
+};
