@@ -228,3 +228,47 @@ export const resetHighScores = async (): Promise<void> => {
       ('E2E Third Place',  100, '2026-01-02 03:04:07+00');
   `);
 };
+
+/**
+ * Runs several statements AT THE SAME TIME against the e2e Postgres, and returns nothing.
+ *
+ * The distinction from calling `runSql` N times in a `Promise.all` is the whole reason this
+ * exists, and it was found by mutation: twenty `docker compose exec` invocations do not
+ * overlap, because each pays container-exec startup, so the writes serialise by accident and a
+ * test built that way passes even with the leaderboard's advisory lock REMOVED.
+ *
+ * Starting the clients inside a single container shell instead produces genuine contention.
+ * Measured against a nine-row table with twenty writers: locked leaves 10, 10, 10; unlocked
+ * leaves 14, 14, 3 -- the last of those having LOST six of the nine rows it started with.
+ */
+export const runSqlConcurrently = async (
+  statements: readonly string[],
+): Promise<void> => {
+  const { execFile } = await import("node:child_process");
+  const { promisify } = await import("node:util");
+  const { join } = await import("node:path");
+  const compose = join(__dirname, "db/compose.yaml");
+  // Each statement is passed as an argument to the shell, so nothing is interpolated into the
+  // script text. `$0` is the script name, so the statements start at `$1`.
+  const script = `
+    i=1
+    for stmt in "$@"; do
+      psql -U postgres -d main -v ON_ERROR_STOP=1 -tAc "$stmt" >/dev/null 2>&1 &
+      i=$((i + 1))
+    done
+    wait
+  `;
+  await promisify(execFile)("docker", [
+    "compose",
+    "-f",
+    compose,
+    "exec",
+    "-T",
+    "postgres",
+    "sh",
+    "-c",
+    script,
+    "concurrent",
+    ...statements,
+  ]);
+};

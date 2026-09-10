@@ -192,16 +192,25 @@ describe("submitting", () => {
     expect(liveText()).toMatch(/challenge/i);
   });
 
-  it("resets the captcha after an attempt, whatever the outcome", async () => {
-    // The token is single-use. Leaving a spent one in the widget makes the NEXT attempt fail
-    // verification for a reason the reader cannot see.
-    client.submitHighScore.mockResolvedValue({ status: "unavailable" });
-    await mount();
-    await type("Ada");
-    await click(button("Save my score"));
+  it.each([
+    [{ status: "saved", scores: [] }],
+    [{ status: "missed", scores: [] }],
+    [{ status: "rejected" }],
+    [{ status: "unavailable" }],
+  ] as Array<[SubmitResult]>)(
+    "resets the captcha after %o, not only after a failure",
+    async (result) => {
+      // The token is single-use. Leaving a spent one in the widget makes the NEXT attempt fail
+      // verification for a reason the reader cannot see. The first version of this test only
+      // exercised `unavailable`, so resetting on that outcome alone would have passed it.
+      client.submitHighScore.mockResolvedValue(result);
+      await mount();
+      await type("Ada");
+      await click(button("Save my score"));
 
-    expect(widget.resets).toBe(1);
-  });
+      expect(widget.resets).toBe(1);
+    },
+  );
 
   it("cannot be submitted twice by clicking twice", async () => {
     // PUT is not idempotent here -- two identical requests record two rows -- so this is a

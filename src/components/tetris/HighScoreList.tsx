@@ -94,10 +94,19 @@ const HighScoreList = ({
             <span className="w-5 shrink-0 text-right text-slate-400">
               {index + 1}
             </span>
-            {/* `break-all` and `min-w-0`: a name can be 32 characters with no spaces, which
-                is wider than the board on a phone. Without these it pushes the score out of
-                the overlay entirely. */}
-            <span className="min-w-0 grow break-all text-foreground">
+            {/* ONE LINE PER ROW, clipped with an ellipsis -- not wrapped. A 32-character name
+                with no spaces is wider than the board on a phone, and `break-all` let it wrap
+                over several lines, which pushed the lower entries out of a panel that cannot
+                be scrolled: `pointer-events-none` is what keeps the board clickable, and it
+                also means `overflow-y-auto` can never be reached by a pointer. Ten
+                single-line rows always fit, so nothing needs scrolling.
+
+                The full name stays in the DOM, so a screen reader reads all of it and the
+                `title` gives a pointer user the rest. */}
+            <span
+              className="min-w-0 grow truncate text-foreground"
+              title={entry.name}
+            >
               {entry.name}
             </span>
             <span className="shrink-0 font-semibold text-foreground">

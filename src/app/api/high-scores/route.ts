@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { verifyRecaptchaToken } from "@/lib/recaptcha";
+import { verifyRecaptcha } from "@/lib/recaptcha";
 import {
   HIGH_SCORE_LIMIT,
   fetchHighScores,
@@ -46,7 +46,19 @@ const SubmissionSchema = z.object({
     })
     .trim()
     .min(1, "A name is required")
-    .max(32, "A name must be 32 characters or fewer"),
+    .max(32, "A name must be 32 characters or fewer")
+    // No control characters, and no bidirectional overrides. React escapes markup, so this
+    // is not about XSS -- it is about a name that can reorder or hide the rest of the row it
+    // is rendered in. A right-to-left override in a leaderboard entry garbles every entry
+    // after it, and a zero-width run renders as a blank row that cannot be identified for
+    // the manual DELETE that moderation depends on.
+    //
+    // A denylist of ranges rather than an allowlist of letters, deliberately: an allowlist
+    // would have to enumerate every script a real person's name can be written in, and
+    // getting that wrong means refusing someone their own name.
+    .refine((value) => !/[\p{Cc}\p{Cf}]/u.test(value), {
+      error: "A name cannot contain control characters",
+    }),
   score: z
     .number({
       error: (issue) =>
@@ -112,11 +124,22 @@ export async function PUT(req: Request) {
   const { name, score, captchaValue } = parsed.data;
 
   // BEFORE the database, so a failed captcha costs a round trip to Google and nothing else.
-  const verified = await verifyRecaptchaToken(captchaValue);
-  if (!verified) {
-    // Static, for the same reason the recaptcha route gives: the upstream error can carry
-    // the request details and therefore the secret.
-    return Response.json({ message: "Failed to verify" }, { status: 400 });
+  const verification = await verifyRecaptcha(captchaValue);
+  if (!verification.ok) {
+    // The two failures get different statuses, which is a fix rather than a refinement.
+    // Collapsing them into 400 told a visitor their submission was REFUSED when the actual
+    // cause was a missing secret or Google being unreachable -- sending them back round a
+    // challenge that could never help. 503 is the same answer the database's outage gets,
+    // and the client already words that as "not your doing".
+    //
+    // Both messages are static: the upstream error can carry the request details and
+    // therefore the secret.
+    return verification.reason === "rejected"
+      ? Response.json({ message: "Failed to verify" }, { status: 400 })
+      : Response.json(
+          { message: "Verification is unavailable." },
+          { status: 503 },
+        );
   }
 
   try {

@@ -7,11 +7,11 @@ vi.mock("@/lib/high-scores", () => ({
 }));
 
 vi.mock("@/lib/recaptcha", () => ({
-  verifyRecaptchaToken: vi.fn(),
+  verifyRecaptcha: vi.fn(),
 }));
 
 import { fetchHighScores, recordHighScore } from "@/lib/high-scores";
-import { verifyRecaptchaToken } from "@/lib/recaptcha";
+import { verifyRecaptcha } from "@/lib/recaptcha";
 import { GET, PUT } from "./route";
 
 /**
@@ -48,7 +48,7 @@ const payload = async (response: Response): Promise<Record<string, unknown>> =>
   (await response.json()) as Record<string, unknown>;
 
 beforeEach(() => {
-  vi.mocked(verifyRecaptchaToken).mockResolvedValue(true);
+  vi.mocked(verifyRecaptcha).mockResolvedValue({ ok: true });
   vi.mocked(fetchHighScores).mockResolvedValue([]);
   vi.mocked(recordHighScore).mockResolvedValue({ saved: true, scores: [] });
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -112,7 +112,10 @@ describe("PUT /api/high-scores", () => {
     // The order is the point, not merely that both happen. A route that recorded the score
     // and then checked the captcha would pass every other test here while leaving the
     // endpoint effectively unprotected.
-    vi.mocked(verifyRecaptchaToken).mockResolvedValue(false);
+    vi.mocked(verifyRecaptcha).mockResolvedValue({
+      ok: false,
+      reason: "rejected",
+    });
     const response = await submit(valid);
 
     expect(response.status).toBe(400);
@@ -122,10 +125,36 @@ describe("PUT /api/high-scores", () => {
     ).not.toHaveBeenCalled();
   });
 
+  it("separates a REFUSED captcha from an unavailable verifier", async () => {
+    // The distinction is the whole point of the richer result. A missing secret, or Google
+    // being unreachable, is not the visitor's doing -- answering 400 told them their
+    // submission was refused and sent them back round a challenge that could not help.
+    vi.mocked(verifyRecaptcha).mockResolvedValue({
+      ok: false,
+      reason: "unavailable",
+    });
+    const response = await submit(valid);
+
+    expect(response.status).toBe(503);
+    expect(recordHighScore).not.toHaveBeenCalled();
+  });
+
+  it("rejects a name carrying control or bidi characters", async () => {
+    // Not an XSS guard -- React escapes markup. A right-to-left override garbles every row
+    // after it, and a zero-width run renders as a blank entry that cannot be named in the
+    // manual DELETE moderation depends on.
+    for (const name of ["Ada\u202E", "Ada\u200B", "Ada\u0000"]) {
+      vi.mocked(recordHighScore).mockClear();
+      const response = await submit({ ...valid, name });
+      expect(response.status, JSON.stringify(name)).toBe(400);
+      expect(recordHighScore).not.toHaveBeenCalled();
+    }
+  });
+
   it("refuses a submission with no captcha at all", async () => {
     const response = await submit({ name: "Ada", score: 900 });
     expect(response.status).toBe(400);
-    expect(verifyRecaptchaToken).not.toHaveBeenCalled();
+    expect(verifyRecaptcha).not.toHaveBeenCalled();
     expect(recordHighScore).not.toHaveBeenCalled();
   });
 

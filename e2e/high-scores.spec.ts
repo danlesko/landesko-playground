@@ -6,6 +6,7 @@ import {
   NO_DATABASE_REASON,
   resetHighScores,
   runSql,
+  runSqlConcurrently,
 } from "./fixtures";
 
 /**
@@ -119,9 +120,27 @@ test.describe("the database function", () => {
     await record("cheat", 2);
 
     expect(await rowCount(), "the surplus row was not shed").toBe(10);
-    const after = await board();
-    expect(after, "an equal score displaced a better one").toContain("s2:2");
-    expect(after).not.toContain("cheat:");
+    // The EXACT board, in order. Checking only that `s2` survived left room for the wrong row
+    // being evicted instead -- the count and that one name would both still look right.
+    expect(await board()).toBe(
+      "s11:11 s10:10 s9:9 s8:8 s7:7 s6:6 s5:5 s4:4 s3:3 s2:2",
+    );
+  });
+
+  test("sheds two surplus rows when an over-full table takes a qualifying score", async () => {
+    // Twelve rows AND a score that belongs, which is the arithmetic's busiest case: the
+    // surplus is `12 - 10 + 1 = 3`, so three go and one arrives. No test covered it.
+    await runSql(`
+      TRUNCATE high_scores;
+      INSERT INTO high_scores (name, score)
+      SELECT 's' || g, g FROM generate_series(1, 12) g;
+    `);
+    await record("earned", 100);
+
+    expect(await rowCount()).toBe(10);
+    expect(await board()).toBe(
+      "earned:100 s12:12 s11:11 s10:10 s9:9 s8:8 s7:7 s6:6 s5:5 s4:4",
+    );
   });
 
   test("keeps exactly ten rows under simultaneous writes", async () => {
@@ -130,11 +149,34 @@ test.describe("the database function", () => {
     // locally, because concurrent deletes removed rows while the inserts raced. Losing
     // entries, not just gaining them.
     await fill(9);
-    await Promise.all(
-      Array.from({ length: 20 }, (_, i) => record(`c${i}`, 1000 + i)),
+    // Through ONE container shell, not twenty `docker compose exec` calls. That distinction is
+    // the test: twenty exec invocations each pay startup, so they serialise by accident and
+    // this passed with the lock removed. Real overlap leaves the unlocked function at 14 rows,
+    // and once at 3 -- having lost six of the nine it started with.
+    await runSqlConcurrently(
+      Array.from(
+        { length: 20 },
+        (_, i) => `SELECT public.record_high_score('c${i}', ${1000 + i})`,
+      ),
     );
 
     expect(await rowCount()).toBe(10);
+    // Counting rows is not enough, and that was the first version of this test. An
+    // implementation that keeps ten rows while LOSING the strongest entries passes a count.
+    // These twenty scores are 1000..1019 against nine seeded rows of 100..900, so the exact
+    // ten survivors are knowable: the top ten submissions, c10 through c19.
+    const survivors = await board();
+    for (let i = 10; i < 20; i += 1) {
+      expect(survivors, `c${i} was lost under contention`).toContain(
+        `c${i}:${1000 + i}`,
+      );
+    }
+    // And none of the losers stayed.
+    for (let i = 0; i < 10; i += 1) {
+      expect(survivors, `c${i} should have been displaced`).not.toContain(
+        `c${i}:`,
+      );
+    }
   });
 
   test("stores a 32-character name and a name containing quotes", async () => {
@@ -197,15 +239,18 @@ test.describe("the board in a browser", () => {
     ).toHaveCount(0);
   });
 
-  test("hides the board once play begins, and brings it back after", async ({
+  test("hides the board once play begins, and keeps it hidden on pause", async ({
     page,
   }) => {
+    // Staying hidden on pause is deliberate. The panel is opaque, so showing it there would
+    // cover the stack a player pauses precisely to look at -- and "before the game starts" is
+    // what was asked for.
     const region = boardRegion(page);
     await page.getByRole("button", { name: "Play" }).click();
     await expect(region).toBeHidden();
 
     await page.getByRole("button", { name: "Pause" }).click();
-    await expect(region).toBeVisible();
+    await expect(region).toBeHidden();
   });
 
   test("offers a way to decline saving, and records nothing", async ({

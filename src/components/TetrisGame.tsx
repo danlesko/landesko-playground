@@ -109,6 +109,11 @@ const TetrisGame = () => {
   // `null` until the first request settles, which is what the list renders as "Loading".
   const [scores, setScores] = React.useState<HighScore[] | null>(null);
   const [scoresUnavailable, setScoresUnavailable] = React.useState(false);
+  // Set once a WRITE has returned an authoritative board. The initial GET must not overwrite
+  // that, and it can: a stalled read started before the save can resolve after it, replacing
+  // the board that includes the player's score with the one that predates it -- or marking it
+  // unavailable. A ref rather than state because nothing renders from it.
+  const boardFromWrite = React.useRef(false);
   // Whether the reader has waved the save panel away for THIS game. Not "is the panel
   // open", which is derived below -- storing that would be storing a copy of the game's own
   // status, and react-hooks 7 rightly objects to the effect it would take to keep in step.
@@ -181,7 +186,9 @@ const TetrisGame = () => {
   React.useEffect(() => {
     let cancelled = false;
     void loadHighScores().then((result) => {
-      if (cancelled) return;
+      // A save that landed while this was in flight wins: its board is newer and came from
+      // the same statement that changed it.
+      if (cancelled || boardFromWrite.current) return;
       if (result.status === "ok") setScores(result.scores);
       else setScoresUnavailable(true);
     });
@@ -302,9 +309,10 @@ const TetrisGame = () => {
             a screen reader to hand keys to the widget instead of navigating; a list someone
             wants to read line by line must not be inside that.
 
-            Shown when the game is not running, which is what the owner asked for -- the board
-            is empty then, so the scores have somewhere to sit. */}
-          {summary.status !== "playing" && (
+            Shown before a game starts and after one ends -- NOT while it is merely paused.
+            "Before the game starts" is what was asked for, and now that the panel is opaque,
+            showing it on pause would hide the stack the player paused to look at. */}
+          {(summary.status === "idle" || summary.status === "over") && (
             <HighScoreList
               scores={scores}
               unavailable={scoresUnavailable}
@@ -396,6 +404,7 @@ const TetrisGame = () => {
           <SaveScoreForm
             score={summary.score}
             onScores={(next) => {
+              boardFromWrite.current = true;
               setScores(next);
               // A board that came back from a write proves the leaderboard is reachable, so
               // an earlier failed read must not keep saying otherwise.

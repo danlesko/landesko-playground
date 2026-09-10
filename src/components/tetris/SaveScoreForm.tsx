@@ -73,6 +73,21 @@ const SaveScoreForm = ({ score, onScores, onDismiss }: SaveScoreFormProps) => {
   // be announced once -- measured elsewhere in this repo. Keying the message on this forces
   // React to replace the node, which counts as a change.
   const [revision, setRevision] = React.useState(0);
+  // Whether this panel is still on screen when a request comes back. It can genuinely not be:
+  // "Play again" stays enabled during a save and unmounts this component, and the pending
+  // continuation would then reset a widget that is gone, set state nobody reads, and hand a
+  // board to a parent that has moved on.
+  const mounted = React.useRef(true);
+  React.useEffect(() => {
+    // Set on the way IN as well as cleared on the way out. Without the first line this breaks
+    // under StrictMode, which mounts, unmounts and remounts: the first cleanup sets it false
+    // and nothing ever sets it back, so every save would silently discard its own result in
+    // development.
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
 
   const report = (next: Outcome) => {
     setOutcome(next);
@@ -102,6 +117,12 @@ const SaveScoreForm = ({ score, onScores, onDismiss }: SaveScoreFormProps) => {
       score,
       captchaValue,
     });
+
+    // Everything past this point touches this component or its parent, so it only runs if
+    // both are still here. Note what this does NOT fix: the write may have COMMITTED before
+    // the reader started a new game, and nothing here can undo that -- see the note on
+    // duplicate rows in `high-scores.ts`.
+    if (!mounted.current) return;
     setPending(false);
 
     // A reCAPTCHA token is single-use and expires, so it must be cleared whatever happened.
