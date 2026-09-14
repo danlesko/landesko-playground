@@ -52,6 +52,7 @@ describe("loadHighScores", () => {
     });
     await expect(loadHighScores()).resolves.toEqual({
       status: "ok",
+      canModerate: false,
       scores: [
         { name: "ada", score: 900 },
         { name: "grace", score: 400 },
@@ -95,7 +96,12 @@ describe("loadHighScores", () => {
 });
 
 describe("submitHighScore", () => {
-  const submission = { name: "Ada", score: 900, captchaValue: "token" };
+  const submission = {
+    name: "Ada",
+    score: 900,
+    captchaValue: "token",
+    submissionId: "33333333-3333-4333-8333-333333333333",
+  };
 
   it("PUTs the submission as JSON", async () => {
     respondWith({ saved: true, scores: [] });
@@ -112,6 +118,7 @@ describe("submitHighScore", () => {
     respondWith({ saved: true, scores: [{ name: "Ada", score: 900 }] });
     await expect(submitHighScore(submission)).resolves.toEqual({
       status: "saved",
+      canModerate: false,
       scores: [{ name: "Ada", score: 900 }],
     });
   });
@@ -123,6 +130,7 @@ describe("submitHighScore", () => {
     respondWith({ saved: false, scores: [{ name: "ada", score: 900 }] });
     await expect(submitHighScore(submission)).resolves.toEqual({
       status: "missed",
+      canModerate: false,
       scores: [{ name: "ada", score: 900 }],
     });
   });

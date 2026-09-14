@@ -29,6 +29,10 @@ import {
  * Postgres by `e2e/high-scores.spec.ts`; these cover what a mock can see.
  */
 
+const ID_A = "11111111-1111-4111-8111-111111111111";
+const ID_B = "22222222-2222-4222-8222-222222222222";
+const SUBMISSION = "33333333-3333-4333-8333-333333333333";
+
 beforeEach(() => {
   resetSqlMock();
   vi.spyOn(console, "error").mockImplementation(() => {});
@@ -52,32 +56,35 @@ describe("fetchHighScores", () => {
     });
   });
 
-  it("reads only the two columns the client needs", async () => {
-    // Not `SELECT *`. `id` and `created_at` order rows inside the database and are no use
-    // to a browser, so they must not travel.
+  it("reads only the columns something needs, and never `SELECT *`", async () => {
+    // `created_at` orders rows inside the database and no caller has a use for it. `id` IS
+    // read, for one caller only: the owner's remove control needs a safe handle, and a
+    // name-and-score pair is not one -- two players can share both. The ROUTE strips it for
+    // anyone else.
     queueSqlResult([]);
     await fetchHighScores();
     const query = normalizeSql(onlySqlCall().text);
-    expect(query).toContain("SELECT name, score");
+    expect(query).toContain("SELECT id, name, score");
     expect(query).not.toContain("SELECT *");
+    expect(query).not.toContain("created_at,");
   });
 
   it("returns the rows in the order the database gave them", async () => {
     // The function must not re-sort; the ORDER BY above is the single source of the order.
     queueSqlResult([
-      { name: "ada", score: 900 },
-      { name: "grace", score: 400 },
+      { id: ID_A, name: "ada", score: 900 },
+      { id: ID_B, name: "grace", score: 400 },
     ]);
     await expect(fetchHighScores()).resolves.toEqual([
-      { name: "ada", score: 900 },
-      { name: "grace", score: 400 },
+      { id: ID_A, name: "ada", score: 900 },
+      { id: ID_B, name: "grace", score: 400 },
     ]);
   });
 
   it("rejects a row whose shape has drifted, rather than passing it on", async () => {
     // A cast would let this through. `score` arriving as a string is the realistic drift --
     // it is what COUNT(*) does, because bigint has no safe JS number.
-    queueSqlResult([{ name: "ada", score: "900" }]);
+    queueSqlResult([{ id: ID_A, name: "ada", score: "900" }]);
     await expect(fetchHighScores()).rejects.toThrow(
       "Failed to fetch high scores.",
     );
@@ -106,20 +113,28 @@ describe("recordHighScore", () => {
     // its own insert. `migrations/0005_high_scores.sql` records both dead ends. What is left
     // to assert here is that this function does not reintroduce either.
     queueSqlResult(result(true));
-    await recordHighScore("ada", 900);
+    await recordHighScore("ada", 900, SUBMISSION);
 
     expect(sqlCalls()).toHaveLength(1);
     expect(normalizeSql(onlySqlCall().text)).toBe(
-      "SELECT public.record_high_score($1, $2)",
+      "SELECT public.record_high_score($1, $2, $3::uuid)",
     );
   });
 
   it("binds the name and score as parameters, never as text", async () => {
     queueSqlResult(result(true));
-    await recordHighScore("Robert'); DROP TABLE high_scores;--", 42);
+    await recordHighScore(
+      "Robert'); DROP TABLE high_scores;--",
+      42,
+      SUBMISSION,
+    );
     const call = onlySqlCall();
 
-    expect(call.values).toEqual(["Robert'); DROP TABLE high_scores;--", 42]);
+    expect(call.values).toEqual([
+      "Robert'); DROP TABLE high_scores;--",
+      42,
+      SUBMISSION,
+    ]);
     expect(normalizeSql(call.text)).not.toContain("DROP TABLE");
   });
 
@@ -128,15 +143,15 @@ describe("recordHighScore", () => {
     // unstored -- which would invite a retry that stores it twice.
     queueSqlResult(
       result(true, [
-        { name: "ada", score: 900 },
-        { name: "grace", score: 400 },
+        { id: ID_A, name: "ada", score: 900 },
+        { id: ID_B, name: "grace", score: 400 },
       ]),
     );
-    await expect(recordHighScore("ada", 900)).resolves.toEqual({
+    await expect(recordHighScore("ada", 900, SUBMISSION)).resolves.toEqual({
       saved: true,
       scores: [
-        { name: "ada", score: 900 },
-        { name: "grace", score: 400 },
+        { id: ID_A, name: "ada", score: 900 },
+        { id: ID_B, name: "grace", score: 400 },
       ],
     });
     expect(sqlCalls()).toHaveLength(1);
@@ -144,8 +159,8 @@ describe("recordHighScore", () => {
 
   it("reports not saved when the score did not earn a place", async () => {
     // Zero inserted is an ORDINARY outcome, not a failure -- the score was simply too low.
-    queueSqlResult(result(false, [{ name: "ada", score: 900 }]));
-    await expect(recordHighScore("bob", 1)).resolves.toMatchObject({
+    queueSqlResult(result(false, [{ id: ID_A, name: "ada", score: 900 }]));
+    await expect(recordHighScore("bob", 1, SUBMISSION)).resolves.toMatchObject({
       saved: false,
     });
   });
@@ -156,7 +171,7 @@ describe("recordHighScore", () => {
         "function public.record_high_score(text, integer) does not exist",
       ),
     );
-    await expect(recordHighScore("ada", 900)).rejects.toThrow(
+    await expect(recordHighScore("ada", 900, SUBMISSION)).rejects.toThrow(
       "Failed to record high score.",
     );
     expect(console.error).toHaveBeenCalled();
@@ -166,14 +181,14 @@ describe("recordHighScore", () => {
     // The function's contract is as much a shape to validate as a table row is. `saved`
     // arriving as a string is what a rewritten function returning text would look like.
     queueSqlResult([{ record_high_score: { saved: "true", scores: [] } }]);
-    await expect(recordHighScore("ada", 900)).rejects.toThrow(
+    await expect(recordHighScore("ada", 900, SUBMISSION)).rejects.toThrow(
       "Failed to record high score.",
     );
   });
 
   it("rejects a result with no payload at all", async () => {
     queueSqlResult([]);
-    await expect(recordHighScore("ada", 900)).rejects.toThrow(
+    await expect(recordHighScore("ada", 900, SUBMISSION)).rejects.toThrow(
       "Failed to record high score.",
     );
   });

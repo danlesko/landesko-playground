@@ -3,7 +3,6 @@
 import React from "react";
 import ReCAPTCHA from "react-google-recaptcha";
 
-import type { HighScore } from "@/lib/definitions";
 import {
   formErrorClasses,
   formInputClasses,
@@ -11,7 +10,7 @@ import {
   formSuccessClasses,
 } from "@/components/ui/form";
 import { primaryButtonClasses } from "@/components/ui/button";
-import { submitHighScore } from "./scoreClient";
+import { submitHighScore, type ClientScore } from "./scoreClient";
 
 /**
  * Offered after a game ends: record this score under a name, or don't.
@@ -45,6 +44,7 @@ type Outcome =
   | { kind: "saved" }
   | { kind: "missed" }
   | { kind: "rejected" }
+  | { kind: "rate-limited" }
   | { kind: "unavailable" }
   | { kind: "captcha-missing" };
 
@@ -53,14 +53,16 @@ const MESSAGES: Record<Outcome["kind"], string> = {
   // Phrased as the leaderboard working, because it is. This is a 200 from the server.
   missed: "That score did not make the top ten.",
   rejected: "That submission was refused. Try the challenge again.",
+  // Distinct wording because it is the one failure with a useful instruction attached.
+  "rate-limited": "Too many attempts just now. Wait a moment and try again.",
   unavailable: "The leaderboard could not be reached, so nothing was saved.",
   "captcha-missing": "Complete the challenge first.",
 };
 
 export type SaveScoreFormProps = {
   score: number;
-  /** Called with the board the server returned, so the overlay can show it. */
-  onScores: (scores: HighScore[]) => void;
+  /** Passed the board the server returned, and whether this reader may moderate it. */
+  onScores: (scores: ClientScore[], canModerate: boolean) => void;
   /** Called when the reader is finished with this panel, saved or not. */
   onDismiss: () => void;
 };
@@ -77,6 +79,10 @@ const SaveScoreForm = ({ score, onScores, onDismiss }: SaveScoreFormProps) => {
   // re-renders when the challenge is solved -- so a button gated on it would stay disabled
   // until some unrelated state changed.
   const [captchaToken, setCaptchaToken] = React.useState<string | null>(null);
+  // One per panel, minted once and reused by every attempt from it. That is what makes a resend
+  // after a lost response safe: the server keys on it and returns the existing board instead of
+  // inserting a second row for the same game. A new id per CLICK would defeat the whole point.
+  const [submissionId] = React.useState(() => crypto.randomUUID());
   const [pending, setPending] = React.useState(false);
   const [outcome, setOutcome] = React.useState<Outcome | null>(null);
   // Bumped with every reported outcome, including a repeat of the same one. A live region
@@ -131,6 +137,7 @@ const SaveScoreForm = ({ score, onScores, onDismiss }: SaveScoreFormProps) => {
       name: trimmed,
       score,
       captchaValue,
+      submissionId,
     });
 
     // Everything past this point touches this component or its parent, so it only runs if
@@ -149,7 +156,7 @@ const SaveScoreForm = ({ score, onScores, onDismiss }: SaveScoreFormProps) => {
     setCaptchaToken(null);
 
     if (result.status === "saved" || result.status === "missed") {
-      onScores(result.scores);
+      onScores(result.scores, result.canModerate);
       report({ kind: result.status });
       return;
     }

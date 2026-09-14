@@ -136,8 +136,28 @@ Both variables are needed. Without the CA override every query fails as a bare
 `fetch failed`, because the local stack serves TLS through Caddy and `NODE_EXTRA_CA_CERTS`
 is read at process startup.
 
-There is no moderation UI. Names are player-supplied text shown to every visitor, so
-removing one is `DELETE FROM public.high_scores WHERE name = '…'`.
+Names are player-supplied text shown to every visitor, so the board carries a per-row remove
+control **for a signed-in owner only**. It reuses the existing GitHub sign-in and its
+two-address allowlist, so it adds an endpoint rather than an authorisation model. The route
+sends row ids only to that session and answers 404 — not 403 — to anyone else, so an anonymous
+visitor has neither the control nor the id it would need. `DELETE FROM public.high_scores WHERE
+name = '…'` still works if you would rather.
+
+Three hardening decisions worth knowing, all in `migrations/0006_high_scores_submission_id.sql`
+and `src/lib/rateLimit.ts`:
+
+- **Saving is idempotent.** The client mints a submission id per game-over panel and the column
+  is unique, so a resend after a lost response returns the existing board instead of writing a
+  second row. This needed no attacker: the database can commit and the response can still be
+  lost, and the panel then truthfully reported a failure that was not one.
+- **There is a rate limit in front of the captcha**, because every attempt was a round trip to
+  Google and an endpoint that turns one cheap request into one outbound request is an amplifier.
+  It is **in-memory and therefore per-instance** — N warm instances allow N times the rate, and
+  a cold start begins empty. It is a speed bump in front of a third party, not access control. A
+  real limit needs shared state or Vercel's own WAF and BotID, which is platform configuration.
+- **A forged score can still be submitted.** The score comes from a browser, so anyone who can
+  pass the captcha can send any number the INTEGER column accepts. Real integrity would need
+  server-authoritative gameplay; the remove control is the answer in the meantime.
 
 ### The e2e database
 

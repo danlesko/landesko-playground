@@ -250,13 +250,22 @@ export const runSqlConcurrently = async (
   const compose = join(__dirname, "db/compose.yaml");
   // Each statement is passed as an argument to the shell, so nothing is interpolated into the
   // script text. `$0` is the script name, so the statements start at `$1`.
+  // Failures are SURFACED, not swallowed. The first version sent stderr to /dev/null, and when
+  // the function's signature changed every statement failed with "function does not exist" while
+  // the test reported a wrong row count -- which reads as a logic bug in the leaderboard rather
+  // than a broken statement. `wait` on each pid gives its exit status, and any non-zero one
+  // fails the shell, which `execFile` turns into a rejected promise.
   const script = `
-    i=1
+    pids=""
     for stmt in "$@"; do
-      psql -U postgres -d main -v ON_ERROR_STOP=1 -tAc "$stmt" >/dev/null 2>&1 &
-      i=$((i + 1))
+      psql -U postgres -d main -v ON_ERROR_STOP=1 -tAc "$stmt" >/dev/null &
+      pids="$pids $!"
     done
-    wait
+    status=0
+    for pid in $pids; do
+      wait "$pid" || status=1
+    done
+    exit $status
   `;
   await promisify(execFile)("docker", [
     "compose",

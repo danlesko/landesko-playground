@@ -8,8 +8,11 @@ import { createTetrisSketch } from "./tetris/sketch";
 import { PIECE_COLOURS, previewCells, type PieceKind } from "./tetris/engine";
 import HighScoreList from "./tetris/HighScoreList";
 import SaveScoreForm from "./tetris/SaveScoreForm";
-import { loadHighScores } from "./tetris/scoreClient";
-import type { HighScore } from "@/lib/definitions";
+import {
+  loadHighScores,
+  removeHighScore,
+  type ClientScore,
+} from "./tetris/scoreClient";
 
 /**
  * `ssr: false` for the same reason as `ProcessingDrawing`: p5 touches `window` at module
@@ -127,8 +130,11 @@ const TetrisGame = () => {
   const headingId = React.useId();
 
   // `null` until the first request settles, which is what the list renders as "Loading".
-  const [scores, setScores] = React.useState<HighScore[] | null>(null);
+  const [scores, setScores] = React.useState<ClientScore[] | null>(null);
   const [scoresUnavailable, setScoresUnavailable] = React.useState(false);
+  // Sent by the route, which only tells a signed-in owner. Never inferred here -- the client
+  // has no business deciding who may moderate, and the ids it would need are absent anyway.
+  const [canModerate, setCanModerate] = React.useState(false);
   // Set once a WRITE has returned an authoritative board. The initial GET must not overwrite
   // that, and it can: a stalled read started before the save can resolve after it, replacing
   // the board that includes the player's score with the one that predates it -- or marking it
@@ -209,8 +215,10 @@ const TetrisGame = () => {
       // A save that landed while this was in flight wins: its board is newer and came from
       // the same statement that changed it.
       if (cancelled || boardFromWrite.current) return;
-      if (result.status === "ok") setScores(result.scores);
-      else setScoresUnavailable(true);
+      if (result.status === "ok") {
+        setScores(result.scores);
+        setCanModerate(result.canModerate);
+      } else setScoresUnavailable(true);
     });
     return () => {
       cancelled = true;
@@ -370,6 +378,14 @@ const TetrisGame = () => {
               scores={scores}
               unavailable={scoresUnavailable}
               headingId={headingId}
+              canModerate={canModerate}
+              onRemove={(id) => {
+                void removeHighScore(id).then((result) => {
+                  // Only a success replaces the board. A failure leaves what is on screen
+                  // alone, which is the truthful thing to do: the row may still be there.
+                  if (result.status === "removed") setScores(result.scores);
+                });
+              }}
             />
           )}
 
@@ -391,9 +407,10 @@ const TetrisGame = () => {
             <div className="absolute left-1/2 top-1/2 max-h-full w-[min(20rem,88vw)] -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-md bg-slate-950 p-3 shadow-lg">
               <SaveScoreForm
                 score={summary.score}
-                onScores={(next) => {
+                onScores={(next, owner) => {
                   boardFromWrite.current = true;
                   setScores(next);
+                  setCanModerate(owner);
                   // A board that came back from a write proves the leaderboard is reachable,
                   // so an earlier failed read must not keep saying otherwise.
                   setScoresUnavailable(false);
