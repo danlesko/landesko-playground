@@ -137,6 +137,118 @@ test("keeps the direction buttons usable by keyboard rather than stealing focus"
   ).toBeFocused();
 });
 
+/**
+ * Counts drawing calls on the Tetris canvas over a second.
+ *
+ * Hooks a spread of context methods rather than one, because p5 reaches the canvas by several
+ * paths -- an early version of this counted only `fillRect` and reported 60 a second for a
+ * two-hundred-cell repaint, which is not a number that can be right.
+ *
+ * The canvas is found by size rather than by DOM order: `/animation` has two, and p5 assigns
+ * their ids in construction order, which is not the order they appear in.
+ */
+const canvasCallsPerSecond = async (page: Page): Promise<number> => {
+  const box = (await board(page).locator("canvas").boundingBox())!;
+  return page.evaluate(async (width) => {
+    const methods = [
+      "fillRect",
+      "clearRect",
+      "beginPath",
+      "fill",
+      "stroke",
+      "arc",
+    ] as const;
+    const canvas = Array.from(document.querySelectorAll("canvas")).find(
+      (element) => Math.abs(element.getBoundingClientRect().width - width) < 2,
+    );
+    const context = canvas?.getContext("2d");
+    if (!context) return -1;
+    let calls = 0;
+    for (const method of methods) {
+      const original = context[method]?.bind(context);
+      if (!original) continue;
+      (context as unknown as Record<string, unknown>)[method] = (
+        ...args: unknown[]
+      ) => {
+        calls += 1;
+        return (original as (...a: unknown[]) => unknown)(...args);
+      };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    return calls;
+  }, box.width);
+};
+
+test("stops redrawing the board when nobody is playing", async ({ page }) => {
+  // A still board redrawn sixty times a second is work for nothing, and this is a page people
+  // leave open. Measured before the fix at 24,300 canvas calls a second on a 1280x900 viewport,
+  // repainting a two-hundred-cell grid that had not changed.
+  await board(page).scrollIntoViewIfNeeded();
+
+  expect(
+    await canvasCallsPerSecond(page),
+    "the board is repainting while idle",
+  ).toBe(0);
+
+  await page.getByRole("button", { name: "Play" }).click();
+  expect(
+    await canvasCallsPerSecond(page),
+    "the board stopped repainting while a game is running",
+  ).toBeGreaterThan(0);
+
+  await page.getByRole("button", { name: "Pause" }).click();
+  // A short settle first, and the reason is worth recording: `noLoop()` does not cancel a frame
+  // the browser has already queued, so measuring immediately catches exactly one repaint -- 405
+  // calls, or 1.7% of the running rate, which is the dim being painted. Waiting for that to pass
+  // lets this assert the strong thing (nothing at all) rather than a threshold.
+  await page.waitForTimeout(400);
+  expect(
+    await canvasCallsPerSecond(page),
+    "the board is still repainting while paused",
+  ).toBe(0);
+});
+
+test("still repaints a board that has stopped changing", async ({ page }) => {
+  // The other half of stopping the loop, and the easier half to get wrong: stopping without
+  // painting leaves whatever was on screen at that moment, so the dim that marks a board as
+  // not-live would never appear. Sampled as a pixel because that is the only place it exists.
+  const centre = async () =>
+    page.evaluate(
+      async (width) => {
+        const canvas = Array.from(document.querySelectorAll("canvas")).find(
+          (element) =>
+            Math.abs(element.getBoundingClientRect().width - width) < 2,
+        );
+        const context = canvas?.getContext("2d");
+        if (!canvas || !context) return "none";
+        const data = context.getImageData(
+          Math.floor(canvas.width / 2),
+          Math.floor(canvas.height / 2),
+          1,
+          1,
+        ).data;
+        return `${data[0]},${data[1]},${data[2]}`;
+      },
+      (await board(page).locator("canvas").boundingBox())!.width,
+    );
+
+  await board(page).scrollIntoViewIfNeeded();
+  const idle = await centre();
+
+  await board(page).click();
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(300);
+  const playing = await centre();
+  expect(playing, "the board looks the same running as idle").not.toBe(idle);
+
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(300);
+  expect(
+    await centre(),
+    "pausing did not repaint, so the dim never appeared",
+  ).toBe(idle);
+});
+
 test("keeps the next-piece preview a constant size", async ({ page }) => {
   // Also reported from the preview: the shapes are different widths -- I is 4x1, O is 2x2, the
   // rest 3x2 -- so a preview sized to its own content reflowed the score row and nudged the
