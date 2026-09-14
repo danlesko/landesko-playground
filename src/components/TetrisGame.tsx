@@ -52,6 +52,13 @@ const KEYS: Record<string, Action> = {
   x: "rotateCW",
   X: "rotateCW",
   " ": "hardDrop",
+  // `c` only, NOT Shift. Shift is the other conventional binding and it is unusable here:
+  // this handler calls `preventDefault` on every key it claims, so claiming Shift would break
+  // SHIFT+TAB -- backwards keyboard navigation out of the board -- and would also fire a hold
+  // every time someone held Shift while pressing an arrow. Losing a second binding is a much
+  // smaller cost than trapping a keyboard user.
+  c: "hold",
+  C: "hold",
   Enter: "toggle",
   p: "toggle",
   P: "toggle",
@@ -78,6 +85,7 @@ const CONTROLS: Array<{ label: string; action: Action; hint: string }> = [
   { label: "⟳", action: "rotateCW", hint: "Rotate" },
   { label: "↓", action: "softDrop", hint: "Soft drop" },
   { label: "⤓", action: "hardDrop", hint: "Hard drop" },
+  { label: "⇄", action: "hold", hint: "Hold piece" },
 ];
 
 /**
@@ -448,6 +456,21 @@ const TetrisGame = () => {
             <dd className="font-semibold tabular-nums">{summary.level}</dd>
           </div>
           <div>
+            <dt className="text-xs text-slate-400 sm:text-sm">Hold</dt>
+            <dd className="mt-1 flex items-start justify-center">
+              {/* The same fixed box as a Next slot even when EMPTY, so the row does not reflow
+                  the first time something is held -- which is the reason that box exists. */}
+              {summary.held ? (
+                <NextPreview kind={summary.held} />
+              ) : (
+                <span className="flex h-5 w-9 items-center justify-center text-slate-500">
+                  <span aria-hidden="true">–</span>
+                  <span className="sr-only">nothing held</span>
+                </span>
+              )}
+            </dd>
+          </div>
+          <div>
             <dt className="text-xs text-slate-400 sm:text-sm">Next</dt>
             <dd className="mt-1 flex items-start justify-center gap-2">
               {summary.next.map((kind, i) => (
@@ -527,7 +550,7 @@ const TetrisGame = () => {
           className="sr-only max-w-md text-center text-sm text-slate-400 [@media(min-width:640px)and(min-height:560px)]:not-sr-only"
         >
           Click the board or tab to it, then use the arrow keys. Up rotates,
-          Space drops, Enter pauses, Escape leaves the board.
+          Space drops, C holds a piece, Enter pauses, Escape leaves the board.
         </p>
       </div>
 

@@ -249,6 +249,41 @@ test("still repaints a board that has stopped changing", async ({ page }) => {
   ).toBe(idle);
 });
 
+test("holds a piece, and only once per piece", async ({ page }) => {
+  await board(page).click();
+  await page.keyboard.press("Enter");
+
+  const heldSlot = page.locator("dt:has-text('Hold') + dd");
+  await expect(heldSlot).toContainText("nothing held");
+
+  await page.keyboard.press("c");
+  await expect(heldSlot, "C did not hold the piece").not.toContainText(
+    "nothing held",
+  );
+
+  // A second hold before anything locks must do nothing -- otherwise the two pieces swap back
+  // and forth for ever while gravity runs, which stalls the game.
+  const after = await heldSlot.innerHTML();
+  await page.keyboard.press("c");
+  expect(await heldSlot.innerHTML(), "a second hold was allowed").toBe(after);
+});
+
+test("does not claim Shift, so Shift+Tab still navigates", async ({ page }) => {
+  // Shift is the other conventional hold binding and is unusable here: this handler
+  // preventDefaults every key it claims, so claiming Shift would break backwards keyboard
+  // navigation out of the board -- a keyboard trap, which is worse than one missing shortcut.
+  await board(page).click();
+  await page.keyboard.press("Enter");
+  await expect(board(page)).toBeFocused();
+
+  await page.keyboard.press("Shift+Tab");
+
+  await expect(
+    board(page),
+    "Shift+Tab did not move focus, so the board is trapping it",
+  ).not.toBeFocused();
+});
+
 test("keeps the next-piece preview a constant size", async ({ page }) => {
   // Also reported from the preview: the shapes are different widths -- I is 4x1, O is 2x2, the
   // rest 3x2 -- so a preview sized to its own content reflowed the score row and nudged the

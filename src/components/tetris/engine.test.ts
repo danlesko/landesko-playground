@@ -14,6 +14,7 @@ import {
   ghostPiece,
   gravityIntervalMs,
   hardDrop,
+  hold,
   levelOf,
   moveLeft,
   moveRight,
@@ -591,6 +592,111 @@ describe("the lifecycle", () => {
       expect(softDrop(state), status).toBe(state);
       expect(hardDrop(state), status).toBe(state);
     }
+  });
+});
+
+describe("holding a piece", () => {
+  it("sets the active piece aside and brings in the next one", async () => {
+    const state = playing({ piece: { kind: "T", rotation: 0, x: 3, y: 4 } });
+    const incoming = state.queue[0]!;
+    const after = hold(state);
+
+    expect(after.hold).toBe("T");
+    expect(after.piece!.kind).toBe(incoming);
+    // The queue advanced, so the piece after it is one further through the bag.
+    expect(after.queue).toHaveLength(state.queue.length);
+  });
+
+  it("swaps with what is already held, second time round", async () => {
+    const first = hold(
+      playing({ piece: { kind: "T", rotation: 0, x: 3, y: 4 } }),
+    );
+    // A lock is what makes another hold legal; without it this is the no-op below.
+    const unlocked = { ...first, holdUsed: false };
+    const second = hold({
+      ...unlocked,
+      piece: { kind: "I", rotation: 0, x: 3, y: 4 },
+    });
+
+    expect(second.hold).toBe("I");
+    expect(second.piece!.kind).toBe("T");
+  });
+
+  it("SPAWNS the incoming piece rather than restoring a position", async () => {
+    // The outgoing piece may have been rotated and kicked somewhere the incoming shape cannot
+    // legally sit, so restoring coordinates would need its own collision handling for no gain.
+    const state = playing({ piece: { kind: "T", rotation: 2, x: 0, y: 15 } });
+    const after = hold(state);
+
+    expect(after.piece!.rotation).toBe(0);
+    expect(after.piece!.y).toBe(0);
+  });
+
+  it("allows only one hold per piece", async () => {
+    // Otherwise hold is an infinite swap: two presses trade the pieces back and forth for ever
+    // while gravity runs, which stalls the game indefinitely.
+    const once = hold(
+      playing({ piece: { kind: "T", rotation: 0, x: 3, y: 4 } }),
+    );
+    expect(once.holdUsed).toBe(true);
+    expect(hold(once), "a second hold was allowed for the same piece").toBe(
+      once,
+    );
+  });
+
+  it("becomes available again once a piece locks", async () => {
+    // Reset on LOCK, not on spawn. Those differ exactly here: a hold spawns a piece while the
+    // hold itself has already been spent for the turn.
+    const held = hold(
+      playing({ piece: { kind: "O", rotation: 0, x: 4, y: ROWS - 2 } }),
+    );
+    expect(held.holdUsed).toBe(true);
+
+    const locked = hardDrop(held);
+    expect(locked.holdUsed, "locking did not restore the hold").toBe(false);
+  });
+
+  it("refuses rather than ending the game when the swap cannot spawn", async () => {
+    // A hold near a crowded ceiling can produce a piece with nowhere to go. Losing to a keypress
+    // meant to help would be a poor trade; the player carries on with the piece they have.
+    const board = emptyBoard();
+    for (let x = 0; x < COLS; x += 1) {
+      board[0]![x] = "I";
+      board[1]![x] = "I";
+    }
+    const state = playing({
+      board,
+      piece: { kind: "T", rotation: 0, x: 3, y: 10 },
+      hold: "I",
+    });
+
+    expect(hold(state)).toBe(state);
+    expect(hold(state).status).toBe("playing");
+  });
+
+  it("does nothing when the game is not running", async () => {
+    for (const status of ["idle", "paused", "over"] as const) {
+      const state = playing({ status });
+      expect(hold(state), status).toBe(state);
+    }
+  });
+
+  it("starts a game with nothing held", async () => {
+    const fresh = start(createGame(1));
+    expect(fresh.hold).toBeNull();
+    expect(fresh.holdUsed).toBe(false);
+  });
+
+  it("clears the hold on restart", async () => {
+    const held = hold(
+      playing({ piece: { kind: "T", rotation: 0, x: 3, y: 4 } }),
+    );
+    const restarted = start({ ...held, status: "over" });
+
+    expect(
+      restarted.hold,
+      "a restart kept the previous game's held piece",
+    ).toBeNull();
   });
 });
 

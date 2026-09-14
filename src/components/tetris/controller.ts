@@ -1,6 +1,7 @@
 import {
   createGame,
   hardDrop,
+  hold,
   moveLeft,
   moveRight,
   pause,
@@ -37,6 +38,7 @@ export type Action =
   | "rotateCCW"
   | "softDrop"
   | "hardDrop"
+  | "hold"
   | "toggle"
   | "pause"
   | "restart";
@@ -51,6 +53,9 @@ export type Summary = {
   level: number;
   status: GameState["status"];
   next: GameState["queue"];
+  /** The piece set aside, and whether the hold is spendable for the current piece. */
+  held: GameState["hold"];
+  holdUsed: boolean;
   /** The last thing worth announcing, or null. */
   announcement: string | null;
   /**
@@ -94,6 +99,8 @@ const summarise = (
   level: levelOf(state.lines),
   status: state.status,
   next: state.queue,
+  held: state.hold,
+  holdUsed: state.holdUsed,
   announcement,
   revision,
 });
@@ -103,6 +110,8 @@ const sameSummary = (a: Summary, b: Summary): boolean =>
   a.lines === b.lines &&
   a.level === b.level &&
   a.status === b.status &&
+  a.held === b.held &&
+  a.holdUsed === b.holdUsed &&
   a.announcement === b.announcement &&
   a.revision === b.revision &&
   a.next.length === b.next.length &&
@@ -190,6 +199,8 @@ export const createController = (seed: number, newSeed: () => number) => {
           return commit(softDrop(state));
         case "hardDrop":
           return commit(hardDrop(state));
+        case "hold":
+          return commit(hold(state));
         case "toggle":
           // A fresh deal whenever this begins a game rather than resuming one, so two
           // games in a row are not identical.

@@ -71,6 +71,16 @@ export type GameState = {
   board: Cell[][];
   piece: Piece | null;
   queue: PieceKind[];
+  /** The piece set aside, or null before anything has been. */
+  hold: PieceKind | null;
+  /**
+   * Whether the hold has already been used for the CURRENT piece.
+   *
+   * Without it, hold is an infinite swap: press it twice and the two pieces trade places for
+   * ever while gravity is still running, which is a way to stall the game indefinitely. Every
+   * implementation bounds it the same way -- one hold per piece, reset when a piece locks.
+   */
+  holdUsed: boolean;
   bag: PieceKind[];
   seed: number;
   score: number;
@@ -445,6 +455,8 @@ export const createGame = (seed = 1): GameState => {
     // before then -- see the note on `start`.
     piece: null,
     queue: [draw.kind, second.kind],
+    hold: null,
+    holdUsed: false,
     bag: second.bag,
     seed: second.seed,
     score: 0,
@@ -572,6 +584,58 @@ const rotate = (state: GameState, delta: number): GameState => {
 export const rotateCW = (state: GameState): GameState => rotate(state, 1);
 export const rotateCCW = (state: GameState): GameState => rotate(state, -1);
 
+/**
+ * Sets the active piece aside, bringing back whatever was already held.
+ *
+ * The piece that comes in is SPAWNED, not restored to where the outgoing one stood. That is the
+ * conventional behaviour and also the only safe one: the outgoing piece may have been rotated
+ * and kicked into a position the incoming shape cannot legally occupy, so restoring coordinates
+ * would need its own collision handling for no benefit.
+ *
+ * Refuses when the swap would not fit -- a hold near a crowded ceiling can produce a piece with
+ * nowhere to spawn -- rather than ending the game. Losing to a keypress that was meant to help
+ * would be a poor trade, and the player can simply carry on with the piece they have.
+ *
+ * `holdUsed` is what stops this being an infinite swap. It is reset when a piece LOCKS, not when
+ * one spawns, because those differ after a hold: the incoming piece is new but the hold has
+ * already been spent for this turn.
+ */
+export const hold = (state: GameState): GameState => {
+  if (!movable(state) || state.holdUsed) return state;
+  const outgoing = state.piece!.kind;
+
+  // Nothing held yet: the active piece goes away and the queue supplies its replacement, which
+  // is one piece further through the bag than it would otherwise have been.
+  if (state.hold === null) {
+    const [next, ...rest] = state.queue;
+    const incoming = spawnPiece(must(next, "queue head"));
+    if (!fits(state.board, incoming)) return state;
+    const draw = drawKind(state.bag, state.seed);
+    return {
+      ...state,
+      piece: incoming,
+      hold: outgoing,
+      holdUsed: true,
+      queue: [...rest, draw.kind],
+      bag: draw.bag,
+      seed: draw.seed,
+      gravityElapsedMs: 0,
+      lockElapsedMs: null,
+    };
+  }
+
+  const incoming = spawnPiece(state.hold);
+  if (!fits(state.board, incoming)) return state;
+  return {
+    ...state,
+    piece: incoming,
+    hold: outgoing,
+    holdUsed: true,
+    gravityElapsedMs: 0,
+    lockElapsedMs: null,
+  };
+};
+
 /** Where the active piece would come to rest. Drives the ghost and the hard drop. */
 export const dropDistance = (state: GameState): number => {
   if (state.piece === null) return 0;
@@ -662,6 +726,9 @@ const lockPiece = (state: GameState): GameState => {
     lockElapsedMs: null,
     // Per piece, not per game: the next piece gets its own budget of postponements.
     lockResets: 0,
+    // Reset on LOCK rather than on spawn, and the two differ precisely after a hold: that
+    // spawns a piece while the hold has already been spent for the turn.
+    holdUsed: false,
   };
 
   if (!fits(kept, entering)) {
