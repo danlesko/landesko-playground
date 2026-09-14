@@ -249,6 +249,49 @@ test("still repaints a board that has stopped changing", async ({ page }) => {
   ).toBe(idle);
 });
 
+test("tells you the keyboard shortcut on every control", async ({ page }) => {
+  // The reported gap: the shortcuts existed only in a prose sentence at the bottom of the
+  // panel, which is easy to miss and hidden entirely below 640px. They are on the buttons now.
+  //
+  // Both channels are asserted, because they serve different people. `title` is what a mouse
+  // user gets by hovering; the accessible name is what a keyboard or screen-reader user gets,
+  // and hovering is something only a pointer can do.
+  const expected: Array<[string, string, string]> = [
+    ["Move left", "←", "left arrow"],
+    ["Move right", "→", "right arrow"],
+    ["Rotate", "↑", "up arrow"],
+    ["Soft drop", "↓", "down arrow"],
+    ["Hard drop", "space", "space bar"],
+    ["Hold piece", "C", "C"],
+  ];
+
+  for (const [action, glyph, spoken] of expected) {
+    const control = page.getByRole("button", { name: action });
+    await expect(control, `${action} is missing`).toBeVisible();
+
+    const title = await control.getAttribute("title");
+    expect(title, `${action} has no tooltip`).toContain(action);
+    expect(title, `${action}'s tooltip does not name its key`).toContain(glyph);
+
+    // Spelled out in the name rather than left as a glyph: a screen reader announcing `←` is
+    // at the mercy of its own character dictionary.
+    const label = await control.getAttribute("aria-label");
+    expect(
+      label,
+      `${action}'s accessible name does not name its key`,
+    ).toContain(spoken);
+  }
+
+  // And the Play control, which carries visible text so it must NOT get an aria-label -- that
+  // would override "Play again" and leave the button lying about what it does.
+  const play = page.getByRole("button", { name: "Play", exact: true });
+  expect(await play.getAttribute("title")).toContain("Enter");
+  expect(
+    await play.getAttribute("aria-label"),
+    "an aria-label would override the visible text",
+  ).toBeNull();
+});
+
 test("holds a piece, and only once per piece", async ({ page }) => {
   await board(page).click();
   await page.keyboard.press("Enter");

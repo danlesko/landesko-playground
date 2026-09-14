@@ -79,13 +79,64 @@ const REPEATABLE: ReadonlySet<Action> = new Set<Action>([
   "softDrop",
 ]);
 
-const CONTROLS: Array<{ label: string; action: Action; hint: string }> = [
-  { label: "←", action: "left", hint: "Move left" },
-  { label: "→", action: "right", hint: "Move right" },
-  { label: "⟳", action: "rotateCW", hint: "Rotate" },
-  { label: "↓", action: "softDrop", hint: "Soft drop" },
-  { label: "⤓", action: "hardDrop", hint: "Hard drop" },
-  { label: "⇄", action: "hold", hint: "Hold piece" },
+/**
+ * The touch controls, each carrying the keyboard shortcut it mirrors.
+ *
+ * The shortcut is on the BUTTON because that is where someone looks for it. It was previously
+ * only in the instruction sentence at the bottom of the panel, which is prose, easy to miss,
+ * and hidden entirely below 640px -- so on a desktop the keys existed but were undiscoverable
+ * unless you read to the end.
+ *
+ * Two channels, deliberately. `tooltip` becomes a `title`, which is what a mouse user gets by
+ * hovering; `spoken` goes into the accessible name, because hovering is a thing only a pointer
+ * can do and a keyboard user is exactly who needs to know the shortcut. The two say the same
+ * thing, so the small duplication a screen reader may produce is noise rather than confusion.
+ *
+ * `spoken` spells the keys out -- "left arrow", not "←" -- since a screen reader announcing a
+ * glyph is at the mercy of its own character dictionary.
+ */
+const CONTROLS: Array<{
+  label: string;
+  action: Action;
+  tooltip: string;
+  spoken: string;
+}> = [
+  {
+    label: "←",
+    action: "left",
+    tooltip: "Move left (←)",
+    spoken: "Move left (left arrow)",
+  },
+  {
+    label: "→",
+    action: "right",
+    tooltip: "Move right (→)",
+    spoken: "Move right (right arrow)",
+  },
+  {
+    label: "⟳",
+    action: "rotateCW",
+    tooltip: "Rotate (↑ or X)",
+    spoken: "Rotate (up arrow, or X)",
+  },
+  {
+    label: "↓",
+    action: "softDrop",
+    tooltip: "Soft drop (↓)",
+    spoken: "Soft drop (down arrow)",
+  },
+  {
+    label: "⤓",
+    action: "hardDrop",
+    tooltip: "Hard drop (space)",
+    spoken: "Hard drop (space bar)",
+  },
+  {
+    label: "⇄",
+    action: "hold",
+    tooltip: "Hold piece (C)",
+    spoken: "Hold piece (C)",
+  },
 ];
 
 /**
@@ -306,7 +357,8 @@ const TetrisGame = () => {
 
   // Deliberately short, and deliberately not naming a key: this used to read "Press Enter to
   // play", which is wrong on a phone and was also the longest string in the row that now has
-  // to fit on one line. The keyboard hints live in the instructions paragraph, which is only
+  // to fit on one line. The keyboard shortcuts are on the buttons themselves -- as a `title`
+  // for hover and in each accessible name -- plus the instructions paragraph, which is only
   // shown where a keyboard is likely.
   // Derived, not stored. Shown when the game is over and the reader has not dismissed it.
   const showSavePanel = summary.status === "over" && !saveDismissed;
@@ -496,6 +548,14 @@ const TetrisGame = () => {
             onClick={() =>
               startAndFocus(summary.status === "over" ? "restart" : "toggle")
             }
+            // The same reasoning as the control buttons: the shortcut belongs where someone
+            // looks for it. No `aria-label` here -- this button has visible text, which is
+            // already its accessible name, and overriding it would hide "Play again".
+            title={
+              summary.status === "playing"
+                ? "Pause (Enter or P)"
+                : "Play (Enter or P)"
+            }
             // cyan-700, not the 600 this started as: white on #0092b8 is 3.62:1, under the
             // 4.5:1 that 16px text needs, and axe caught it. 700 measures 5.10:1. The hover
             // DARKENS for the same reason -- lightening to 600 would put the hovered state
@@ -516,11 +576,14 @@ const TetrisGame = () => {
               one-shot control. They are already keyboard-operable as buttons, which is what
               makes that acceptable -- the reported problem was Play specifically, because a
               game that has STARTED and ignores every arrow key is a dead end. */}
-          {CONTROLS.map(({ label, action, hint }) => (
+          {CONTROLS.map(({ label, action, spoken, tooltip }) => (
             <button
               key={action}
               type="button"
-              aria-label={hint}
+              // `title` for the hover, `aria-label` for everyone who cannot hover. The glyph
+              // inside stays `aria-hidden`, so the label is the whole accessible name.
+              title={tooltip}
+              aria-label={spoken}
               onClick={() => send(action)}
               className="h-11 w-11 rounded-md bg-slate-700 text-lg text-white hover:bg-slate-600"
             >
