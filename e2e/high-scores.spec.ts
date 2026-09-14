@@ -1,5 +1,6 @@
 import { test, expect, type Page } from "@playwright/test";
 
+import { signIn } from "./session";
 import {
   SEEDED_SCORES,
   databaseConfigured,
@@ -38,8 +39,22 @@ test.beforeEach(async () => {
   await resetHighScores();
 });
 
-const record = async (name: string, score: number): Promise<string> =>
-  runSql(`SELECT public.record_high_score('${name}', ${score})::text`);
+let submissionCounter = 0;
+
+/** A fresh submission id per call, so ordinary cases are not accidentally testing a replay. */
+const nextSubmissionId = (): string => {
+  submissionCounter += 1;
+  return `00000000-0000-4000-8000-${String(submissionCounter).padStart(12, "0")}`;
+};
+
+const record = async (
+  name: string,
+  score: number,
+  submissionId: string = nextSubmissionId(),
+): Promise<string> =>
+  runSql(
+    `SELECT public.record_high_score('${name}', ${score}, '${submissionId}'::uuid)::text`,
+  );
 
 const board = async (): Promise<string> =>
   runSql(
@@ -143,6 +158,49 @@ test.describe("the database function", () => {
     );
   });
 
+  test("treats a replayed submission as a no-op rather than a second row", async () => {
+    // The defect this exists for needs no attacker: the database can COMMIT and the response
+    // can still be lost -- a dropped connection, a timeout, a closed tab -- and the panel then
+    // truthfully reported a failure that was not one, inviting a retry that stored the score
+    // twice.
+    await runSql("TRUNCATE high_scores");
+    const id = nextSubmissionId();
+
+    expect(await record("replay", 500, id)).toContain('"saved": true');
+    // The same id again reports saved, because from the caller's point of view it IS saved.
+    expect(await record("replay", 500, id)).toContain('"saved": true');
+
+    expect(await rowCount(), "a replay stored a second row").toBe(1);
+  });
+
+  test("still accepts a different submission of the same name and score", async () => {
+    // The guard must key on the ID, not on the values. Two people can genuinely score the same,
+    // and so can one person twice.
+    await runSql("TRUNCATE high_scores");
+    await record("twice", 500);
+    await record("twice", 500);
+
+    expect(await rowCount()).toBe(2);
+  });
+
+  test("keeps a replay safe even when two arrive together", async () => {
+    // The idempotency check sits INSIDE the advisory lock, so two retries racing cannot both
+    // pass it. Without that, the check would be a read outside the serialised section.
+    await runSql("TRUNCATE high_scores");
+    const id = nextSubmissionId();
+    await runSqlConcurrently(
+      Array.from(
+        { length: 10 },
+        () => `SELECT public.record_high_score('racer', 700, '${id}'::uuid)`,
+      ),
+    );
+
+    expect(
+      await rowCount(),
+      "concurrent replays stored more than one row",
+    ).toBe(1);
+  });
+
   test("keeps exactly ten rows under simultaneous writes", async () => {
     // The reason the function takes an advisory lock. Without it, twenty writers each read a
     // nine-row table, each insert, and the table ends up wrong -- measured at EIGHT rows
@@ -156,7 +214,8 @@ test.describe("the database function", () => {
     await runSqlConcurrently(
       Array.from(
         { length: 20 },
-        (_, i) => `SELECT public.record_high_score('c${i}', ${1000 + i})`,
+        (_, i) =>
+          `SELECT public.record_high_score('c${i}', ${1000 + i}, '${nextSubmissionId()}'::uuid)`,
       ),
     );
 
@@ -182,8 +241,12 @@ test.describe("the database function", () => {
   test("stores a 32-character name and a name containing quotes", async () => {
     await runSql("TRUNCATE high_scores");
     // Parameterised through the driver in the app; here the point is the COLUMN accepts it.
-    await runSql(`SELECT public.record_high_score(repeat('a', 32), 12345)`);
-    await runSql(`SELECT public.record_high_score('O''Brien', 12346)`);
+    await runSql(
+      `SELECT public.record_high_score(repeat('a', 32), 12345, '${nextSubmissionId()}'::uuid)`,
+    );
+    await runSql(
+      `SELECT public.record_high_score('O''Brien', 12346, '${nextSubmissionId()}'::uuid)`,
+    );
 
     expect(await board()).toContain("O'Brien:12346");
     expect(await runSql("SELECT max(length(name)) FROM high_scores")).toBe(
@@ -340,6 +403,55 @@ test.describe("the board in a browser", () => {
     await expect(boardRegion(page)).toBeHidden();
     await page.getByRole("button", { name: /No thanks|Don't save/ }).click();
     await expect(boardRegion(page)).toBeVisible();
+  });
+
+  test("offers no way to remove an entry to a visitor", async ({ page }) => {
+    // Two claims, and the second is the one that matters. There is no control -- and the ids a
+    // control would need never leave the server, so a visitor who forged a request has nothing
+    // to name. The route answers 404 to them, which `route.test.ts` covers.
+    await expect(boardRegion(page).getByRole("button")).toHaveCount(0);
+
+    const body = await page.request.get("/api/high-scores");
+    const payload = (await body.json()) as {
+      scores: Array<Record<string, unknown>>;
+      canModerate?: boolean;
+    };
+    expect(payload.canModerate ?? false).toBe(false);
+    expect(
+      payload.scores.every((row) => row.id === undefined),
+      "an anonymous response carried row ids",
+    ).toBe(true);
+  });
+
+  test("lets the owner remove an entry from the board", async ({
+    page,
+    context,
+  }) => {
+    // The answer to two of the leaderboard's limits at once: a forged ceiling score freezing the
+    // board, and a name that is offensive rather than merely wrong. Both were previously "run a
+    // DELETE by hand", which is only an answer for someone with a psql prompt open.
+    await signIn(context);
+    await page.goto("/animation");
+
+    const region = boardRegion(page);
+    await expect(region.getByRole("listitem")).toHaveCount(
+      SEEDED_SCORES.length,
+    );
+
+    const target = SEEDED_SCORES[1];
+    await region
+      .getByRole("button", {
+        name: `Remove ${target.name}'s score of ${target.score}`,
+      })
+      .click();
+
+    // Gone from the board...
+    await expect(region.getByRole("listitem")).toHaveCount(
+      SEEDED_SCORES.length - 1,
+    );
+    await expect(region).not.toContainText(target.name);
+    // ...and gone from the database, which is the claim that matters.
+    expect(await board()).not.toContain(target.name);
   });
 
   test("reports the site key as missing rather than offering a dead save", async ({

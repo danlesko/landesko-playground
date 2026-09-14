@@ -1,6 +1,6 @@
 "use client";
 
-import type { HighScore } from "@/lib/definitions";
+import type { ClientScore } from "./scoreClient";
 
 /**
  * The leaderboard, shown over the board before a game starts.
@@ -17,17 +17,25 @@ import type { HighScore } from "@/lib/definitions";
 
 export type HighScoreListProps = {
   /** `null` while the first request is in flight. */
-  scores: HighScore[] | null;
+  scores: ClientScore[] | null;
   /** True when the leaderboard could not be reached at all. */
   unavailable: boolean;
   /** Ties the section's accessible name to its own heading. */
   headingId: string;
+  /**
+   * Whether to offer a per-row remove control. Decided by the SERVER -- the route only sends
+   * ids to a signed-in owner -- so this is a rendering hint, never the authorisation.
+   */
+  canModerate?: boolean;
+  onRemove?: (id: string) => void;
 };
 
 const HighScoreList = ({
   scores,
   unavailable,
   headingId,
+  canModerate = false,
+  onRemove,
 }: HighScoreListProps) => (
   <section
     aria-labelledby={headingId}
@@ -112,6 +120,24 @@ const HighScoreList = ({
             <span className="shrink-0 font-semibold text-foreground">
               {entry.score}
             </span>
+            {/* The owner's way to remove a forged or offensive entry, which used to be a
+                hand-written DELETE. `pointer-events-auto` is required and easy to miss: the
+                section is `pointer-events-none` so the board underneath stays clickable, and a
+                button inside it would inherit that and never fire.
+
+                Rendered only when the server sent an id, which it does only for a signed-in
+                owner -- so this is not the authorisation, just the absence of a control nobody
+                else can use. */}
+            {canModerate && entry.id !== undefined && onRemove && (
+              <button
+                type="button"
+                aria-label={`Remove ${entry.name}'s score of ${entry.score}`}
+                onClick={() => onRemove(entry.id!)}
+                className="pointer-events-auto shrink-0 rounded px-1 text-danger enabled:cursor-pointer hover:bg-slate-800"
+              >
+                <span aria-hidden="true">&times;</span>
+              </button>
+            )}
           </li>
         ))}
       </ol>

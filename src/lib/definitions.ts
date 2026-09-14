@@ -42,3 +42,13 @@ export type HighScore = {
   name: string;
   score: number;
 };
+
+/**
+ * A leaderboard row as the DATABASE has it, with its primary key.
+ *
+ * Distinct from `HighScore` on purpose, and the distinction is a boundary rather than
+ * bookkeeping: the id exists so the owner can remove an entry, and it has no use to anyone
+ * else. `src/app/api/high-scores/route.ts` projects it away for an anonymous reader, so the
+ * two types mark which side of that projection a value is on.
+ */
+export type HighScoreRow = HighScore & { id: string };

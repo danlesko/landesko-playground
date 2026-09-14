@@ -4,15 +4,29 @@ vi.mock("@/lib/high-scores", () => ({
   HIGH_SCORE_LIMIT: 10,
   fetchHighScores: vi.fn(),
   recordHighScore: vi.fn(),
+  deleteHighScore: vi.fn(),
 }));
+
+// Anonymous by default. Every test that needs the owner overrides it, which keeps the common
+// case honest: the leaderboard is read far more often by visitors than by its owner.
+//
+// `@/lib/session` rather than `@/auth`, because that is what the route imports -- everything
+// under `src/app` reads the session through the shared memo and `session.test.ts` enforces it.
+vi.mock("@/lib/session", () => ({ getSession: vi.fn(async () => null) }));
 
 vi.mock("@/lib/recaptcha", () => ({
   verifyRecaptcha: vi.fn(),
 }));
 
-import { fetchHighScores, recordHighScore } from "@/lib/high-scores";
+import { getSession } from "@/lib/session";
+import {
+  deleteHighScore,
+  fetchHighScores,
+  recordHighScore,
+} from "@/lib/high-scores";
+import { resetRateLimit } from "@/lib/rateLimit";
 import { verifyRecaptcha } from "@/lib/recaptcha";
-import { GET, PUT } from "./route";
+import { DELETE, GET, PUT } from "./route";
 
 /**
  * The leaderboard endpoint.
@@ -41,13 +55,18 @@ const submit = (body: unknown): Promise<Response> =>
 const valid = {
   name: "Ada",
   score: 900,
-  captchaValue: "a-token",
+  // Long enough to pass the length band that keeps junk from reaching Google.
+  captchaValue: "a".repeat(64),
+  submissionId: "33333333-3333-4333-8333-333333333333",
 };
+
+const ID_A = "11111111-1111-4111-8111-111111111111";
 
 const payload = async (response: Response): Promise<Record<string, unknown>> =>
   (await response.json()) as Record<string, unknown>;
 
 beforeEach(() => {
+  resetRateLimit();
   vi.mocked(verifyRecaptcha).mockResolvedValue({ ok: true });
   vi.mocked(fetchHighScores).mockResolvedValue([]);
   vi.mocked(recordHighScore).mockResolvedValue({ saved: true, scores: [] });
@@ -64,13 +83,16 @@ describe("GET /api/high-scores", () => {
     // The route must not sort. The ordering is the query's job, and duplicating it here
     // would let the two disagree.
     vi.mocked(fetchHighScores).mockResolvedValue([
-      { name: "ada", score: 900 },
-      { name: "grace", score: 400 },
+      { id: ID_A, name: "ada", score: 900 },
+      { id: "22222222-2222-4222-8222-222222222222", name: "grace", score: 400 },
     ]);
     const response = await GET();
 
     expect(response.status).toBe(200);
+    // The ids are STRIPPED. They exist so the owner can remove a row and have no use to anyone
+    // else, so an anonymous response must not carry them.
     expect(await payload(response)).toEqual({
+      canModerate: false,
       scores: [
         { name: "ada", score: 900 },
         { name: "grace", score: 400 },
@@ -98,6 +120,84 @@ describe("GET /api/high-scores", () => {
 
     expect(body).not.toContain("relation");
     expect(body).not.toContain("high_scores");
+  });
+});
+
+describe("DELETE /api/high-scores", () => {
+  const remove = (body: unknown): Promise<Response> =>
+    DELETE(
+      new Request("https://example.test/api/high-scores", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      }),
+    );
+
+  /**
+   * A signed-in owner.
+   *
+   * Cast, because `getSession` is `cache(auth)` and next-auth's `auth` is OVERLOADED -- it also
+   * serves as a middleware wrapper -- so its inferred return type is not the session shape.
+   * The cast is in the test rather than in `session.ts`, where it would weaken the real code.
+   */
+  const asOwner = () =>
+    vi.mocked(getSession).mockResolvedValue({
+      user: { email: "owner@example.test" },
+      expires: "2099-01-01T00:00:00.000Z",
+    } as never);
+
+  it("answers 404 to an anonymous caller, and touches nothing", async () => {
+    // 404 rather than 403 on purpose: a 403 confirms the endpoint exists and guards something
+    // worth guarding, which an anonymous caller has no business learning.
+    const response = await remove({ id: ID_A });
+
+    expect(response.status).toBe(404);
+    expect(deleteHighScore).not.toHaveBeenCalled();
+  });
+
+  it("refuses a session with no user, which a broken auth config produces", async () => {
+    // The trap this guards: a misconfigured provider makes the session object TRUTHY with no
+    // user, so a bare `if (session)` fails OPEN -- here that would hand every visitor a delete.
+    vi.mocked(getSession).mockResolvedValue({
+      expires: "2099-01-01T00:00:00.000Z",
+    } as never);
+    const response = await remove({ id: ID_A });
+
+    expect(response.status).toBe(404);
+    expect(deleteHighScore).not.toHaveBeenCalled();
+  });
+
+  it("removes the row for the owner and returns the board that remains", async () => {
+    asOwner();
+    vi.mocked(fetchHighScores).mockResolvedValue([]);
+    const response = await remove({ id: ID_A });
+
+    expect(response.status).toBe(200);
+    expect(deleteHighScore).toHaveBeenCalledWith(ID_A);
+    // Ids KEPT here, unlike the anonymous GET: reaching this line means the caller is the owner.
+    expect(await payload(response)).toMatchObject({ canModerate: true });
+  });
+
+  it("refuses an id that is not a uuid, before reaching the database", async () => {
+    asOwner();
+    for (const id of ["", "not-a-uuid", 7, null]) {
+      vi.mocked(deleteHighScore).mockClear();
+      const response = await remove({ id });
+      expect(response.status, String(id)).toBe(400);
+      expect(deleteHighScore).not.toHaveBeenCalled();
+    }
+  });
+
+  it("answers 503 when the delete fails, without leaking the reason", async () => {
+    asOwner();
+    vi.mocked(deleteHighScore).mockRejectedValue(
+      new Error('relation "high_scores" does not exist'),
+    );
+    const response = await remove({ id: ID_A });
+    const body = JSON.stringify(await payload(response));
+
+    expect(response.status).toBe(503);
+    expect(body).not.toContain("relation");
   });
 });
 
@@ -151,8 +251,58 @@ describe("PUT /api/high-scores", () => {
     }
   });
 
+  it("refuses a token too short to be a real one, without calling Google", async () => {
+    // The cheap half of the rate-limiting answer: every attempt used to cost a round trip to
+    // Google, so an endpoint with no limit in front of it could amplify traffic at them. `"x"`
+    // is not a reCAPTCHA token and now costs nothing to refuse.
+    const response = await submit({ ...valid, captchaValue: "x" });
+
+    expect(response.status).toBe(400);
+    expect(verifyRecaptcha).not.toHaveBeenCalled();
+  });
+
+  it("refuses further attempts once the rate limit is reached", async () => {
+    // Six a minute is generous for a human finishing a game and mean for a loop. The refusal
+    // must come BEFORE the captcha, or the limiter would not protect the thing it exists for.
+    for (let i = 0; i < 6; i += 1) {
+      expect((await submit(valid)).status, `attempt ${i + 1}`).toBe(200);
+    }
+    vi.mocked(verifyRecaptcha).mockClear();
+    vi.mocked(recordHighScore).mockClear();
+
+    const seventh = await submit(valid);
+    expect(seventh.status).toBe(429);
+    expect(verifyRecaptcha).not.toHaveBeenCalled();
+    expect(recordHighScore).not.toHaveBeenCalled();
+  });
+
+  it("requires a submission id, and passes it through unchanged", async () => {
+    // It is what makes a retry safe, so a request without one must not be accepted -- a
+    // defaulted or generated id would silently reintroduce the duplicate row.
+    // Built by omission rather than destructuring, which would leave an unused binding.
+    const withoutId = Object.fromEntries(
+      Object.entries(valid).filter(([key]) => key !== "submissionId"),
+    );
+    const response = await submit(withoutId);
+    expect(response.status).toBe(400);
+    expect(recordHighScore).not.toHaveBeenCalled();
+
+    await submit(valid);
+    expect(recordHighScore).toHaveBeenCalledWith(
+      "Ada",
+      900,
+      valid.submissionId,
+    );
+  });
+
+  it("refuses a submission id that is not a uuid", async () => {
+    const response = await submit({ ...valid, submissionId: "abc" });
+    expect(response.status).toBe(400);
+    expect(recordHighScore).not.toHaveBeenCalled();
+  });
+
   it("refuses a submission with no captcha at all", async () => {
-    const response = await submit({ name: "Ada", score: 900 });
+    const response = await submit({ id: ID_A, name: "Ada", score: 900 });
     expect(response.status).toBe(400);
     expect(verifyRecaptcha).not.toHaveBeenCalled();
     expect(recordHighScore).not.toHaveBeenCalled();
@@ -161,7 +311,11 @@ describe("PUT /api/high-scores", () => {
   describe("the name", () => {
     it("is trimmed before it reaches the database", async () => {
       await submit({ ...valid, name: "  Ada  " });
-      expect(recordHighScore).toHaveBeenCalledWith("Ada", 900);
+      expect(recordHighScore).toHaveBeenCalledWith(
+        "Ada",
+        900,
+        valid.submissionId,
+      );
     });
 
     it("cannot be blank, and whitespace does not count as characters", async () => {
@@ -192,7 +346,11 @@ describe("PUT /api/high-scores", () => {
         name: `   ${"a".repeat(32)}   `,
       });
       expect(response.status).toBe(200);
-      expect(recordHighScore).toHaveBeenCalledWith("a".repeat(32), 900);
+      expect(recordHighScore).toHaveBeenCalledWith(
+        "a".repeat(32),
+        900,
+        valid.submissionId,
+      );
     });
 
     it("stores a name containing SQL rather than interpreting it", async () => {
@@ -200,7 +358,11 @@ describe("PUT /api/high-scores", () => {
       // it, because mangling a player's name would be the wrong fix.
       const hostile = "'); DROP TABLE--";
       await submit({ ...valid, name: hostile });
-      expect(recordHighScore).toHaveBeenCalledWith(hostile, 900);
+      expect(recordHighScore).toHaveBeenCalledWith(
+        hostile,
+        900,
+        valid.submissionId,
+      );
     });
   });
 
@@ -219,7 +381,11 @@ describe("PUT /api/high-scores", () => {
       // it invalid -- topping out immediately is a real game.
       const response = await submit({ ...valid, score: 0 });
       expect(response.status).toBe(200);
-      expect(recordHighScore).toHaveBeenCalledWith("Ada", 0);
+      expect(recordHighScore).toHaveBeenCalledWith(
+        "Ada",
+        0,
+        valid.submissionId,
+      );
     });
 
     it("refuses a score too large to be real, or to fit the column", async () => {
@@ -236,7 +402,7 @@ describe("PUT /api/high-scores", () => {
     it("answers 200 with the new board when the score is saved", async () => {
       vi.mocked(recordHighScore).mockResolvedValue({
         saved: true,
-        scores: [{ name: "Ada", score: 900 }],
+        scores: [{ id: ID_A, name: "Ada", score: 900 }],
       });
       const response = await submit(valid);
 

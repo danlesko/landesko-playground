@@ -150,7 +150,11 @@ beforeEach(() => {
   widget.token = TOKEN;
   widget.resets = 0;
   widget.onChange = null;
-  client.submitHighScore.mockResolvedValue({ status: "saved", scores: [] });
+  client.submitHighScore.mockResolvedValue({
+    status: "saved",
+    scores: [],
+    canModerate: false,
+  });
   container = document.createElement("div");
   document.body.append(container);
   root = createRoot(container);
@@ -211,6 +215,11 @@ describe("submitting", () => {
       name: "Ada",
       score: 1234,
       captchaValue: TOKEN,
+      // Minted by the panel, so its exact value is not knowable here -- what matters is that
+      // one is sent, because it is what makes a retry safe.
+      submissionId: expect.stringMatching(
+        /^[0-9a-f-]{36}$/i,
+      ) as unknown as string,
     });
   });
 
@@ -249,8 +258,8 @@ describe("submitting", () => {
   });
 
   it.each([
-    [{ status: "saved", scores: [] }],
-    [{ status: "missed", scores: [] }],
+    [{ status: "saved", scores: [], canModerate: false }],
+    [{ status: "missed", scores: [], canModerate: false }],
     [{ status: "rejected" }],
     [{ status: "unavailable" }],
   ] as Array<[SubmitResult]>)(
@@ -290,15 +299,18 @@ describe("submitting", () => {
     expect(client.submitHighScore).toHaveBeenCalledTimes(1);
 
     await act(async () => {
-      release({ status: "saved", scores: [] });
+      release({ status: "saved", scores: [], canModerate: false });
     });
   });
 });
 
 describe("reporting the outcome", () => {
   const outcomes: Array<[SubmitResult, RegExp]> = [
-    [{ status: "saved", scores: [] }, /on the board/i],
-    [{ status: "missed", scores: [] }, /did not make the top ten/i],
+    [{ status: "saved", scores: [], canModerate: false }, /on the board/i],
+    [
+      { status: "missed", scores: [], canModerate: false },
+      /did not make the top ten/i,
+    ],
     [{ status: "rejected" }, /refused/i],
     [{ status: "unavailable" }, /could not be reached/i],
   ];
@@ -320,13 +332,14 @@ describe("reporting the outcome", () => {
     client.submitHighScore.mockResolvedValue({
       status: "saved",
       scores: [{ name: "Ada", score: 900 }],
+      canModerate: false,
     });
     await mount();
     await type("Ada");
     await solve();
     await click(button("Save my score"));
 
-    expect(boards).toHaveBeenCalledWith([{ name: "Ada", score: 900 }]);
+    expect(boards).toHaveBeenCalledWith([{ name: "Ada", score: 900 }], false);
   });
 
   it("closes the form once the score is settled, leaving only a way out", async () => {
