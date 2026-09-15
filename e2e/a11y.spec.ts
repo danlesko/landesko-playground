@@ -86,12 +86,14 @@ const GRADIENT_TITLE = { rule: "color-contrast", tag: "span", gradient: true };
  * existing: white on `bg-slate-700` (#45556c) is 7.58:1, comfortably over the 4.5:1 the size
  * requires.
  *
- * THREE of them, not five, and the asymmetry is the interesting part rather than a
- * miscount: the buttons carry five glyphs, and axe treats the rotate and hard-drop
- * characters as text while `←`, `→` and `↓` are not. So this list is sensitive to a
- * classification inside axe, not just to this repo's markup -- if a version bump moves one
- * of the other two, the count changes and the assertion fails. That is the right outcome
- * here; it means someone looks again.
+ * FOUR of them, not six, and the asymmetry is the interesting part rather than a miscount:
+ * the buttons carry six glyphs, and axe treats the rotate and hard-drop characters as text
+ * while `←`, `→`, `↓` and `⇄` are not. So this list is sensitive to a classification inside
+ * axe, not just to this repo's markup -- if a version bump moves one of the other two, the
+ * count changes and the assertion fails. That is the right outcome here; it means someone
+ * looks again.
+ *
+ * It was three until the hold control was added, which is the count doing its job.
  */
 const GLYPH_CONTROL = {
   rule: "color-contrast",
@@ -128,7 +130,13 @@ const ROUTES: {
         timeout: 15_000,
       });
     },
-    unevaluable: [GRADIENT_TITLE, GLYPH_CONTROL, GLYPH_CONTROL, GLYPH_CONTROL],
+    unevaluable: [
+      GRADIENT_TITLE,
+      GLYPH_CONTROL,
+      GLYPH_CONTROL,
+      GLYPH_CONTROL,
+      GLYPH_CONTROL,
+    ],
   },
   {
     path: "/credits",

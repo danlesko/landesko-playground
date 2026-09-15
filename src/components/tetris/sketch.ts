@@ -105,14 +105,59 @@ export function createTetrisSketch(
       p5.resizeCanvas(boardWidth() + 2, boardHeight() + 2);
     };
 
+    /**
+     * Whether the draw loop needs to be running.
+     *
+     * Only a game in progress changes on its own. Idle, paused and finished boards are static,
+     * so redrawing them sixty times a second is work for nothing -- measured at 24,300 canvas
+     * calls a second on a 1280x900 viewport, repainting a two-hundred-cell grid that had not
+     * changed. This is a page people leave open.
+     */
+    const shouldAnimate = () => controller.state().status === "playing";
+
+    /**
+     * Brings the loop into line with the state, and repaints once when it should be still.
+     *
+     * The `redraw()` matters as much as the `noLoop()`: stopping the loop without painting
+     * leaves whatever was on screen at the moment it stopped, so the dim overlay on a finished
+     * board would never appear. Called on every controller change, which is the only thing that
+     * can make a still board wrong.
+     */
+    const syncLoop = () => {
+      if (shouldAnimate()) {
+        p5.loop();
+        return;
+      }
+      p5.redraw();
+      p5.noLoop();
+    };
+
     p5.setup = () => {
       cell = measureCell();
       p5.createCanvas(boardWidth() + 2, boardHeight() + 2);
       p5.noStroke();
+
+      const unsubscribe = controller.subscribe(syncLoop);
+      // p5 tears the instance down when react-p5-wrapper unmounts. Guarded because
+      // `registerMethod` is not in p5's type surface here -- the package ships no declarations,
+      // so this is a runtime feature check rather than a compile-time one.
+      const withRegister = p5 as unknown as {
+        registerMethod?: (name: string, fn: () => void) => void;
+      };
+      if (typeof withRegister.registerMethod === "function") {
+        withRegister.registerMethod("remove", unsubscribe);
+      }
+
+      // The board starts idle, so it should start still. `setup` runs before the first `draw`,
+      // and `noLoop` here still allows that one -- which is what paints the initial board.
+      if (!shouldAnimate()) p5.noLoop();
     };
 
     p5.windowResized = () => {
       applySize();
+      // `resizeCanvas` does not repaint a stopped loop, so a resize while idle would leave the
+      // old board stretched across the new canvas until something else redrew it.
+      if (!shouldAnimate()) p5.redraw();
     };
 
     /**

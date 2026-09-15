@@ -137,6 +137,196 @@ test("keeps the direction buttons usable by keyboard rather than stealing focus"
   ).toBeFocused();
 });
 
+/**
+ * Counts drawing calls on the Tetris canvas over a second.
+ *
+ * Hooks a spread of context methods rather than one, because p5 reaches the canvas by several
+ * paths -- an early version of this counted only `fillRect` and reported 60 a second for a
+ * two-hundred-cell repaint, which is not a number that can be right.
+ *
+ * The canvas is found by size rather than by DOM order: `/animation` has two, and p5 assigns
+ * their ids in construction order, which is not the order they appear in.
+ */
+const canvasCallsPerSecond = async (page: Page): Promise<number> => {
+  const box = (await board(page).locator("canvas").boundingBox())!;
+  return page.evaluate(async (width) => {
+    const methods = [
+      "fillRect",
+      "clearRect",
+      "beginPath",
+      "fill",
+      "stroke",
+      "arc",
+    ] as const;
+    const canvas = Array.from(document.querySelectorAll("canvas")).find(
+      (element) => Math.abs(element.getBoundingClientRect().width - width) < 2,
+    );
+    const context = canvas?.getContext("2d");
+    if (!context) return -1;
+    let calls = 0;
+    for (const method of methods) {
+      const original = context[method]?.bind(context);
+      if (!original) continue;
+      (context as unknown as Record<string, unknown>)[method] = (
+        ...args: unknown[]
+      ) => {
+        calls += 1;
+        return (original as (...a: unknown[]) => unknown)(...args);
+      };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 1000));
+    return calls;
+  }, box.width);
+};
+
+test("stops redrawing the board when nobody is playing", async ({ page }) => {
+  // A still board redrawn sixty times a second is work for nothing, and this is a page people
+  // leave open. Measured before the fix at 24,300 canvas calls a second on a 1280x900 viewport,
+  // repainting a two-hundred-cell grid that had not changed.
+  await board(page).scrollIntoViewIfNeeded();
+
+  expect(
+    await canvasCallsPerSecond(page),
+    "the board is repainting while idle",
+  ).toBe(0);
+
+  await page.getByRole("button", { name: "Play" }).click();
+  expect(
+    await canvasCallsPerSecond(page),
+    "the board stopped repainting while a game is running",
+  ).toBeGreaterThan(0);
+
+  await page.getByRole("button", { name: "Pause" }).click();
+  // A short settle first, and the reason is worth recording: `noLoop()` does not cancel a frame
+  // the browser has already queued, so measuring immediately catches exactly one repaint -- 405
+  // calls, or 1.7% of the running rate, which is the dim being painted. Waiting for that to pass
+  // lets this assert the strong thing (nothing at all) rather than a threshold.
+  await page.waitForTimeout(400);
+  expect(
+    await canvasCallsPerSecond(page),
+    "the board is still repainting while paused",
+  ).toBe(0);
+});
+
+test("still repaints a board that has stopped changing", async ({ page }) => {
+  // The other half of stopping the loop, and the easier half to get wrong: stopping without
+  // painting leaves whatever was on screen at that moment, so the dim that marks a board as
+  // not-live would never appear. Sampled as a pixel because that is the only place it exists.
+  const centre = async () =>
+    page.evaluate(
+      async (width) => {
+        const canvas = Array.from(document.querySelectorAll("canvas")).find(
+          (element) =>
+            Math.abs(element.getBoundingClientRect().width - width) < 2,
+        );
+        const context = canvas?.getContext("2d");
+        if (!canvas || !context) return "none";
+        const data = context.getImageData(
+          Math.floor(canvas.width / 2),
+          Math.floor(canvas.height / 2),
+          1,
+          1,
+        ).data;
+        return `${data[0]},${data[1]},${data[2]}`;
+      },
+      (await board(page).locator("canvas").boundingBox())!.width,
+    );
+
+  await board(page).scrollIntoViewIfNeeded();
+  const idle = await centre();
+
+  await board(page).click();
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(300);
+  const playing = await centre();
+  expect(playing, "the board looks the same running as idle").not.toBe(idle);
+
+  await page.keyboard.press("Enter");
+  await page.waitForTimeout(300);
+  expect(
+    await centre(),
+    "pausing did not repaint, so the dim never appeared",
+  ).toBe(idle);
+});
+
+test("tells you the keyboard shortcut on every control", async ({ page }) => {
+  // The reported gap: the shortcuts existed only in a prose sentence at the bottom of the
+  // panel, which is easy to miss and hidden entirely below 640px. They are on the buttons now.
+  //
+  // Both channels are asserted, because they serve different people. `title` is what a mouse
+  // user gets by hovering; the accessible name is what a keyboard or screen-reader user gets,
+  // and hovering is something only a pointer can do.
+  const expected: Array<[string, string, string]> = [
+    ["Move left", "←", "left arrow"],
+    ["Move right", "→", "right arrow"],
+    ["Rotate", "↑", "up arrow"],
+    ["Soft drop", "↓", "down arrow"],
+    ["Hard drop", "space", "space bar"],
+    ["Hold piece", "C", "C"],
+  ];
+
+  for (const [action, glyph, spoken] of expected) {
+    const control = page.getByRole("button", { name: action });
+    await expect(control, `${action} is missing`).toBeVisible();
+
+    const title = await control.getAttribute("title");
+    expect(title, `${action} has no tooltip`).toContain(action);
+    expect(title, `${action}'s tooltip does not name its key`).toContain(glyph);
+
+    // Spelled out in the name rather than left as a glyph: a screen reader announcing `←` is
+    // at the mercy of its own character dictionary.
+    const label = await control.getAttribute("aria-label");
+    expect(
+      label,
+      `${action}'s accessible name does not name its key`,
+    ).toContain(spoken);
+  }
+
+  // And the Play control, which carries visible text so it must NOT get an aria-label -- that
+  // would override "Play again" and leave the button lying about what it does.
+  const play = page.getByRole("button", { name: "Play", exact: true });
+  expect(await play.getAttribute("title")).toContain("Enter");
+  expect(
+    await play.getAttribute("aria-label"),
+    "an aria-label would override the visible text",
+  ).toBeNull();
+});
+
+test("holds a piece, and only once per piece", async ({ page }) => {
+  await board(page).click();
+  await page.keyboard.press("Enter");
+
+  const heldSlot = page.locator("dt:has-text('Hold') + dd");
+  await expect(heldSlot).toContainText("nothing held");
+
+  await page.keyboard.press("c");
+  await expect(heldSlot, "C did not hold the piece").not.toContainText(
+    "nothing held",
+  );
+
+  // A second hold before anything locks must do nothing -- otherwise the two pieces swap back
+  // and forth for ever while gravity runs, which stalls the game.
+  const after = await heldSlot.innerHTML();
+  await page.keyboard.press("c");
+  expect(await heldSlot.innerHTML(), "a second hold was allowed").toBe(after);
+});
+
+test("does not claim Shift, so Shift+Tab still navigates", async ({ page }) => {
+  // Shift is the other conventional hold binding and is unusable here: this handler
+  // preventDefaults every key it claims, so claiming Shift would break backwards keyboard
+  // navigation out of the board -- a keyboard trap, which is worse than one missing shortcut.
+  await board(page).click();
+  await page.keyboard.press("Enter");
+  await expect(board(page)).toBeFocused();
+
+  await page.keyboard.press("Shift+Tab");
+
+  await expect(
+    board(page),
+    "Shift+Tab did not move focus, so the board is trapping it",
+  ).not.toBeFocused();
+});
+
 test("keeps the next-piece preview a constant size", async ({ page }) => {
   // Also reported from the preview: the shapes are different widths -- I is 4x1, O is 2x2, the
   // rest 3x2 -- so a preview sized to its own content reflowed the score row and nudged the
