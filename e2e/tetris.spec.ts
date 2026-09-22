@@ -383,6 +383,77 @@ test("still lets a keyboard visitor tab straight back out", async ({
   ).not.toBeFocused();
 });
 
+test("does not pause when a TOUCH press on its controls drops focus", async ({
+  page,
+}) => {
+  // The iOS bug, synthesised. Reported from a real phone: tapping the direction buttons paused
+  // the game, and tapping Pause appeared to do nothing.
+  //
+  // The cause is that iOS does not focus a `<button>` on tap -- only form fields -- so the board
+  // blurs with NO `relatedTarget` and focus lands on `<body>`, which the handler read as "the
+  // reader has left". Reproduced in WebKit with an iPhone profile, where tapping Move left
+  // paused and tapping Pause left the game running.
+  //
+  // It is synthesised here rather than driven, because this suite runs Chromium only -- and
+  // Chromium DOES focus a button on tap, so it cannot reproduce it at all. Dispatching the exact
+  // event sequence iOS produces is what makes this a regression test rather than a passing
+  // no-op: `pointerdown` on the control, then a blur carrying no `relatedTarget`, then the click.
+  await board(page).click();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#tetris-status")).toHaveText("Playing");
+
+  const asTouchPress = async (label: string) =>
+    page.evaluate((name) => {
+      const control = Array.from(document.querySelectorAll("button")).find(
+        (element) => element.getAttribute("aria-label")?.startsWith(name),
+      );
+      const surface = document.querySelector('[role="application"]');
+      if (!control || !surface) throw new Error(`no control for ${name}`);
+      control.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+      // iOS leaves focus where it was NOT: on the body, with no relatedTarget to point at.
+      (surface as HTMLElement).blur();
+      surface.dispatchEvent(
+        new FocusEvent("blur", { bubbles: true, relatedTarget: null }),
+      );
+      control.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    }, label);
+
+  await asTouchPress("Move left");
+  await expect(
+    page.locator("#tetris-status"),
+    "a touch press on a control paused the game",
+  ).toHaveText("Playing");
+});
+
+test("pauses on a touch press of Pause, rather than toggling twice", async ({
+  page,
+}) => {
+  // The second half of the same bug, and the more confusing symptom: the blur paused the game and
+  // the click then toggled it straight back, so tapping Pause looked like it did nothing.
+  await board(page).click();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#tetris-status")).toHaveText("Playing");
+
+  await page.evaluate(() => {
+    const pause = Array.from(document.querySelectorAll("button")).find(
+      (element) => element.textContent?.trim() === "Pause",
+    );
+    const surface = document.querySelector('[role="application"]');
+    if (!pause || !surface) throw new Error("no pause control");
+    pause.dispatchEvent(new PointerEvent("pointerdown", { bubbles: true }));
+    (surface as HTMLElement).blur();
+    surface.dispatchEvent(
+      new FocusEvent("blur", { bubbles: true, relatedTarget: null }),
+    );
+    pause.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+  });
+
+  await expect(
+    page.locator("#tetris-status"),
+    "tapping Pause did not pause",
+  ).toHaveText("Paused");
+});
+
 test("does not pause when focus moves to its own controls", async ({
   page,
 }) => {

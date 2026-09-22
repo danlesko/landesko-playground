@@ -349,9 +349,48 @@ const TetrisGame = () => {
    * `relatedTarget` is what distinguishes those. Without the check, tabbing from the board
    * to the Rotate button would pause the game the button is meant to play.
    */
+  /**
+   * Marks the moment a control inside the game was pressed by pointer or touch.
+   *
+   * The second half of the iOS fix below, kept as a belt to `preventDefault`'s braces: if some
+   * engine still moves focus off the board, a blur arriving in the same breath as a press on our
+   * own controls is not someone leaving the game.
+   */
+  const controlPressedAt = React.useRef(0);
+
+  /**
+   * Records that the press came from a pointer, so the blur it causes is not read as leaving.
+   *
+   * iOS does not focus a `<button>` on tap -- only form fields -- so a tap left `activeElement`
+   * on `<body>` and reported NO `relatedTarget`, which the handler below read as "the reader has
+   * left" and paused the game. Two bugs from one cause, both reproduced in WebKit with an iPhone
+   * profile: tapping a direction button paused the game, and tapping PAUSE appeared to do
+   * nothing, because the blur paused it and the click then toggled it straight back.
+   *
+   * `preventDefault` here was the first fix and is the WRONG one, which took a WebKit run to
+   * find: suppressing the default on `pointerdown` does stop the focus change, and in WebKit it
+   * also suppresses the CLICK -- so Play stopped starting the game at all. Recording the moment
+   * instead leaves every event intact and lets the blur handler make the decision.
+   *
+   * Nothing here touches the keyboard path: a keyboard activation fires no `pointerdown`, so a
+   * visitor who tabs to a control and presses Enter keeps focus on it and can press it again.
+   */
+  const notePointerPress = () => {
+    controlPressedAt.current = Date.now();
+  };
+
   const onBlur = (event: React.FocusEvent<HTMLDivElement>) => {
     const next = event.relatedTarget;
     if (next instanceof Node && event.currentTarget.contains(next)) return;
+    // A press on this game's own controls is not leaving it, whatever the browser reports about
+    // where focus went. 150ms is far longer than the milliseconds between `pointerdown` and the
+    // blur it causes, and far shorter than any deliberate move away.
+    //
+    // Clearing the flag on `pointerup` was tried and is WRONG: pointerup fires BEFORE the blur,
+    // so it reopened the hole and the game paused on every tap again. `click` would be late
+    // enough, but then a press that never becomes a click -- a finger sliding off the button --
+    // would leave the window open indefinitely. A short bound needs neither.
+    if (Date.now() - controlPressedAt.current < 150) return;
     send("pause");
   };
 
@@ -548,6 +587,7 @@ const TetrisGame = () => {
             onClick={() =>
               startAndFocus(summary.status === "over" ? "restart" : "toggle")
             }
+            onPointerDown={notePointerPress}
             // The same reasoning as the control buttons: the shortcut belongs where someone
             // looks for it. No `aria-label` here -- this button has visible text, which is
             // already its accessible name, and overriding it would hide "Play again".
@@ -584,6 +624,7 @@ const TetrisGame = () => {
               // inside stays `aria-hidden`, so the label is the whole accessible name.
               title={tooltip}
               aria-label={spoken}
+              onPointerDown={notePointerPress}
               onClick={() => send(action)}
               className="h-11 w-11 rounded-md bg-slate-700 text-lg text-white hover:bg-slate-600"
             >
