@@ -57,7 +57,17 @@ export type Cell = PieceKind | null;
  *   conventional palette   worst pair 35   dimmest 4.5:1   mean saturation 0.81
  *   wild berry             worst pair 34   dimmest 4.8:1   mean saturation 0.62
  *   a first berry attempt  worst pair 20   dimmest 3.0:1   <- rejected outright
- *   NEON, this one         worst pair 54   dimmest 4.9:1   mean saturation 0.88
+ *   NEON, first version    worst pair 54   dimmest 4.9:1   mean saturation 0.88
+ *   NEON, this one         worst pair 46   dimmest 4.9:1   mean saturation 0.91
+ *
+ * The drop from 54 to 46 is the price of swapping the blue for a hot pink: pink and the red-pink
+ * `Z` are naturally nearer each other than blue was to anything. Still comfortably above the
+ * conventional palette's 35, and the reason for the swap is one the measurements cannot see -- a
+ * mid blue is not DIM, it measured 5.5:1, but it reads washed out next to a neon yellow and a
+ * neon green. Boldness and contrast are different properties, and only one of them is a number.
+ *
+ * There is no blue left as a result. Cyan holds the cool end on its own, which is a deliberate
+ * consequence rather than an oversight.
  *
  * So neon is not a trade at all: bolder AND easier to read than either palette before it. The
  * one figure to keep an eye on when changing a colour is the violet, which is the dimmest in
@@ -71,8 +81,10 @@ export const PIECE_COLOURS: Record<PieceKind, string> = {
   /** Neon cyan, which also puts the site's accent back on the board -- the berry palette had
    *  no cyan in it and lost that tie. */
   I: "#00e5ff",
-  /** Electric blue. */
-  J: "#4d8cff",
+  /** Hot pink. This was an electric blue and read as muted beside the rest -- at 5.5:1 it was
+   *  not DIM, but a mid blue looks washed out next to a neon yellow and a neon green, which is
+   *  something neither measurement below can see. */
+  J: "#ff1fa4",
   /** Neon orange. */
   L: "#ff8a00",
   /** Neon yellow. The square, asked for specifically. */
@@ -81,7 +93,8 @@ export const PIECE_COLOURS: Record<PieceKind, string> = {
   S: "#39ff14",
   /** Neon violet, lightened from `#b026ff` to clear the board -- see the note above. */
   T: "#c04dff",
-  /** Neon red, pushed pink so it cannot be confused with the orange. */
+  /** Neon red, pushed pink so it cannot be confused with the orange -- and now the closest pair
+   *  in the palette, 46 against `J`'s hot pink. Worth knowing before changing either. */
   Z: "#ff2d55",
 };
 
