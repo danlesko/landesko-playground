@@ -33,6 +33,7 @@ import {
   type Piece,
   type PieceKind,
 } from "@/components/tetris/engine";
+import { EMPTY_CELL } from "@/components/tetris/sketch";
 
 /**
  * These tests talk to the engine directly, with no p5 stub anywhere, which is the whole
@@ -40,6 +41,50 @@ import {
  * "which way does the fish face" as an assertion about `translate` arguments; nothing
  * here needs that indirection.
  */
+
+/**
+ * Perceptual distance and contrast, computed here rather than pulled in as a dependency.
+ *
+ * CIE76 is the simplest of the dE formulas and overstates differences in saturated blues, which
+ * is the direction that matters least here -- it is used as a floor, so a formula that is
+ * generous about blue only makes the assertion harder to satisfy, never easier.
+ */
+const toLab = (hex: string): [number, number, number] => {
+  const channel = (i: number) => parseInt(hex.slice(i, i + 2), 16) / 255;
+  const linear = (c: number) =>
+    c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  const r = linear(channel(1));
+  const g = linear(channel(3));
+  const b = linear(channel(5));
+  const x = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047;
+  const y = r * 0.2126 + g * 0.7152 + b * 0.0722;
+  const z = (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883;
+  const f = (t: number) => (t > 0.008856 ? Math.cbrt(t) : 7.787 * t + 16 / 116);
+  return [116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))];
+};
+
+const deltaE = (a: string, b: string): number => {
+  const [l1, a1, b1] = toLab(a);
+  const [l2, a2, b2] = toLab(b);
+  return Math.hypot(l1 - l2, a1 - a2, b1 - b2);
+};
+
+const relativeLuminance = (hex: string): number => {
+  const channel = (i: number) => parseInt(hex.slice(i, i + 2), 16) / 255;
+  const linear = (c: number) =>
+    c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+  return (
+    0.2126 * linear(channel(1)) +
+    0.7152 * linear(channel(3)) +
+    0.0722 * linear(channel(5))
+  );
+};
+
+const contrastRatio = (a: string, b: string): number => {
+  const la = relativeLuminance(a);
+  const lb = relativeLuminance(b);
+  return (Math.max(la, lb) + 0.05) / (Math.min(la, lb) + 0.05);
+};
 
 /** A board from strings, bottom row last. `.` is empty, any other character is filled. */
 const boardOf = (...rows: string[]): Cell[][] => {
@@ -750,6 +795,44 @@ describe("drops and the ghost", () => {
       new Set(Object.values(PIECE_COLOURS)).size,
       "two pieces share a colour",
     ).toBe(7);
+  });
+
+  it("keeps every piece distinguishable from every other", () => {
+    // Distinct hex strings are not the same claim as distinguishable colours, and the palette
+    // is a Wild Berry one -- pink, red, purple, blue -- so the hues genuinely cluster. The
+    // first attempt at it put blue against violet at 20, which is confusable mid-game.
+    //
+    // CIE76 rather than a hue comparison, because lightness is half of what makes two of these
+    // tellable apart: `O` is a pale blush precisely so it cannot be read as `I`.
+    const pairs: Array<[string, number]> = [];
+    const kinds = Object.keys(PIECE_COLOURS) as PieceKind[];
+    for (let i = 0; i < kinds.length; i += 1) {
+      for (let j = i + 1; j < kinds.length; j += 1) {
+        const a = kinds[i]!;
+        const b = kinds[j]!;
+        pairs.push([`${a}/${b}`, deltaE(PIECE_COLOURS[a], PIECE_COLOURS[b])]);
+      }
+    }
+    const [closest] = pairs.sort((x, y) => x[1] - y[1]);
+
+    // 30 is below the palette this replaced (35) and below this one (34), so it fails a
+    // regression without failing on the deliberate change that introduced it.
+    expect(
+      closest![1],
+      `${closest![0]} are too close to tell apart (dE ${closest![1].toFixed(0)})`,
+    ).toBeGreaterThan(30);
+  });
+
+  it("keeps every piece visible against the board", () => {
+    // A saturated dark colour disappears into a dark board. The rejected berry attempt had a
+    // deep raspberry at 3.0:1, which is dimmer than anything in the palette it replaced.
+    for (const kind of Object.keys(PIECE_COLOURS) as PieceKind[]) {
+      const contrast = contrastRatio(PIECE_COLOURS[kind], EMPTY_CELL);
+      expect(
+        contrast,
+        `${kind} is too dim against the board (${contrast.toFixed(1)}:1)`,
+      ).toBeGreaterThan(4);
+    }
   });
 
   it("hides the ghost when the game is not running", () => {

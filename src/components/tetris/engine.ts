@@ -38,20 +38,51 @@ export type PieceKind = "I" | "J" | "L" | "O" | "S" | "T" | "Z";
 export type Cell = PieceKind | null;
 
 /**
- * Cyan for I, matching the site's accent, then the conventional Tetris palette.
+ * A Wild Berry Skittles palette, at the owner's request, replacing the conventional Tetris one.
  *
  * Here rather than in `sketch.ts` because the next-piece preview is DOM, not canvas, and a
- * separate list would let the preview disagree with the board about what a piece looks like
- * -- which was the case in the first draft: every preview was cyan.
+ * separate list would let the preview disagree with the board about what a piece looks like --
+ * which was the case in the first draft: every preview was cyan.
+ *
+ * THE RISK WITH A BERRY PALETTE is that the hues cluster. Wild Berry is pink, red, purple, blue
+ * and green -- five flavours for seven pieces, and four of the five sit in the red-to-blue
+ * stretch -- so the obvious version makes pieces harder to tell apart than the palette it
+ * replaces. That is a playability cost, not a taste one, and it was measured rather than judged.
+ *
+ * Measured as the smallest pairwise CIE76 dE across all 21 pairs, and as each colour's contrast
+ * against the board's empty cell (#0f172a):
+ *
+ *   conventional palette   worst pair 35   dimmest 4.5:1
+ *   first berry attempt    worst pair 20   dimmest 3.0:1   <- rejected
+ *   this one               worst pair 34   dimmest 4.8:1
+ *
+ * The first attempt failed on both counts: blue against violet came out at 20, which is
+ * genuinely confusable mid-game, and a deep raspberry sat at 3.0:1 against the board. Pushing
+ * the blue toward azure and lightening the magenta recovered the separation, so this is a berry
+ * palette with no measurable loss of distinguishability.
+ *
+ * What it DOES cost: `I` is no longer cyan, so the board no longer echoes the site's accent.
+ * That tie was worth having and is deliberately given up here -- there is no berry cyan.
+ *
+ * If a colour is ever changed, re-run those two numbers rather than eyeballing it. Hue alone
+ * does not tell you whether two pieces are distinguishable, and the board is dark enough that a
+ * saturated dark colour disappears into it.
  */
 export const PIECE_COLOURS: Record<PieceKind, string> = {
-  I: "#22d3ee",
-  J: "#3b82f6",
-  L: "#f97316",
-  O: "#facc15",
-  S: "#22c55e",
-  T: "#a855f7",
-  Z: "#ef4444",
+  /** Strawberry. */
+  I: "#ff4d9d",
+  /** Raspberry -- the blue one, which is what marks a Wild Berry pack out from the original. */
+  J: "#4fa8ff",
+  /** Wild cherry. */
+  L: "#ff3b30",
+  /** The pale blush, carrying the lightness end of the range so `O` cannot be mistaken for `I`. */
+  O: "#ffc2de",
+  /** Melon berry. */
+  S: "#8ede4f",
+  /** Berry punch. */
+  T: "#9b6bff",
+  /** Deep berry, sitting between the violet and the pink. */
+  Z: "#d648c8",
 };
 
 export type Status = "idle" | "playing" | "paused" | "over";
