@@ -26,7 +26,16 @@ import type { Controller } from "./controller";
  */
 
 const GRID = "#1e293b";
-const EMPTY = "#0f172a";
+
+/**
+ * The empty cell, which every piece colour has to stand out against.
+ *
+ * Exported because `engine.test.ts` asserts exactly that -- the palette lives in `engine.ts`
+ * and the background it is seen on lives here, so the test that relates them needs both, and
+ * hardcoding a second copy of this value is how the two drift apart.
+ */
+export const EMPTY_CELL = "#0f172a";
+
 const BORDER = "#334155";
 
 /**
@@ -171,7 +180,7 @@ export function createTetrisSketch(
       controller.advance(p5.deltaTime);
       const state = controller.state();
 
-      p5.background(EMPTY);
+      p5.background(EMPTY_CELL);
       p5.stroke(BORDER);
       p5.noFill();
       p5.rect(0.5, 0.5, boardWidth() + 1, boardHeight() + 1);
