@@ -38,51 +38,51 @@ export type PieceKind = "I" | "J" | "L" | "O" | "S" | "T" | "Z";
 export type Cell = PieceKind | null;
 
 /**
- * A Wild Berry Skittles palette, at the owner's request, replacing the conventional Tetris one.
+ * A NEON palette: saturated, bright, and meant to glow against the dark board.
  *
  * Here rather than in `sketch.ts` because the next-piece preview is DOM, not canvas, and a
  * separate list would let the preview disagree with the board about what a piece looks like --
  * which was the case in the first draft: every preview was cyan.
  *
- * THE RISK WITH A BERRY PALETTE is that the hues cluster. Wild Berry is pink, red, purple, blue
- * and green -- five flavours for seven pieces, and four of the five sit in the red-to-blue
- * stretch -- so the obvious version makes pieces harder to tell apart than the palette it
- * replaces. That is a playability cost, not a taste one, and it was measured rather than judged.
+ * This replaced a Wild Berry Skittles palette, and the story is worth keeping because it is the
+ * reason this one is measured rather than picked. Berry is pink, red, purple, blue and green --
+ * five flavours for seven pieces, four of them crowded into the red-to-blue stretch -- so the
+ * hues had nowhere to spread and every version of it traded away how easily two pieces could be
+ * told apart. Neon has no such constraint: it is a brightness and saturation instruction, not a
+ * hue one, so it can use the whole wheel.
  *
- * Measured as the smallest pairwise CIE76 dE across all 21 pairs, and as each colour's contrast
- * against the board's empty cell (#0f172a):
+ * Measured as the smallest pairwise CIE76 dE over all 21 pairs, and each colour's contrast
+ * against the board's empty cell:
  *
- *   conventional palette   worst pair 35   dimmest 4.5:1
- *   first berry attempt    worst pair 20   dimmest 3.0:1   <- rejected
- *   this one               worst pair 34   dimmest 4.8:1
+ *   conventional palette   worst pair 35   dimmest 4.5:1   mean saturation 0.81
+ *   wild berry             worst pair 34   dimmest 4.8:1   mean saturation 0.62
+ *   a first berry attempt  worst pair 20   dimmest 3.0:1   <- rejected outright
+ *   NEON, this one         worst pair 54   dimmest 4.9:1   mean saturation 0.88
  *
- * The first attempt failed on both counts: blue against violet came out at 20, which is
- * genuinely confusable mid-game, and a deep raspberry sat at 3.0:1 against the board. Pushing
- * the blue toward azure and lightening the magenta recovered the separation, so this is a berry
- * palette with no measurable loss of distinguishability.
+ * So neon is not a trade at all: bolder AND easier to read than either palette before it. The
+ * one figure to keep an eye on when changing a colour is the violet, which is the dimmest in
+ * every palette tried -- violet is inherently low-luminance, and a saturated one sinks into a
+ * dark board. `#b026ff` measured 3.9:1 and was lightened for exactly that reason.
  *
- * What it DOES cost: `I` is no longer cyan, so the board no longer echoes the site's accent.
- * That tie was worth having and is deliberately given up here -- there is no berry cyan.
- *
- * If a colour is ever changed, re-run those two numbers rather than eyeballing it. Hue alone
- * does not tell you whether two pieces are distinguishable, and the board is dark enough that a
- * saturated dark colour disappears into it.
+ * Re-run both numbers rather than eyeballing a change; the tests below assert them. Hue alone
+ * does not tell you whether two pieces are distinguishable.
  */
 export const PIECE_COLOURS: Record<PieceKind, string> = {
-  /** Strawberry. */
-  I: "#ff4d9d",
-  /** Raspberry -- the blue one, which is what marks a Wild Berry pack out from the original. */
-  J: "#4fa8ff",
-  /** Wild cherry. */
-  L: "#ff3b30",
-  /** The pale blush, carrying the lightness end of the range so `O` cannot be mistaken for `I`. */
-  O: "#ffc2de",
-  /** Melon berry. */
-  S: "#8ede4f",
-  /** Berry punch. */
-  T: "#9b6bff",
-  /** Deep berry, sitting between the violet and the pink. */
-  Z: "#d648c8",
+  /** Neon cyan, which also puts the site's accent back on the board -- the berry palette had
+   *  no cyan in it and lost that tie. */
+  I: "#00e5ff",
+  /** Electric blue. */
+  J: "#4d8cff",
+  /** Neon orange. */
+  L: "#ff8a00",
+  /** Neon yellow. The square, asked for specifically. */
+  O: "#ffe600",
+  /** The classic neon green. */
+  S: "#39ff14",
+  /** Neon violet, lightened from `#b026ff` to clear the board -- see the note above. */
+  T: "#c04dff",
+  /** Neon red, pushed pink so it cannot be confused with the orange. */
+  Z: "#ff2d55",
 };
 
 export type Status = "idle" | "playing" | "paused" | "over";

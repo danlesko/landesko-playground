@@ -798,12 +798,14 @@ describe("drops and the ghost", () => {
   });
 
   it("keeps every piece distinguishable from every other", () => {
-    // Distinct hex strings are not the same claim as distinguishable colours, and the palette
-    // is a Wild Berry one -- pink, red, purple, blue -- so the hues genuinely cluster. The
-    // first attempt at it put blue against violet at 20, which is confusable mid-game.
+    // Distinct hex strings are not the same claim as distinguishable colours. The palette is a
+    // neon one and measures 54 at its closest pair, comfortably clear -- but this assertion was
+    // written against a Wild Berry palette that crowded pink, red, purple and blue together,
+    // where one attempt put blue against violet at 20 and would have been confusable mid-game.
     //
-    // CIE76 rather than a hue comparison, because lightness is half of what makes two of these
-    // tellable apart: `O` is a pale blush precisely so it cannot be read as `I`.
+    // CIE76 rather than a hue comparison, because lightness is half of what makes two colours
+    // tellable apart, and it is a floor: CIE76 overstates differences in saturated blues, which
+    // can only make this harder to satisfy.
     const pairs: Array<[string, number]> = [];
     const kinds = Object.keys(PIECE_COLOURS) as PieceKind[];
     for (let i = 0; i < kinds.length; i += 1) {
@@ -815,8 +817,8 @@ describe("drops and the ghost", () => {
     }
     const [closest] = pairs.sort((x, y) => x[1] - y[1]);
 
-    // 30 is below the palette this replaced (35) and below this one (34), so it fails a
-    // regression without failing on the deliberate change that introduced it.
+    // 30, which every palette tried has cleared -- conventional 35, berry 34, neon 54 -- so it
+    // catches a regression without tripping on a deliberate change of direction.
     expect(
       closest![1],
       `${closest![0]} are too close to tell apart (dE ${closest![1].toFixed(0)})`,
@@ -824,8 +826,9 @@ describe("drops and the ghost", () => {
   });
 
   it("keeps every piece visible against the board", () => {
-    // A saturated dark colour disappears into a dark board. The rejected berry attempt had a
-    // deep raspberry at 3.0:1, which is dimmer than anything in the palette it replaced.
+    // A saturated dark colour disappears into a dark board, and violet is the one that always
+    // comes closest: it is inherently low-luminance, so `#b026ff` measured 3.9:1 and had to be
+    // lightened. A rejected berry attempt had a deep raspberry at 3.0:1.
     for (const kind of Object.keys(PIECE_COLOURS) as PieceKind[]) {
       const contrast = contrastRatio(PIECE_COLOURS[kind], EMPTY_CELL);
       expect(
