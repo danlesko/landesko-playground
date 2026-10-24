@@ -651,7 +651,7 @@ const TetrisGame = () => {
             media query says exactly what is meant. */}
         <p
           id="tetris-instructions"
-          className="sr-only max-w-md text-center text-sm text-slate-400 [@media(min-width:640px)and(min-height:560px)]:not-sr-only"
+          className="sr-only max-w-md text-center text-sm text-slate-400 [@media(min-width:640px)_and_(min-height:560px)]:not-sr-only"
         >
           Click the board or tab to it, then use the arrow keys. Up rotates,
           Space drops, C holds a piece, Enter pauses, Escape leaves the board.
