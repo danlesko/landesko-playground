@@ -29,14 +29,14 @@
     "@vercel/postgres": "0.10.0",
     "@vercel/speed-insights": "2.0.0",
     "clsx": "2.1.1",
-    "next": "16.3.4",
+    "next": "16.4.3",
     "next-auth": "5.0.0-beta.32",
     "p5": "1.11.8",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-google-recaptcha": "3.1.0",
     "react-p5-wrapper": "4.1.2",
-    "zod": "4.5.4"
+    "zod": "4.6.7"
   },
   "devDependencies": {
     "@playwright/test": "1.62.1",
@@ -47,7 +47,7 @@
     "@types/react-google-recaptcha": "2.1.9",
     "axe-core": "4.10.3",
     "eslint": "^9",
-    "eslint-config-next": "16.3.4",
+    "eslint-config-next": "16.4.3",
     "husky": "9.1.7",
     "jsdom": "30.0.1",
     "lint-staged": "17.4.1",
@@ -59,6 +59,7 @@
   },
   "pnpm": {
     "overrides": {
+      "source-map-js": "^1.2.2",
       "ws": "^8.21.0"
     }
   }
