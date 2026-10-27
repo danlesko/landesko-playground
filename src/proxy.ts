@@ -1,10 +1,10 @@
 import { auth } from "@/auth";
+import { isOwner } from "@/lib/owner";
 
 export default auth((req) => {
-  // `req.auth?.user`, not `req.auth`: `Session.user` is optional in @auth/core's
-  // types, so a session with no user would render the authoring form here while
-  // actions.ts rejects every submit. Same predicate as data.ts and actions.ts.
-  if (!req.auth?.user) {
+  // The same predicate actions.ts enforces, so nobody is shown a form whose every
+  // submit would be rejected.
+  if (!isOwner(req.auth)) {
     const newUrl = new URL("/", req.nextUrl.origin);
     return Response.redirect(newUrl);
   }

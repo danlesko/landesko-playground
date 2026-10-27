@@ -2,7 +2,13 @@ import type { Session } from "next-auth";
 import type { NextRequest } from "next/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { sessionWithoutUser, signedInSession } from "@/test/auth-mock";
+import {
+  nonOwnerSession,
+  sessionWithoutGithubId,
+  sessionWithoutUser,
+  signedInSession,
+} from "@/test/auth-mock";
+import { OWNER_GITHUB_IDS } from "@/lib/owner";
 
 // Pass-through so the predicate itself runs for real: only session resolution
 // is replaced, which would otherwise read AUTH_* secrets and reach GitHub.
@@ -50,16 +56,30 @@ describe("proxy on /blog/create", () => {
     expectRedirectToHome(run(await requestWith(sessionWithoutUser())));
   });
 
+  it("redirects a signed-in visitor who is not the owner", async () => {
+    expectRedirectToHome(run(await requestWith(nonOwnerSession())));
+  });
+
+  it("redirects a session issued before the GitHub id was recorded", async () => {
+    expectRedirectToHome(run(await requestWith(sessionWithoutGithubId())));
+  });
+
   // undefined is the handler's "no opinion"; the wrapper turns it into next().
-  it("lets a signed-in user through without a redirect", async () => {
+  it("lets the owner through without a redirect", async () => {
     expect(run(await requestWith(signedInSession()))).toBeUndefined();
   });
 
   // Guards against over-tightening: @auth/core always builds `user` from the
-  // name/email/picture claims, so all-undefined fields still mean signed in.
-  it("lets a signed-in user with no profile claims through", async () => {
+  // name/email/picture claims, which can all be undefined, and the GitHub id is
+  // the only one the check reads.
+  it("lets the owner through with no profile claims", async () => {
     const claimless: Session = {
-      user: { name: undefined, email: undefined, image: undefined },
+      user: {
+        name: undefined,
+        email: undefined,
+        image: undefined,
+        githubId: OWNER_GITHUB_IDS[0],
+      },
       expires: new Date(Date.now() + 60_000).toISOString(),
     };
 

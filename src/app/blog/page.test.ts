@@ -8,7 +8,13 @@ import {
 } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 
-import { auth, resetAuthMock, signedInSession } from "@/test/auth-mock";
+import {
+  auth,
+  nonOwnerSession,
+  resetAuthMock,
+  sessionWithoutGithubId,
+  signedInSession,
+} from "@/test/auth-mock";
 
 vi.mock("@/auth", async () => {
   const { auth: authMock } = await import("@/test/auth-mock");
@@ -82,6 +88,19 @@ function countElements(node: ReactNode, type: unknown): number {
   return here;
 }
 
+// Whether any element in the rendered tree -- a component element included, though not
+// its output -- points at `href`.
+function linksTo(node: ReactNode, href: string): boolean {
+  if (Array.isArray(node)) return node.some((child) => linksTo(child, href));
+  if (!isValidElement(node)) return false;
+  const props = node.props as { href?: unknown; children?: ReactNode };
+  if (props.href === href) return true;
+  return (
+    (typeof node.type === "string" || node.type === Fragment) &&
+    linksTo(props.children, href)
+  );
+}
+
 beforeEach(() => {
   resetAuthMock();
   vi.mocked(fetchBlogPage).mockReset();
@@ -116,6 +135,39 @@ describe("blog list page", () => {
     // called a shell that rendered no list at all.
     expect(countElements(tree, BlogBodyAbbr)).toBe(1);
     expect(textOf(tree)).not.toContain(EMPTY_MESSAGE);
+  });
+
+  it("offers the owner the authoring link", async () => {
+    auth.mockResolvedValue(signedInSession());
+    vi.mocked(fetchBlogPage).mockResolvedValue({
+      blogs: [],
+      total: 0,
+      totalPages: 1,
+      page: 1,
+    });
+
+    const tree = await BlogList({ searchParams: Promise.resolve({}) });
+    expect(linksTo(tree, "/blog/create")).toBe(true);
+  });
+
+  it.each([
+    ["an anonymous reader", () => null],
+    ["a signed-in visitor who is not the owner", nonOwnerSession],
+    [
+      "a session issued before the GitHub id was recorded",
+      sessionWithoutGithubId,
+    ],
+  ])("does not offer the authoring link to %s", async (_label, makeSession) => {
+    auth.mockResolvedValue(makeSession());
+    vi.mocked(fetchBlogPage).mockResolvedValue({
+      blogs: [],
+      total: 0,
+      totalPages: 1,
+      page: 1,
+    });
+
+    const tree = await BlogList({ searchParams: Promise.resolve({}) });
+    expect(linksTo(tree, "/blog/create")).toBe(false);
   });
 
   it("shows the same empty message to a signed-in viewer", async () => {

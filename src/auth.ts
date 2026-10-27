@@ -1,5 +1,6 @@
 import NextAuth from "next-auth";
 import GitHub from "next-auth/providers/github";
+import { authCallbacks } from "@/lib/authCallbacks";
 
 export const { handlers, signIn, signOut, auth } = NextAuth({
   // Upstream owns the issuer now, so do not re-add it here after reading
@@ -25,10 +26,5 @@ export const { handlers, signIn, signOut, auth } = NextAuth({
   // assignments run for both branches, so sign-in still reads `AUTH_GITHUB_ID`
   // and `AUTH_GITHUB_SECRET` from the environment.
   providers: [GitHub({})],
-  callbacks: {
-    signIn({ profile }) {
-      const email = profile?.email ?? "";
-      return ["lesko.dan.m@gmail.com", "dalesko@cisco.com"].includes(email);
-    },
-  },
+  callbacks: authCallbacks,
 });

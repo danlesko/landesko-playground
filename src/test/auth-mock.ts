@@ -1,5 +1,6 @@
 import type { Session } from "next-auth";
 import { vi } from "vitest";
+import { OWNER_GITHUB_IDS } from "@/lib/owner";
 
 /**
  * Stand-in for `auth()` from `src/auth.ts`. Mocking the whole module keeps the
@@ -9,8 +10,34 @@ import { vi } from "vitest";
  */
 export const auth = vi.fn<() => Promise<Session | null>>();
 
-/** A session that satisfies `session?.user` — i.e. a signed-in owner. */
+/** A signed-in owner. */
 export function signedInSession(): Session {
+  return {
+    user: {
+      name: "Dan",
+      email: "owner@example.com",
+      githubId: OWNER_GITHUB_IDS[0],
+    },
+    expires: new Date(Date.now() + 60_000).toISOString(),
+  };
+}
+
+/**
+ * A real session for someone who is not the owner. It carries an address the old email
+ * allowlist admitted, so a check that fell back to trusting the email would let it in.
+ */
+export function nonOwnerSession(): Session {
+  return {
+    user: { name: "Someone", email: "lesko.dan.m@gmail.com", githubId: "1" },
+    expires: new Date(Date.now() + 60_000).toISOString(),
+  };
+}
+
+/**
+ * The owner's session as issued before the GitHub id was recorded in the token. It must
+ * be refused, which means signing in again once after this change deploys.
+ */
+export function sessionWithoutGithubId(): Session {
   return {
     user: { name: "Dan", email: "owner@example.com" },
     expires: new Date(Date.now() + 60_000).toISOString(),

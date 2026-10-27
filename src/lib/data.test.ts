@@ -20,7 +20,12 @@ import {
   resetSqlMock,
 } from "@/test/sql-mock";
 import { resetNextMocks, unstable_noStore } from "@/test/next-mocks";
-import { sessionWithoutUser } from "@/test/auth-mock";
+import {
+  nonOwnerSession,
+  sessionWithoutGithubId,
+  sessionWithoutUser,
+  signedInSession,
+} from "@/test/auth-mock";
 
 vi.mock("@vercel/postgres", async () => {
   const { sql } = await import("@/test/sql-mock");
@@ -86,12 +91,7 @@ const NAIVE_DATE = new Date(2026, 0, 1, 0, 0, 0);
 /** A real uuid, because the column is `UUID` and the row parser checks it. */
 const ROW_ID = "22222222-2222-4222-8222-222222222222";
 
-function session(): Session {
-  return {
-    user: { name: "Dan", email: "owner@example.com" },
-    expires: new Date(Date.now() + 60_000).toISOString(),
-  };
-}
+const session = signedInSession;
 
 // Held in a variable so the error cases can assert on it. Silencing the log
 // without asserting it made the log itself deletable: every `console.error` in
@@ -181,13 +181,20 @@ describe("fetchBlogPage", () => {
     expect(text).not.toContain(PRIVATE_GUARD);
   });
 
-  // `session?.user` is the predicate actions.ts and the UI use. The read path
-  // must agree, so a session object with no user fails closed to the
-  // private-filtered query rather than being treated as signed in.
-  it("treats a session that carries no user as anonymous", async () => {
+  // `isOwner` is the predicate actions.ts and the UI use. The read path must
+  // agree, so every session that cannot write private posts gets the
+  // private-filtered query rather than being treated as the owner.
+  it.each([
+    ["a session that carries no user", sessionWithoutUser],
+    ["a signed-in non-owner", nonOwnerSession],
+    [
+      "a session issued before the GitHub id was recorded",
+      sessionWithoutGithubId,
+    ],
+  ])("treats %s as anonymous", async (_label, makeSession) => {
     queueBlogPage([]);
 
-    await fetchBlogPage(sessionWithoutUser(), 1);
+    await fetchBlogPage(makeSession(), 1);
 
     const text = normalizeSql(sqlCalls()[1]!.text);
     expect(text).toBe(PAGE_ROWS_ANONYMOUS);
@@ -366,10 +373,17 @@ describe("getBlog", () => {
   });
 
   // Same predicate as above; see the note in the fetchBlogPage block.
-  it("treats a session that carries no user as anonymous", async () => {
+  it.each([
+    ["a session that carries no user", sessionWithoutUser],
+    ["a signed-in non-owner", nonOwnerSession],
+    [
+      "a session issued before the GitHub id was recorded",
+      sessionWithoutGithubId,
+    ],
+  ])("treats %s as anonymous", async (_label, makeSession) => {
     queueSqlResult([]);
 
-    await getBlog(sessionWithoutUser(), id);
+    await getBlog(makeSession(), id);
 
     const text = normalizeSql(onlySqlCall().text);
     expect(text).toBe(GET_BLOG_ANONYMOUS);
