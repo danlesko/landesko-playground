@@ -2,7 +2,12 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 
-import { signedInSession, sessionWithoutUser } from "@/test/auth-mock";
+import {
+  nonOwnerSession,
+  sessionWithoutGithubId,
+  sessionWithoutUser,
+  signedInSession,
+} from "@/test/auth-mock";
 import BlogBodyAbbr, { attemptDelete } from "@/components/BlogBodyAbbr";
 import { BLOG_DATE_TIME_FORMAT } from "@/lib/blogDate";
 import type { Blog } from "@/lib/definitions";
@@ -38,6 +43,15 @@ function deleteButtonInnerHtml(html: string): string | undefined {
   return /<button[^>]*>([\s\S]*?)<\/button>/.exec(html)?.[1];
 }
 
+// Everyone the delete control must not be rendered for, including a real signed-in
+// session that is not the owner's.
+const CANNOT_DELETE = () => [
+  null,
+  sessionWithoutUser(),
+  nonOwnerSession(),
+  sessionWithoutGithubId(),
+];
+
 describe("BlogBodyAbbr delete control", () => {
   it("renders the delete control as a native button", () => {
     const html = render(signedInSession(), blog());
@@ -69,9 +83,10 @@ describe("BlogBodyAbbr delete control", () => {
     expect(inner).toMatch(/<svg[^>]*aria-hidden="true"/);
   });
 
-  it("omits the delete control entirely when nobody is signed in", () => {
-    expect(render(null, blog())).not.toContain("<button");
-    expect(render(sessionWithoutUser(), blog())).not.toContain("<button");
+  it("omits the delete control entirely for anyone but the owner", () => {
+    for (const session of CANNOT_DELETE()) {
+      expect(render(session, blog())).not.toContain("<button");
+    }
   });
 });
 
@@ -102,7 +117,7 @@ describe("BlogBodyAbbr confirmation dialog", () => {
     // covers it: the dialog holds copy and two controls of its own, so a change that kept
     // the trigger gated and the dialog ungated would be invisible to that test if the
     // buttons inside it ever moved.
-    for (const session of [null, sessionWithoutUser()]) {
+    for (const session of CANNOT_DELETE()) {
       const html = render(session, blog());
 
       expect(html).not.toContain("<dialog");
