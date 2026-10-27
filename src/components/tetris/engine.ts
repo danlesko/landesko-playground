@@ -344,8 +344,9 @@ const MAX_LOCK_RESETS = 15;
 /**
  * Longest `elapsedMs` a single `tick` will act on.
  *
- * A fallback, not the mechanism: the host pauses on `visibilitychange`, so returning to a
- * backgrounded tab should not produce a large elapsed value at all. This exists because
+ * A fallback, not the mechanism: the host pauses on `visibilitychange`, and the sketch
+ * advances the first frame after any pause by zero (see `restarting` in `sketch.ts`), so
+ * returning to a backgrounded tab does not produce a large elapsed value. This exists because
  * "should not" is not "cannot" -- a long paint stall or a debugger pause would otherwise
  * drop a piece the full height of the board between two frames.
  */

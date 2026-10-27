@@ -14,7 +14,9 @@ import { test, expect, type Page } from "@playwright/test";
  *
  * Deliberately free of timing assertions. Gravity means the board changes on its own, so
  * anything phrased as "the piece is at row N after 900ms" would be flaky by construction.
- * Every assertion below is about a discrete outcome the player caused.
+ * Every assertion below is about a discrete outcome the player caused. The one test that is
+ * about elapsed time, "drops nothing for the time the board stood still", pauses
+ * Playwright's clock so that no frame runs on its own.
  */
 
 const board = (page: Page) => page.getByRole("application");
@@ -118,6 +120,73 @@ test("hands the keyboard to the board when Play is clicked", async ({
       message: "a key pressed after clicking Play did not reach the game",
     })
     .toBeGreaterThan(before);
+});
+
+/**
+ * The score from hard-dropping the first piece of a game. A hard drop pays two a row, so this
+ * measures how far the piece had already fallen.
+ *
+ * The one test in this file that involves elapsed time, and it is deterministic rather than
+ * timed: Playwright's clock is paused before play, so no animation frame runs except the
+ * ones p5 draws synchronously when the loop restarts, and `Math.random` is pinned so every
+ * run deals the same first piece.
+ */
+const firstDropScore = async (
+  page: Page,
+  { idleMs, pauses }: { idleMs: number; pauses: number },
+) => {
+  await page.addInitScript(() => {
+    Math.random = () => 0.5;
+  });
+  await page.clock.install();
+  await page.goto("/animation");
+  await board(page).scrollIntoViewIfNeeded();
+  await expect(page.locator("#tetris-status")).toHaveText("Ready");
+  // Ahead of the page's clock by enough to still be in the future when the call lands.
+  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 250));
+
+  await page.clock.runFor(idleMs);
+  // `focus()`, not `click()`: a click waits for the element to be stable, which Playwright
+  // measures over animation frames, and a paused clock never delivers one.
+  await board(page).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#tetris-status")).toHaveText("Playing");
+
+  for (let i = 0; i < pauses; i += 1) {
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#tetris-status")).toHaveText("Paused");
+    await page.clock.runFor(2000);
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#tetris-status")).toHaveText("Playing");
+  }
+
+  await page.keyboard.press("Space");
+  await expect.poll(() => scoreValue(page)).toBeGreaterThan(0);
+  return scoreValue(page);
+};
+
+test("drops nothing for the time the board stood still", async ({
+  browser,
+}) => {
+  // p5 measures the first frame after `loop()` from the last frame it drew, so before the fix
+  // that frame handed gravity the whole idle or paused time -- capped at a second, which is a
+  // row at level 1 -- every time play started or resumed. Four pauses make that four-plus rows.
+  const measure = async (still: { idleMs: number; pauses: number }) => {
+    const page = await browser.newPage();
+    try {
+      return await firstDropScore(page, still);
+    } finally {
+      await page.close();
+    }
+  };
+
+  const straightIn = await measure({ idleMs: 0, pauses: 0 });
+  const afterStanding = await measure({ idleMs: 5000, pauses: 4 });
+
+  expect(
+    afterStanding,
+    "the piece fell while the board was idle or paused, so the first drop scored less",
+  ).toBe(straightIn);
 });
 
 test("keeps the direction buttons usable by keyboard rather than stealing focus", async ({
