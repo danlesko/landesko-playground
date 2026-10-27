@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { createGame, hardDrop, start } from "../src/components/tetris/engine";
 
 /**
  * The Tetris board, covering only what a browser can answer.
@@ -122,28 +123,35 @@ test("hands the keyboard to the board when Play is clicked", async ({
     .toBeGreaterThan(before);
 });
 
+// The fake clock's fixed starting point, and a pause target safely after any page load.
+const CLOCK_EPOCH = new Date("2026-01-01T00:00:00Z");
+const CLOCK_PAUSE = new Date("2026-01-01T00:01:00Z");
+const PINNED_RANDOM = 0.5;
+
 /**
  * The score from hard-dropping the first piece of a game. A hard drop pays two a row, so this
  * measures how far the piece had already fallen.
  *
  * The one test in this file that involves elapsed time, and it is deterministic rather than
- * timed: Playwright's clock is paused before play, so no animation frame runs except the
- * ones p5 draws synchronously when the loop restarts, and `Math.random` is pinned so every
- * run deals the same first piece.
+ * timed: with Playwright's clock paused, the only frames are the one p5 draws synchronously
+ * when its loop restarts and any already queued that `runFor` delivers -- which, on a paused
+ * board, advance nothing. `Math.random` is pinned so every run deals the same first piece.
  */
 const firstDropScore = async (
   page: Page,
   { idleMs, pauses }: { idleMs: number; pauses: number },
 ) => {
-  await page.addInitScript(() => {
-    Math.random = () => 0.5;
-  });
-  await page.clock.install();
+  await page.addInitScript((value) => {
+    Math.random = () => value;
+  }, PINNED_RANDOM);
+  await page.clock.install({ time: CLOCK_EPOCH });
   await page.goto("/animation");
   await board(page).scrollIntoViewIfNeeded();
+  // The canvas, not just the status text: "Ready" renders before the lazily loaded p5 wrapper
+  // mounts, and without a sketch the controller alone would score the same either way.
+  await expect(board(page).locator("canvas")).toBeVisible();
   await expect(page.locator("#tetris-status")).toHaveText("Ready");
-  // Ahead of the page's clock by enough to still be in the future when the call lands.
-  await page.clock.pauseAt(await page.evaluate(() => Date.now() + 250));
+  await page.clock.pauseAt(CLOCK_PAUSE);
 
   await page.clock.runFor(idleMs);
   // `focus()`, not `click()`: a click waits for the element to be stable, which Playwright
@@ -170,7 +178,15 @@ test("drops nothing for the time the board stood still", async ({
 }) => {
   // p5 measures the first frame after `loop()` from the last frame it drew, so before the fix
   // that frame handed gravity the whole idle or paused time -- capped at a second, which is a
-  // row at level 1 -- every time play started or resumed. Four pauses make that four-plus rows.
+  // row at level 1 -- every time play started or resumed.
+  //
+  // The expected score comes from the engine, dealt the way the controller deals a new game:
+  // a hard drop straight from the spawn row, with no gravity before it.
+  const seed = Math.floor(PINNED_RANDOM * 2 ** 31);
+  const expected = hardDrop(
+    start({ ...createGame(1), status: "over", seed }),
+  ).score;
+
   const measure = async (still: { idleMs: number; pauses: number }) => {
     const page = await browser.newPage();
     try {
@@ -180,13 +196,14 @@ test("drops nothing for the time the board stood still", async ({
     }
   };
 
-  const straightIn = await measure({ idleMs: 0, pauses: 0 });
-  const afterStanding = await measure({ idleMs: 5000, pauses: 4 });
-
   expect(
-    afterStanding,
+    await measure({ idleMs: 0, pauses: 0 }),
+    "the piece fell before play started, while the board sat idle after loading",
+  ).toBe(expected);
+  expect(
+    await measure({ idleMs: 5000, pauses: 4 }),
     "the piece fell while the board was idle or paused, so the first drop scored less",
-  ).toBe(straightIn);
+  ).toBe(expected);
 });
 
 test("keeps the direction buttons usable by keyboard rather than stealing focus", async ({
