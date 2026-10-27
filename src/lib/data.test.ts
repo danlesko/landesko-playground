@@ -352,6 +352,22 @@ describe("fetchBlogPage", () => {
 describe("getBlog", () => {
   const id = "11111111-1111-4111-8111-111111111111";
 
+  it.each([
+    ["a word", "abc"],
+    ["an empty string", ""],
+    ["a uuid with a character missing", id.slice(0, -1)],
+    ["a uuid with trailing text", `${id}x`],
+    ["a quote that would break a hand-built query", "'; DROP TABLE blogs; --"],
+  ])(
+    "answers no post for %s, without querying the database",
+    async (_label, malformed) => {
+      for (const session of [null, signedInSession()]) {
+        await expect(getBlog(session, malformed)).resolves.toBeUndefined();
+      }
+      expect(sqlCalls()).toHaveLength(0);
+    },
+  );
+
   it("issues exactly the private-filtered query when there is no session", async () => {
     queueSqlResult([]);
 
@@ -390,15 +406,17 @@ describe("getBlog", () => {
     expect(text).toContain(PRIVATE_GUARD);
   });
 
+  // A string like `'; DROP TABLE blogs; --` no longer reaches the query at all (see the
+  // malformed-id cases above), so binding is checked with an id that does.
   it("passes the id as a bound parameter rather than inlining it", async () => {
     queueSqlResult([]);
 
-    await getBlog(null, "'; DROP TABLE blogs; --");
+    await getBlog(null, id);
 
     const call = onlySqlCall();
     expect(normalizeSql(call.text)).toContain("id=$1");
-    expect(normalizeSql(call.text)).not.toContain("DROP TABLE");
-    expect(call.values).toEqual(["'; DROP TABLE blogs; --"]);
+    expect(normalizeSql(call.text)).not.toContain(id);
+    expect(call.values).toEqual([id]);
   });
 
   it("returns undefined when nothing matched, so a private post reads as missing", async () => {

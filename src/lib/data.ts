@@ -227,6 +227,11 @@ export async function fetchBlogPage(session: Session | null, page: number) {
 
 export async function getBlog(session: Session | null, id: string) {
   noStore();
+  // An id the `UUID` column cannot parse (`/blog/abc`) names no post. Sent to
+  // Postgres it is a 22P02 error, which became the error boundary and a logged
+  // failure for every typo and crawler probe instead of a 404. `z.guid()` is the
+  // predicate `BlogRowSchema` and `deleteBlogPost` already use.
+  if (!z.guid().safeParse(id).success) return undefined;
   // Same predicate as fetchBlogPage; see the note there.
   try {
     // The anonymous query is also empty when the post exists but is private, so
