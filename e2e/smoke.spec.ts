@@ -1809,6 +1809,24 @@ test("/blog/[id] answers 404 for an unknown id", async ({ page }) => {
   expect(head.status()).toBe(404);
 });
 
+// No `needsDatabase()`: the answer must not depend on reaching Postgres. Sent to the
+// database, an id the `UUID` column cannot parse is a 22P02 error, and without a database
+// it is a connection failure -- either way the blog error boundary, never a 404.
+for (const malformed of ["not-a-uuid", "11111111-1111-4111-8111-11111111111"]) {
+  test(`/blog/[id] answers 404 for an id that is not a uuid (${malformed})`, async ({
+    page,
+  }) => {
+    const response = await page.goto(`/blog/${malformed}`);
+
+    expect(
+      response?.status(),
+      "a malformed id did not 404 -- getBlog sent it to the database",
+    ).toBe(404);
+    const head = await page.request.head(`/blog/${malformed}`);
+    expect(head.status()).toBe(404);
+  });
+}
+
 /**
  * The one thing about /blog that a database-less runner CAN check, and it was not
  * checked (#154).
