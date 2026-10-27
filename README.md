@@ -75,9 +75,9 @@ The code change to drop the prefix has already shipped — `contact-actions.ts` 
 
 ## Authentication
 
-Sign-in is GitHub OAuth, and the `signIn` callback in `src/auth.ts` allows an explicit list of two email addresses — anyone else is rejected after authenticating. This is a personal site, so signing in only unlocks authoring: creating posts, deleting posts, and reading private ones.
+Sign-in is GitHub OAuth, and the owner is identified by GitHub's numeric account id, not by email: `OWNER_GITHUB_IDS` in `src/lib/owner.ts`. The `signIn` callback rejects any other account after it authenticates. Every privileged path also re-checks the id with `isOwner(session)` on each request: creating, deleting and reading private posts, and leaderboard moderation. So removing an id revokes its existing sessions right away rather than when they expire. This is a personal site, so signing in only unlocks authoring.
 
-`/blog/create` is additionally protected by `src/proxy.ts`, which redirects unauthenticated requests to the home page. It was `src/middleware.ts` until #153 — Next 16 deprecated that filename, and `proxy` runs on Node rather than Edge, which is why the rename came with a test that mints a real session cookie.
+`/blog/create` is additionally protected by `src/proxy.ts`, which redirects anyone who isn't the owner to the home page. It was `src/middleware.ts` until #153 — Next 16 deprecated that filename, and `proxy` runs on Node rather than Edge, which is why the rename came with a test that mints a real session cookie.
 
 ## Pages
 
@@ -137,8 +137,8 @@ Both variables are needed. Without the CA override every query fails as a bare
 is read at process startup.
 
 Names are player-supplied text shown to every visitor, so the board carries a per-row remove
-control **for a signed-in owner only**. It reuses the existing GitHub sign-in and its
-two-address allowlist, so it adds an endpoint rather than an authorisation model. The route
+control **for a signed-in owner only**. It reuses the site's `isOwner` check, so it adds an
+endpoint rather than an authorisation model. The route
 sends row ids only to that session and answers 404 — not 403 — to anyone else, so an anonymous
 visitor has neither the control nor the id it would need. `DELETE FROM public.high_scores WHERE
 name = '…'` still works if you would rather.

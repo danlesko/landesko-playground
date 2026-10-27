@@ -253,8 +253,8 @@ export async function PUT(req: Request) {
  * removing too. Both were previously "run a DELETE by hand", which is a real answer only for
  * someone with a psql prompt open.
  *
- * It reuses the existing GitHub sign-in and its two-address allowlist, so this adds an endpoint
- * rather than an authorisation model.
+ * It reuses the site's owner check (`isOwner`, a GitHub account id allowlist), so this adds an
+ * endpoint rather than an authorisation model.
  */
 export async function DELETE(req: Request) {
   if (!(await canModerate())) {

@@ -23,12 +23,12 @@ export function signedInSession(): Session {
 }
 
 /**
- * A real session for someone who is not the owner. It carries the owner's EMAIL, so a
- * check that still trusted the address would wrongly admit it.
+ * A real session for someone who is not the owner. It carries an address the old email
+ * allowlist admitted, so a check that fell back to trusting the email would let it in.
  */
 export function nonOwnerSession(): Session {
   return {
-    user: { name: "Someone", email: "owner@example.com", githubId: "1" },
+    user: { name: "Someone", email: "lesko.dan.m@gmail.com", githubId: "1" },
     expires: new Date(Date.now() + 60_000).toISOString(),
   };
 }
