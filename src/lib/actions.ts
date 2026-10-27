@@ -5,6 +5,7 @@ import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { deleteBlog } from "@/lib/data";
+import { isOwner } from "@/lib/owner";
 
 const NewBlogSchema = z.object({
   id: z.guid(),
@@ -84,7 +85,7 @@ export async function createBlog(
   const session = await auth();
   // Still a throw, not a returned error: an anonymous caller has nothing to
   // correct in the form, and surfacing it as field text would imply they do.
-  if (!session?.user) throw new Error("Unauthorized");
+  if (!isOwner(session)) throw new Error("Unauthorized");
 
   const parsed = CreateBlog.safeParse({
     title: formData.get("title"),
@@ -123,7 +124,7 @@ export async function createBlog(
 
 export async function deleteBlogPost(id: string) {
   const session = await auth();
-  if (!session?.user) throw new Error("Unauthorized");
+  if (!isOwner(session)) throw new Error("Unauthorized");
 
   const { id: blogId } = DeleteBlogSchema.parse({ id });
 

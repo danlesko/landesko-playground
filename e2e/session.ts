@@ -1,5 +1,6 @@
 import { expect, type BrowserContext } from "@playwright/test";
 import { encode } from "next-auth/jwt";
+import { OWNER_GITHUB_IDS } from "../src/lib/owner";
 
 /**
  * Minting a session the server will accept, without involving GitHub.
@@ -42,15 +43,19 @@ export const SESSION_COOKIE = "authjs.session-token";
  * so it lands with the library's 30-day default. Nothing here depends on the value, and
  * pinning it would take `maxAge` rather than a token field.
  *
- * Note the email does NOT have to be one of the two the `signIn` callback in
- * `src/auth.ts` allows. That callback runs during sign-in, not on session read, so it
- * is not part of what this exercises -- worth knowing before reading a passing test
- * as evidence that the allowlist works.
+ * `githubId` is the claim the owner check reads on every request (`src/lib/owner.ts`), so
+ * a token without the owner's id is signed in but not the owner. The `signIn` callback
+ * itself runs only during the OAuth round trip, which this bypasses; its own tests are in
+ * `src/lib/authCallbacks.test.ts`.
  */
-export const sessionToken = () => ({
+// `null` for "no id", not `undefined`: an explicit `undefined` takes the default.
+export const sessionToken = (
+  githubId: string | null = OWNER_GITHUB_IDS[0]!,
+) => ({
   name: "Test Author",
   email: "author@example.test",
   sub: "test-subject",
+  ...(githubId !== null && { githubId }),
 });
 
 export const signSession = async (token: Record<string, unknown>) => {

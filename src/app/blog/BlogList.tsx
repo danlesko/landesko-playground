@@ -1,4 +1,5 @@
 import { getSession } from "@/lib/session";
+import { isOwner } from "@/lib/owner";
 import PageHeading from "@/components/ui/PageHeading";
 import TextLink from "@/components/ui/TextLink";
 import BlogBodyAbbr from "@/components/BlogBodyAbbr";
@@ -60,7 +61,7 @@ export default async function BlogList({
     <>
       <div className="flex justify-between items-center">
         <PageHeading>Blog Posts</PageHeading>
-        {session?.user && (
+        {isOwner(session) && (
           <TextLink href="/blog/create" className="font-bold">
             Create New Post
           </TextLink>

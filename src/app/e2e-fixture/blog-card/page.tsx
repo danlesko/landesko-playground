@@ -2,13 +2,14 @@ import { notFound } from "next/navigation";
 import type { Session } from "next-auth";
 import BlogBodyAbbr from "@/components/BlogBodyAbbr";
 import { contentColumnClasses } from "@/components/ui/layout";
+import { OWNER_GITHUB_IDS } from "@/lib/owner";
 
 /**
  * A test fixture, and the only one in the repo. It renders a single blog card in the
  * signed-in state so the confirmation modal is reachable from a browser.
  *
  * WHY THIS EXISTS. `BlogBodyAbbr` is the only place the app renders a modal, and until now
- * nothing could render it: the delete trigger is behind `session?.user`, and the card itself
+ * nothing could render it: the delete trigger is behind `isOwner(session)`, and the card itself
  * is rendered by `BlogList` from Postgres rows. So the modal had no unit coverage, no e2e
  * coverage, and axe never reached it.
  *
@@ -59,11 +60,15 @@ const BLOG = {
   private: false,
 };
 
-// Enough of a session for `session?.user` to be truthy, which is all the component reads.
+// Enough of a session for `isOwner` to pass, which is all the component reads.
 // Typed as `Session` so a change to that shape fails the build here rather than silently
 // rendering the signed-out branch and quietly removing the trigger this fixture exists for.
 const SESSION: Session = {
-  user: { name: "Fixture User", email: "fixture@example.invalid" },
+  user: {
+    name: "Fixture User",
+    email: "fixture@example.invalid",
+    githubId: OWNER_GITHUB_IDS[0],
+  },
   expires: "2999-01-01T00:00:00.000Z",
 };
 

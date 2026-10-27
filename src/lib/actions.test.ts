@@ -2,7 +2,9 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import {
   auth,
+  nonOwnerSession,
   resetAuthMock,
+  sessionWithoutGithubId,
   sessionWithoutUser,
   signedInSession,
 } from "@/test/auth-mock";
@@ -107,6 +109,19 @@ describe("createBlog authorization", () => {
 
   it("rejects a session that carries no user", async () => {
     auth.mockResolvedValue(sessionWithoutUser());
+
+    await expect(submitBlog(blogForm())).rejects.toThrow("Unauthorized");
+    expect(sqlCalls()).toHaveLength(0);
+  });
+
+  it.each([
+    ["a signed-in visitor who is not the owner", nonOwnerSession],
+    [
+      "a session issued before the GitHub id was recorded",
+      sessionWithoutGithubId,
+    ],
+  ])("rejects %s", async (_label, makeSession) => {
+    auth.mockResolvedValue(makeSession());
 
     await expect(submitBlog(blogForm())).rejects.toThrow("Unauthorized");
     expect(sqlCalls()).toHaveLength(0);
@@ -346,6 +361,19 @@ describe("deleteBlogPost", () => {
 
   it("rejects a session that carries no user", async () => {
     auth.mockResolvedValue(sessionWithoutUser());
+
+    await expect(deleteBlogPost(VALID_UUID)).rejects.toThrow("Unauthorized");
+    expect(sqlCalls()).toHaveLength(0);
+  });
+
+  it.each([
+    ["a signed-in visitor who is not the owner", nonOwnerSession],
+    [
+      "a session issued before the GitHub id was recorded",
+      sessionWithoutGithubId,
+    ],
+  ])("rejects %s", async (_label, makeSession) => {
+    auth.mockResolvedValue(makeSession());
 
     await expect(deleteBlogPost(VALID_UUID)).rejects.toThrow("Unauthorized");
     expect(sqlCalls()).toHaveLength(0);

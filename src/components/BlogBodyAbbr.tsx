@@ -4,6 +4,7 @@ import { Trash } from "@phosphor-icons/react/dist/ssr";
 import type { Blog } from "@/lib/definitions";
 import { BLOG_DATE_TIME_FORMAT, formatBlogDateRelative } from "@/lib/blogDate";
 import type { Session } from "next-auth";
+import { isOwner } from "@/lib/owner";
 import TextLink from "@/components/ui/TextLink";
 import { formErrorClasses } from "@/components/ui/form";
 import {
@@ -52,6 +53,7 @@ export const attemptDelete = async (
 };
 
 const BlogBodyAbbr = ({ session, blog, deleteBlogPost }: BlogBodyAbbrProps) => {
+  const owner = isOwner(session);
   const [openModal, setOpenModal] = useState(false);
   const [deleteError, setDeleteError] = useState("");
   const dialogRef = useRef<HTMLDialogElement>(null);
@@ -156,7 +158,7 @@ const BlogBodyAbbr = ({ session, blog, deleteBlogPost }: BlogBodyAbbrProps) => {
           <h2 className="text-xl font-semibold">
             <TextLink href={`/blog/${blog.id}`}>{blog.title}</TextLink>
           </h2>
-          {session?.user && (
+          {owner && (
             <button
               type="button"
               aria-label={`Delete post: ${blog.title}`}
@@ -212,7 +214,7 @@ const BlogBodyAbbr = ({ session, blog, deleteBlogPost }: BlogBodyAbbrProps) => {
           NO `role="dialog"` attribute: the element has that role implicitly, and adding
           it would be redundant. Tests locate it by role rather than by selector.
 
-          Gated on `session?.user`, matching the trigger, and that gate is NOT redundant with
+          Gated on `isOwner`, matching the trigger, and that gate is NOT redundant with
           this being a dialog. The library rendered nothing until it was opened, so a signed-out
           visitor never received this markup; a native `<dialog>` is always in the document and
           merely `display: none`, so without the gate every anonymous reader would be served
@@ -220,7 +222,7 @@ const BlogBodyAbbr = ({ session, blog, deleteBlogPost }: BlogBodyAbbrProps) => {
           exactly that. Nothing is exploitable either way -- `deleteBlogPost` re-checks the
           session server-side, which is the control that matters -- but markup nobody can use
           should not be sent. */}
-      {session?.user && (
+      {owner && (
         <dialog
           ref={dialogRef}
           aria-labelledby={`${blog.id}-delete-heading`}

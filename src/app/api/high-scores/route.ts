@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import { getSession } from "@/lib/session";
+import { isOwner } from "@/lib/owner";
 import { requestKey, withinRateLimit } from "@/lib/rateLimit";
 import { verifyRecaptcha } from "@/lib/recaptcha";
 import {
@@ -118,9 +119,9 @@ const visible = (rows: HighScoreRow[], canModerate: boolean): HighScore[] =>
 /**
  * Whether this request may moderate the board.
  *
- * `session?.user`, never `session` alone. A broken auth configuration makes `auth()` return a
- * TRUTHY object with no user, so a bare `if (session)` fails OPEN -- which for this function
- * would hand every anonymous visitor a delete button.
+ * `isOwner`, never a bare `if (session)`. A broken auth configuration makes `auth()` return a
+ * TRUTHY object with no user, so that check fails OPEN -- which for this function would hand
+ * every anonymous visitor a delete button.
  */
 const canModerate = async (): Promise<boolean> => {
   try {
@@ -129,7 +130,7 @@ const canModerate = async (): Promise<boolean> => {
     // through the wrapper, so importing `auth` here would bypass it silently. This handler
     // reads it twice on the PUT path, which is exactly what the memo is for.
     const session = await getSession();
-    return Boolean(session?.user);
+    return isOwner(session);
   } catch {
     // A misconfigured or unreachable auth provider must not take the leaderboard down with it.
     // Failing closed here costs the owner a delete button and costs a visitor nothing.

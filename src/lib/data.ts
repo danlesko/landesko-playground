@@ -3,6 +3,7 @@ import { z } from "zod";
 import { Blog } from "./definitions";
 import { unstable_noStore as noStore } from "next/cache";
 import { Session } from "next-auth";
+import { isOwner } from "./owner";
 
 /**
  * The `Blog` type, as something that runs. Both reads used to end in a cast,
@@ -164,10 +165,9 @@ const CountRowSchema = z.object({
  */
 export async function fetchBlogPage(session: Session | null, page: number) {
   noStore();
-  // `session?.user`, not `session`: `Session.user` is optional in @auth/core's
-  // types, so a session object carrying no user would otherwise be read as
-  // signed in here while actions.ts and the UI treat it as anonymous.
-  const signedIn = Boolean(session?.user);
+  // `isOwner`, the predicate actions.ts enforces, so a session that cannot write
+  // private posts cannot read them either.
+  const signedIn = isOwner(session);
 
   try {
     // The count runs FIRST, and that ordering is load-bearing rather than
@@ -232,7 +232,7 @@ export async function getBlog(session: Session | null, id: string) {
     // The anonymous query is also empty when the post exists but is private, so
     // an anonymous request for a private post is indistinguishable from a
     // missing one.
-    const blog = session?.user
+    const blog = isOwner(session)
       ? await sql`SELECT * FROM blogs WHERE id=${id}`
       : await sql`SELECT * FROM blogs WHERE id=${id} AND private != TRUE`;
     // `.optional()`, because no row is the ordinary answer here — a missing post

@@ -25,6 +25,11 @@ import {
   recordHighScore,
 } from "@/lib/high-scores";
 import { resetRateLimit } from "@/lib/rateLimit";
+import {
+  nonOwnerSession,
+  sessionWithoutGithubId,
+  signedInSession,
+} from "@/test/auth-mock";
 import { verifyRecaptcha } from "@/lib/recaptcha";
 import { DELETE, GET, PUT } from "./route";
 
@@ -141,10 +146,7 @@ describe("DELETE /api/high-scores", () => {
    * The cast is in the test rather than in `session.ts`, where it would weaken the real code.
    */
   const asOwner = () =>
-    vi.mocked(getSession).mockResolvedValue({
-      user: { email: "owner@example.test" },
-      expires: "2099-01-01T00:00:00.000Z",
-    } as never);
+    vi.mocked(getSession).mockResolvedValue(signedInSession() as never);
 
   it("answers 404 to an anonymous caller, and touches nothing", async () => {
     // 404 rather than 403 on purpose: a 403 confirms the endpoint exists and guards something
@@ -161,6 +163,20 @@ describe("DELETE /api/high-scores", () => {
     vi.mocked(getSession).mockResolvedValue({
       expires: "2099-01-01T00:00:00.000Z",
     } as never);
+    const response = await remove({ id: ID_A });
+
+    expect(response.status).toBe(404);
+    expect(deleteHighScore).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    ["a signed-in visitor who is not the owner", nonOwnerSession],
+    [
+      "a session issued before the GitHub id was recorded",
+      sessionWithoutGithubId,
+    ],
+  ])("answers 404 to %s, and touches nothing", async (_label, makeSession) => {
+    vi.mocked(getSession).mockResolvedValue(makeSession() as never);
     const response = await remove({ id: ID_A });
 
     expect(response.status).toBe(404);

@@ -85,6 +85,31 @@ test("the authoring route rejects a cookie signed with the wrong key", async ({
   ).toHaveURL(/\/$/);
 });
 
+for (const [label, githubId] of [
+  ["a signed session for another GitHub account", "1"],
+  ["a signed session issued before the GitHub id was recorded", null],
+] as const) {
+  test(`the authoring route rejects ${label}`, async ({ page, context }) => {
+    // Correctly signed, so the gate is rejecting the identity, not the cookie.
+    await context.addCookies([
+      {
+        name: SESSION_COOKIE,
+        value: await signSession(sessionToken(githubId)),
+        domain: "localhost",
+        path: "/",
+        httpOnly: true,
+        sameSite: "Lax",
+      },
+    ]);
+
+    await page.goto("/blog/create");
+
+    await expect(page).toHaveURL(/\/$/);
+    // Still signed in, so still offered a way to sign out.
+    await expect(page.getByRole("button", { name: /log ?out/i })).toBeVisible();
+  });
+}
+
 test("the authoring route still rejects an anonymous visitor", async ({
   page,
 }) => {
