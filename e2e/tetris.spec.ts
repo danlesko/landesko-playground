@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { createGame, hardDrop, start } from "../src/components/tetris/engine";
 
 /**
  * The Tetris board, covering only what a browser can answer.
@@ -14,7 +15,9 @@ import { test, expect, type Page } from "@playwright/test";
  *
  * Deliberately free of timing assertions. Gravity means the board changes on its own, so
  * anything phrased as "the piece is at row N after 900ms" would be flaky by construction.
- * Every assertion below is about a discrete outcome the player caused.
+ * Every assertion below is about a discrete outcome the player caused. The one test that is
+ * about elapsed time, "drops nothing for the time the board stood still", pauses
+ * Playwright's clock so that no frame runs on its own.
  */
 
 const board = (page: Page) => page.getByRole("application");
@@ -118,6 +121,89 @@ test("hands the keyboard to the board when Play is clicked", async ({
       message: "a key pressed after clicking Play did not reach the game",
     })
     .toBeGreaterThan(before);
+});
+
+// The fake clock's fixed starting point, and a pause target safely after any page load.
+const CLOCK_EPOCH = new Date("2026-01-01T00:00:00Z");
+const CLOCK_PAUSE = new Date("2026-01-01T00:01:00Z");
+const PINNED_RANDOM = 0.5;
+
+/**
+ * The score from hard-dropping the first piece of a game. A hard drop pays two a row, so this
+ * measures how far the piece had already fallen.
+ *
+ * The one test in this file that involves elapsed time, and it is deterministic rather than
+ * timed: with Playwright's clock paused, the only frames are the one p5 draws synchronously
+ * when its loop restarts and any already queued that `runFor` delivers -- which, on a paused
+ * board, advance nothing. `Math.random` is pinned so every run deals the same first piece.
+ */
+const firstDropScore = async (
+  page: Page,
+  { idleMs, pauses }: { idleMs: number; pauses: number },
+) => {
+  await page.addInitScript((value) => {
+    Math.random = () => value;
+  }, PINNED_RANDOM);
+  await page.clock.install({ time: CLOCK_EPOCH });
+  await page.goto("/animation");
+  await board(page).scrollIntoViewIfNeeded();
+  // The canvas, not just the status text: "Ready" renders before the lazily loaded p5 wrapper
+  // mounts, and without a sketch the controller alone would score the same either way.
+  await expect(board(page).locator("canvas")).toBeVisible();
+  await expect(page.locator("#tetris-status")).toHaveText("Ready");
+  await page.clock.pauseAt(CLOCK_PAUSE);
+
+  await page.clock.runFor(idleMs);
+  // `focus()`, not `click()`: a click waits for the element to be stable, which Playwright
+  // measures over animation frames, and a paused clock never delivers one.
+  await board(page).focus();
+  await page.keyboard.press("Enter");
+  await expect(page.locator("#tetris-status")).toHaveText("Playing");
+
+  for (let i = 0; i < pauses; i += 1) {
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#tetris-status")).toHaveText("Paused");
+    await page.clock.runFor(2000);
+    await page.keyboard.press("Enter");
+    await expect(page.locator("#tetris-status")).toHaveText("Playing");
+  }
+
+  await page.keyboard.press("Space");
+  await expect.poll(() => scoreValue(page)).toBeGreaterThan(0);
+  return scoreValue(page);
+};
+
+test("drops nothing for the time the board stood still", async ({
+  browser,
+}) => {
+  // p5 measures the first frame after `loop()` from the last frame it drew, so before the fix
+  // that frame handed gravity the whole idle or paused time -- capped at a second, which is a
+  // row at level 1 -- every time play started or resumed.
+  //
+  // The expected score comes from the engine, dealt the way the controller deals a new game:
+  // a hard drop straight from the spawn row, with no gravity before it.
+  const seed = Math.floor(PINNED_RANDOM * 2 ** 31);
+  const expected = hardDrop(
+    start({ ...createGame(1), status: "over", seed }),
+  ).score;
+
+  const measure = async (still: { idleMs: number; pauses: number }) => {
+    const page = await browser.newPage();
+    try {
+      return await firstDropScore(page, still);
+    } finally {
+      await page.close();
+    }
+  };
+
+  expect(
+    await measure({ idleMs: 0, pauses: 0 }),
+    "the piece fell before play started, while the board sat idle after loading",
+  ).toBe(expected);
+  expect(
+    await measure({ idleMs: 5000, pauses: 4 }),
+    "the piece fell while the board was idle or paused, so the first drop scored less",
+  ).toBe(expected);
 });
 
 test("keeps the direction buttons usable by keyboard rather than stealing focus", async ({

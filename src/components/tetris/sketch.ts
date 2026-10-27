@@ -124,6 +124,12 @@ export function createTetrisSketch(
      */
     const shouldAnimate = () => controller.state().status === "playing";
 
+    // Set when a stopped loop starts again. p5 measures the first frame after `loop()` from
+    // the last frame the loop drew, and `redraw()` does not move that mark, so the frame's
+    // `deltaTime` spans the whole time the board stood still -- handed to gravity, it dropped
+    // the piece up to `MAX_TICK_MS` worth of rows the moment play resumed.
+    let restarting = false;
+
     /**
      * Brings the loop into line with the state, and repaints once when it should be still.
      *
@@ -134,6 +140,7 @@ export function createTetrisSketch(
      */
     const syncLoop = () => {
       if (shouldAnimate()) {
+        if (!p5.isLooping()) restarting = true;
         p5.loop();
         return;
       }
@@ -177,7 +184,8 @@ export function createTetrisSketch(
      * because photosensitivity is not something `prefers-reduced-motion` reliably reports.
      */
     p5.draw = () => {
-      controller.advance(p5.deltaTime);
+      controller.advance(restarting ? 0 : p5.deltaTime);
+      restarting = false;
       const state = controller.state();
 
       p5.background(EMPTY_CELL);
