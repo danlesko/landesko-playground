@@ -62,9 +62,9 @@ export async function verifyRecaptcha(token: string): Promise<RecaptchaResult> {
 }
 
 /**
- * The boolean form, kept because `/api/recaptcha` and the contact flow are built on it and
- * neither distinguishes the two failures -- the contact form's own error copy already covers
- * both, and widening it would be a change to that feature rather than to this one.
+ * The boolean form, kept because the contact flow is built on it and does not distinguish the
+ * two failures -- the contact form's own error copy already covers both, and widening it
+ * would be a change to that feature rather than to this one.
  */
 export async function verifyRecaptchaToken(token: string): Promise<boolean> {
   return (await verifyRecaptcha(token)).ok;

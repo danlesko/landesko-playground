@@ -36,14 +36,11 @@ import { DELETE, GET, PUT } from "./route";
 /**
  * The leaderboard endpoint.
  *
- * `@/lib/high-scores` is mocked here, unlike in `recaptcha/route.test.ts` which deliberately
- * drives the real verifier. The difference is what each test is protecting: there, the leak
- * being guarded against originates inside the module, so mocking it would make the assertion
- * vacuous. Here the data layer has its own tests against a mocked driver and a real Postgres,
- * and what is left to check is the route's own decisions -- what it validates, what it
- * refuses, and above all the ORDER it does things in.
+ * `@/lib/high-scores` is mocked here because the data layer has its own tests against a
+ * mocked driver and a real Postgres, and what is left to check is the route's own decisions
+ * -- what it validates, what it refuses, and above all the ORDER it does things in.
  *
- * `verifyRecaptchaToken` is mocked because the real one reads a secret from the environment
+ * `verifyRecaptcha` is mocked because the real one reads a secret from the environment
  * that `src/test/setup.ts` deletes on purpose.
  */
 

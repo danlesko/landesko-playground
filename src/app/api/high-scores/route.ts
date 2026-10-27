@@ -20,7 +20,7 @@ import type { HighScore, HighScoreRow } from "@/lib/definitions";
  * for a fetch and a PUT, and the caller is a canvas game that already holds its own state
  * in a plain object: a server action would drag the leaderboard into React's form
  * machinery, where the natural expression is `useActionState` on a form the game does not
- * have. `src/app/api/recaptcha/route.ts` is the shape this follows.
+ * have.
  *
  * PUT rather than POST, as specified. Worth being honest that it is the less conventional
  * choice: PUT is defined as idempotent and this is not -- two identical requests can record
